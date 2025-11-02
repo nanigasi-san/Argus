@@ -61,14 +61,14 @@
 
 ## 3. クラス構成
 
-| レイヤ | 主要クラス | 役割 |
-| ------ | ---------- | ---- |
-| UI | `HomePage`, `SettingsPage` | 状態バッジ、コントロール群、ログ表示 / エクスポート |
-| アプリ制御 | `AppController` | GeoJSON ロード、測位開始/停止、ログ蓄積、状態更新、エラー処理 |
-| 状態管理 | `StateMachine`, `StateSnapshot`, `LocationStateStatus`, `HysteresisCounter` | 測位結果から状態遷移判断 |
-| Geo 処理 | `GeoModel`, `GeoPolygon`, `AreaIndex`, `PointInPolygon` | GeoJSON パースと点/境界判定 |
-| プラットフォーム | `GeolocatorLocationService`, `FakeLocationService`, `Notifier` | 3 秒毎の測位ストリーム、通知 (現在は `debugPrint`) |
-| IO | `FileManager`, `EventLogger`, `AppConfig` | ファイル選択・設定保存・CSV/JSONL ログ出力 |
+| レイヤ           | 主要クラス                                                                  | 役割                                                          |
+| ---------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| UI               | `HomePage`, `SettingsPage`                                                  | 状態バッジ、コントロール群、ログ表示 / エクスポート           |
+| アプリ制御       | `AppController`                                                             | GeoJSON ロード、測位開始/停止、ログ蓄積、状態更新、エラー処理 |
+| 状態管理         | `StateMachine`, `StateSnapshot`, `LocationStateStatus`, `HysteresisCounter` | 測位結果から状態遷移判断                                      |
+| Geo 処理         | `GeoModel`, `GeoPolygon`, `AreaIndex`, `PointInPolygon`                     | GeoJSON パースと点/境界判定                                   |
+| プラットフォーム | `GeolocatorLocationService`, `FakeLocationService`, `Notifier`              | 3 秒毎の測位ストリーム、通知 (現在は `debugPrint`)            |
+| IO               | `FileManager`, `EventLogger`, `AppConfig`                                   | ファイル選択・設定保存・CSV/JSONL ログ出力                    |
 
 ---
 
@@ -81,11 +81,59 @@ INIT / INNER / NEAR / OUTER_PENDING / OUTER / GPS_BAD
 GPS_BAD: 精度 > gps_accuracy_bad_m。精度回復で他状態へ遷移。
 INNER: ポリゴン内部 & dist >= inner_buffer_m。
 NEAR: ポリゴン内部 & dist < inner_buffer_m。
-OUTER_PENDING: ポリゴン外。ヒステリシス条件を満たすと OUTER。
+OUTER_PENDING: ポリゴン外。ヒステリシス条件を満たすと OUTER (OUTER 確定後は GPS_BAD でも維持)。
 OUTER: 規定サンプル数 & 経過時間を満たす退出確定状態。位置監視・ログは継続。
 ```
 
 `StateMachine.evaluate(fix)` が常に `LocationFix` を受け取り `StateSnapshot` を返す。`AppController` は OUTER → 非 OUTER の遷移で復帰通知を行い、状態に応じたログを追加する。
+
+### dist の意味
+
+- `dist` (ソースコード内では `distanceToBoundaryM`) は現在位置からジオフェンス境界までの最短距離 [m]。
+- `PointInPolygon.evaluatePoint` が計算し、`StateSnapshot.distanceToBoundaryM` として保持される。
+- 判定ロジック:
+  - `dist >= inner_buffer_m` なら `INNER`
+  - `0 <= dist < inner_buffer_m` なら `NEAR`
+  - ポリゴン外のときも境界までの正の距離を返し、ログの `dist_to_boundary_m` に記録される。
+
+### 状態遷移図 (mermaid)
+
+```mermaid
+stateDiagram-v2
+  direction TB
+
+  [*] --> WAIT_GEOJSON
+  WAIT_GEOJSON --> INIT: GeoJSON読み込み成功
+  WAIT_GEOJSON --> WAIT_GEOJSON: 読み込み失敗
+
+  INIT --> GPS_BAD: 精度>閾値
+  INIT --> INNER: inside && dist >= buffer
+  INIT --> NEAR: inside && dist < buffer
+  INIT --> OUTER_PENDING: outside && ヒステリシス未達
+
+  GPS_BAD --> GPS_BAD: 精度悪化継続
+  GPS_BAD --> INNER: inside && dist >= buffer
+  GPS_BAD --> NEAR: inside && dist < buffer
+  GPS_BAD --> OUTER_PENDING: outside && ヒステリシス未達
+  GPS_BAD --> OUTER: outside && ヒステリシス達成
+
+  INNER --> GPS_BAD: 精度>閾値
+  INNER --> NEAR: inside && dist < buffer
+  INNER --> OUTER_PENDING: outside && ヒステリシス未達
+
+  NEAR --> GPS_BAD: 精度>閾値
+  NEAR --> INNER: inside && dist >= buffer
+  NEAR --> OUTER_PENDING: outside && ヒステリシス未達
+
+  OUTER_PENDING --> GPS_BAD: 精度>閾値
+  OUTER_PENDING --> INNER: inside && dist >= buffer
+  OUTER_PENDING --> NEAR: inside && dist < buffer
+  OUTER_PENDING --> OUTER: ヒステリシス達成
+
+  OUTER --> GPS_BAD: 精度>閾値
+  OUTER --> INNER: inside && dist >= buffer
+  OUTER --> NEAR: inside && dist < buffer
+```
 
 ---
 

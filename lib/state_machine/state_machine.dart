@@ -36,8 +36,7 @@ class StateMachine {
         _pip = pointInPolygon ?? const PointInPolygon(),
         _hysteresis = HysteresisCounter(
           requiredSamples: config.leaveConfirmSamples,
-          requiredDuration:
-              Duration(seconds: config.leaveConfirmSeconds),
+          requiredDuration: Duration(seconds: config.leaveConfirmSeconds),
         );
 
   AppConfig _config;
@@ -94,9 +93,10 @@ class StateMachine {
 
     final candidatePolys = _areaIndex
         .lookup(
-      fix.latitude,
-      fix.longitude,
-    ).toList();
+          fix.latitude,
+          fix.longitude,
+        )
+        .toList();
     final searchPolys =
         candidatePolys.isEmpty ? _geoModel.polygons : candidatePolys;
 
@@ -115,8 +115,7 @@ class StateMachine {
       final distance = evaluation.distanceToBoundaryM;
       final isNear = distance < _config.innerBufferM;
       return StateSnapshot(
-        status:
-            isNear ? LocationStateStatus.near : LocationStateStatus.inner,
+        status: isNear ? LocationStateStatus.near : LocationStateStatus.inner,
         timestamp: fix.timestamp,
         horizontalAccuracyM: fix.accuracyMeters,
         distanceToBoundaryM: distance,
@@ -136,18 +135,29 @@ class StateMachine {
         .firstOrNull;
 
     final distance = nearest?.distanceToBoundaryM;
-    final reached =
-        _hysteresis.addSample(fix.timestamp) && distance != null;
+    final reached = _hysteresis.addSample(fix.timestamp) && distance != null;
 
-    return StateSnapshot(
-      status: reached
-          ? LocationStateStatus.outer
-          : LocationStateStatus.outerPending,
+    if (!reached) {
+      return StateSnapshot(
+        status: LocationStateStatus.outerPending,
+        timestamp: fix.timestamp,
+        horizontalAccuracyM: fix.accuracyMeters,
+        distanceToBoundaryM: distance,
+        geoJsonLoaded: true,
+        notes: 'Monitoring exit hysteresis',
+      );
+    }
+
+    final outerSnapshot = StateSnapshot(
+      status: LocationStateStatus.outer,
       timestamp: fix.timestamp,
       horizontalAccuracyM: fix.accuracyMeters,
       distanceToBoundaryM: distance,
       geoJsonLoaded: true,
-      notes: reached ? 'Confirmed exit' : 'Monitoring exit hysteresis',
+      notes: 'Confirmed exit',
     );
+
+    // outer になった場合は GPS_BAD の精度チェックでは取り消さない。
+    return outerSnapshot;
   }
 }
