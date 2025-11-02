@@ -91,4 +91,142 @@ void main() {
 
     expect(snapshot.status, LocationStateStatus.outer);
   });
+
+  test('returns WAIT_GEOJSON when GeoJSON is not loaded', () {
+    final machineWithoutGeometry = StateMachine(config: config);
+    final fix = LocationFix(
+      latitude: 35.005,
+      longitude: 139.005,
+      accuracyMeters: 5,
+      timestamp: DateTime.now(),
+    );
+
+    final snapshot = machineWithoutGeometry.evaluate(fix);
+    expect(snapshot.status, LocationStateStatus.waitGeoJson);
+    expect(snapshot.geoJsonLoaded, false);
+  });
+
+  test('returns GPS_BAD when accuracy is too low', () {
+    final fix = LocationFix(
+      latitude: 35.005,
+      longitude: 139.005,
+      accuracyMeters: 50, // > gpsAccuracyBadMeters (40)
+      timestamp: DateTime.now(),
+    );
+
+    final snapshot = machine.evaluate(fix);
+    expect(snapshot.status, LocationStateStatus.gpsBad);
+    expect(snapshot.horizontalAccuracyM, 50);
+  });
+
+  test('returns GPS_BAD when accuracy is null', () {
+    final fix = LocationFix(
+      latitude: 35.005,
+      longitude: 139.005,
+      accuracyMeters: null,
+      timestamp: DateTime.now(),
+    );
+
+    final snapshot = machine.evaluate(fix);
+    expect(snapshot.status, LocationStateStatus.gpsBad);
+  });
+
+  test('resets hysteresis and transitions to INNER when recovering from OUTER', () {
+    // First, transition to OUTER
+    final outsideFix = LocationFix(
+      latitude: 35.02,
+      longitude: 139.02,
+      accuracyMeters: 5,
+      timestamp: DateTime.now(),
+    );
+
+    var snapshot = machine.evaluate(outsideFix);
+    for (var i = 0; i < config.leaveConfirmSamples; i++) {
+      snapshot = machine.evaluate(
+        LocationFix(
+          latitude: outsideFix.latitude,
+          longitude: outsideFix.longitude,
+          accuracyMeters: 5,
+          timestamp: outsideFix.timestamp.add(Duration(seconds: 10 + i)),
+        ),
+      );
+    }
+    expect(snapshot.status, LocationStateStatus.outer);
+
+    // Then move back inside
+    final insideFix = LocationFix(
+      latitude: 35.005,
+      longitude: 139.005,
+      accuracyMeters: 5,
+      timestamp: outsideFix.timestamp.add(Duration(seconds: 20)),
+    );
+
+    snapshot = machine.evaluate(insideFix);
+    expect(snapshot.status, LocationStateStatus.inner);
+  });
+
+  test('recovers from GPS_BAD to INNER when accuracy improves', () {
+    // Start with bad GPS
+    final badFix = LocationFix(
+      latitude: 35.005,
+      longitude: 139.005,
+      accuracyMeters: 50,
+      timestamp: DateTime.now(),
+    );
+    var snapshot = machine.evaluate(badFix);
+    expect(snapshot.status, LocationStateStatus.gpsBad);
+
+    // Recover with good GPS
+    final goodFix = LocationFix(
+      latitude: 35.005,
+      longitude: 139.005,
+      accuracyMeters: 5,
+      timestamp: badFix.timestamp.add(Duration(seconds: 1)),
+    );
+    snapshot = machine.evaluate(goodFix);
+    expect(snapshot.status, LocationStateStatus.inner);
+  });
+
+  test('resets hysteresis when moving from OUTER_PENDING to INNER', () {
+    // Move outside
+    final outsideFix = LocationFix(
+      latitude: 35.02,
+      longitude: 139.02,
+      accuracyMeters: 5,
+      timestamp: DateTime.now(),
+    );
+    var snapshot = machine.evaluate(outsideFix);
+    expect(snapshot.status, LocationStateStatus.outerPending);
+
+    // Add one sample but not enough for OUTER
+    snapshot = machine.evaluate(
+      LocationFix(
+        latitude: outsideFix.latitude,
+        longitude: outsideFix.longitude,
+        accuracyMeters: 5,
+        timestamp: outsideFix.timestamp.add(Duration(seconds: 1)),
+      ),
+    );
+    expect(snapshot.status, LocationStateStatus.outerPending);
+
+    // Move back inside - should reset hysteresis
+    final insideFix = LocationFix(
+      latitude: 35.005,
+      longitude: 139.005,
+      accuracyMeters: 5,
+      timestamp: outsideFix.timestamp.add(Duration(seconds: 2)),
+    );
+    snapshot = machine.evaluate(insideFix);
+    expect(snapshot.status, LocationStateStatus.inner);
+
+    // Move outside again - should start hysteresis from scratch
+    final outsideAgain = LocationFix(
+      latitude: 35.02,
+      longitude: 139.02,
+      accuracyMeters: 5,
+      timestamp: insideFix.timestamp.add(Duration(seconds: 1)),
+    );
+    snapshot = machine.evaluate(outsideAgain);
+    expect(snapshot.status, LocationStateStatus.outerPending);
+  });
 }
