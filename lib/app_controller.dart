@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import 'geo/area_index.dart';
 import 'geo/geo_model.dart';
@@ -46,6 +48,7 @@ class AppController extends ChangeNotifier {
   List<String> get logs => List.unmodifiable(_logs);
 
   Future<void> initialize({String? initialGeoAsset}) async {
+    await _requestPermissions();
     _config ??= await fileManager.readConfig();
     stateMachine.updateConfig(_config!);
 
@@ -179,6 +182,15 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  Future<void> _requestPermissions() async {
+    final status = await Permission.notification.status;
+    if (status.isDenied || status.isLimited) {
+      await Permission.notification.request();
+    } else if (status.isPermanentlyDenied) {
+      await openAppSettings();
+    }
+  }
+
   static Future<AppController> bootstrap() async {
     final fileManager = FileManager();
     final config = await fileManager.readConfig();
@@ -186,7 +198,9 @@ class AppController extends ChangeNotifier {
     final locationService = GeolocatorLocationService();
     final logFile = await fileManager.openLogFile();
     final logger = EventLogger(logFile);
-    final notifier = Notifier();
+    final notificationsPlugin = FlutterLocalNotificationsPlugin();
+    final notifier = Notifier(notificationsPlugin);
+    await notifier.initialize();
     final controller = AppController(
       stateMachine: stateMachine,
       locationService: locationService,
