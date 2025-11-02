@@ -1,0 +1,24 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Sample Zone",
+        "version": 1
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [139.7000, 35.6900],
+            [139.7020, 35.6900],
+            [139.7020, 35.6920],
+            [139.7000, 35.6920],
+            [139.7000, 35.6900]
+          ]
+        ]
+      }
+    }
+  ]
+}
