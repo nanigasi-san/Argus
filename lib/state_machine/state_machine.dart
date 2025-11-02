@@ -80,6 +80,43 @@ class StateMachine {
 
     if (fix.accuracyMeters == null ||
         fix.accuracyMeters! > _config.gpsAccuracyBadMeters) {
+      // outer になった場合は GPS_BAD の精度チェックでは取り消さない。
+      if (_current == LocationStateStatus.outer) {
+        // OUTER状態の場合は精度が悪くてもOUTERを維持する
+        // この場合は次の評価に進む（ヒステリシスはリセットしない）
+        // ただし、OUTER状態を維持するため、距離計算を試みる
+        final candidatePolys = _areaIndex
+            .lookup(
+              fix.latitude,
+              fix.longitude,
+            )
+            .toList();
+        final searchPolys =
+            candidatePolys.isEmpty ? _geoModel.polygons : candidatePolys;
+
+        final nearestEval = searchPolys
+            .map(
+              (poly) => _pip.evaluatePoint(
+                fix.latitude,
+                fix.longitude,
+                poly,
+              ),
+            )
+            .sortedBy<num>((r) => r.distanceToBoundaryM)
+            .firstOrNull;
+
+        final distance = nearestEval?.distanceToBoundaryM;
+        return StateSnapshot(
+          status: LocationStateStatus.outer,
+          timestamp: fix.timestamp,
+          horizontalAccuracyM: fix.accuracyMeters,
+          distanceToBoundaryM: distance,
+          geoJsonLoaded: true,
+          notes:
+              'Low accuracy ${fix.accuracyMeters?.toStringAsFixed(1) ?? '-'}m, but maintaining OUTER state',
+        );
+      }
+      // OUTER状態でない場合のみ、GPS_BADに遷移
       _hysteresis.reset();
       return StateSnapshot(
         status: LocationStateStatus.gpsBad,
