@@ -84,7 +84,7 @@ void main() {
           latitude: outsideFix.latitude,
           longitude: outsideFix.longitude,
           accuracyMeters: 5,
-          timestamp: outsideFix.timestamp.add(Duration(seconds: i + 1)),
+          timestamp: outsideFix.timestamp.add(Duration(seconds: 10 + i)),
         ),
       );
     }

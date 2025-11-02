@@ -68,7 +68,7 @@ class GeolocatorLocationService implements LocationService {
         showBackgroundLocationIndicator: true,
       );
     } else {
-      settings = LocationSettings(
+      settings = const LocationSettings(
         accuracy: LocationAccuracy.best,
         distanceFilter: distanceFilter,
       );
@@ -83,7 +83,7 @@ class GeolocatorLocationService implements LocationService {
           latitude: position.latitude,
           longitude: position.longitude,
           accuracyMeters: position.accuracy,
-          timestamp: position.timestamp ?? DateTime.now(),
+          timestamp: position.timestamp,
         ),
       );
     });
