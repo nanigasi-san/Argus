@@ -158,7 +158,7 @@ void main() {
       latitude: 35.005,
       longitude: 139.005,
       accuracyMeters: 5,
-      timestamp: outsideFix.timestamp.add(Duration(seconds: 20)),
+          timestamp: outsideFix.timestamp.add(const Duration(seconds: 20)),
     );
 
     snapshot = machine.evaluate(insideFix);
@@ -181,7 +181,7 @@ void main() {
       latitude: 35.005,
       longitude: 139.005,
       accuracyMeters: 5,
-      timestamp: badFix.timestamp.add(Duration(seconds: 1)),
+      timestamp: badFix.timestamp.add(const Duration(seconds: 1)),
     );
     snapshot = machine.evaluate(goodFix);
     expect(snapshot.status, LocationStateStatus.inner);
@@ -204,7 +204,7 @@ void main() {
         latitude: outsideFix.latitude,
         longitude: outsideFix.longitude,
         accuracyMeters: 5,
-        timestamp: outsideFix.timestamp.add(Duration(seconds: 1)),
+        timestamp: outsideFix.timestamp.add(const Duration(seconds: 1)),
       ),
     );
     expect(snapshot.status, LocationStateStatus.outerPending);
@@ -214,7 +214,7 @@ void main() {
       latitude: 35.005,
       longitude: 139.005,
       accuracyMeters: 5,
-      timestamp: outsideFix.timestamp.add(Duration(seconds: 2)),
+      timestamp: outsideFix.timestamp.add(const Duration(seconds: 2)),
     );
     snapshot = machine.evaluate(insideFix);
     expect(snapshot.status, LocationStateStatus.inner);
@@ -224,7 +224,7 @@ void main() {
       latitude: 35.02,
       longitude: 139.02,
       accuracyMeters: 5,
-      timestamp: insideFix.timestamp.add(Duration(seconds: 1)),
+      timestamp: insideFix.timestamp.add(const Duration(seconds: 1)),
     );
     snapshot = machine.evaluate(outsideAgain);
     expect(snapshot.status, LocationStateStatus.outerPending);
