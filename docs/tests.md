@@ -1,4 +1,4 @@
-# Argus テスト仕様書
+﻿# Argus テスト仕様書
 
 本書は `Argus` アプリケーションのテストスイートの詳細な説明を提供します。
 
@@ -12,8 +12,8 @@
 | `hysteresis_counter_test.dart` | `HysteresisCounter` | 7 |
 | `point_in_polygon_test.dart` | `PointInPolygon`, 内外判定 | 9 |
 | `geo_model_test.dart` | `GeoModel`, `GeoPolygon`, GeoJSONパース | 13 |
-| `widget_test.dart` | UIウィジェット | 1 |
-| **合計** | | **39** |
+| `app_controller_test.dart` | `AppController` | 3 |
+| **総計** | | **41** |
 
 ---
 
@@ -212,16 +212,23 @@ GeoJSONのパースとポリゴン生成を検証するテストです。
 
 ---
 
-## 5. widget_test.dart
+## 5. app_controller_test.dart
 
-UIコンポーネントの基本的な表示を検証するテストです。
+AppController の動作とログ出力をカバーするテストセット。開発者モードの振る舞いを確認する。
 
 ### テストケース
 
-#### 5.1 `Argus app displays correctly`
-- **目的**: アプリが正しく表示されることを確認
-- **期待結果**: 'Argus' タイトルと状態情報が表示される
+#### 5.1 `loading new GeoJSON resets to init and stops alarm`
+ - **狙い**: GeoJSON を再ロードした際に状態が init に戻り、アラームが停止することを確認
+ - **期待結果**: LocationStateStatus.init / stateMachine.current = init / アラーム停止
 
+#### 5.2 `describeSnapshot hides navigation details before OUTER`
+ - **狙い**: 開発者モード OFF では INNER/NEAR 中に距離・方角が伏せられることを検証
+ - **期待結果**: ログ文字列に dist=- と earing=- が含まれる
+
+#### 5.3 `describeSnapshot reveals navigation details in developer mode`
+ - **狙い**: 開発者モード ON で距離・方角・ターゲット座標が露出することを確認
+ - **期待結果**: ログ文字列に距離と方角 (deg)・座標が含まれる
 ---
 
 ## テスト実行方法

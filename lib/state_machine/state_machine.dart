@@ -143,7 +143,7 @@ class StateMachine {
     final searchPolys =
         candidatePolys.isEmpty ? _geoModel.polygons : candidatePolys;
 
-    final evaluation = searchPolys
+    final evaluations = searchPolys
         .map(
           (poly) => _pip.evaluatePoint(
             fix.latitude,
@@ -151,7 +151,10 @@ class StateMachine {
             poly,
           ),
         )
-        .firstWhereOrNull((result) => result.contains);
+        .toList(growable: false);
+
+    final evaluation =
+        evaluations.firstWhereOrNull((result) => result.contains);
 
     if (evaluation != null && evaluation.contains) {
       _hysteresis.reset();
@@ -168,14 +171,7 @@ class StateMachine {
       );
     }
 
-    final nearest = searchPolys
-        .map(
-          (poly) => _pip.evaluatePoint(
-            fix.latitude,
-            fix.longitude,
-            poly,
-          ),
-        )
+    final nearest = evaluations
         .sortedBy<num>((r) => r.distanceToBoundaryM)
         .firstOrNull;
 

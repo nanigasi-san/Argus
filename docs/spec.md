@@ -91,6 +91,7 @@
 - `leaveConfirmSamples`: OUTER 確定に必要な連続サンプル数。
 - `leaveConfirmSeconds`: OUTER 確定に必要な経過秒数。
 - `gpsAccuracyBadMeters`: 精度閾値。超過で `gpsBad`。
+- Each evaluation pass reuses PointInPolygon results for both containment and nearest-boundary calculations to avoid duplicate work.
 
 状態遷移は既存テスト（`test/state_machine_test.dart`）により INNER/NEAR/OUTER の代表ケースが保証される。
 
@@ -175,6 +176,6 @@
 
 - INNER/NEAR states keep navigation distance/bearing hidden; cues surface only after OUTER is confirmed.
 
-- OUTER/OUTER_PENDING 状態では最寄り境界点（緯度経度）と距離・推奨方角を表示し、復帰までの目標地点を提示する。
+- OUTER 状態では最寄り境界点（緯度経度）と距離・推奨方角を表示し、復帰までの目標地点を提示する。
 - StateSnapshot に方位角（deg）と最寄り境界点座標を保持し、ログ/通知メッセージで案内に利用する。
 - HomePage では距離・方角（方位記号付き）・ターゲット座標を表示して方向感覚を補助する。

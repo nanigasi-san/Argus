@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -11,6 +12,7 @@ import 'package:argus/platform/location_service.dart';
 import 'package:argus/platform/notifier.dart';
 import 'package:argus/state_machine/state.dart';
 import 'package:argus/state_machine/state_machine.dart';
+import 'package:file_selector/file_selector.dart';
 
 import 'support/notifier_fakes.dart';
 
@@ -22,8 +24,7 @@ void main() {
       final config = _testConfig();
       final stateMachine = StateMachine(config: config);
       final locationService = FakeLocationService();
-      final model = _squareModel();
-      final fileManager = FakeFileManager(model: model, config: config);
+      final fileManager = FakeFileManager(config: config);
       final logger = FakeEventLogger();
       final notifications = FakeLocalNotificationsClient();
       final alarm = FakeAlarmPlayer();
@@ -44,6 +45,7 @@ void main() {
       expect(alarm.playCount, 1);
 
       await controller.reloadGeoJsonFromPicker();
+      expect(controller.snapshot.status, LocationStateStatus.init);
 
       expect(controller.snapshot.status, LocationStateStatus.init);
       expect(controller.geoJsonLoaded, isTrue);
@@ -107,24 +109,13 @@ AppConfig _testConfig() {
 }
 
 GeoModel _squareModel() {
-  final points = <LatLng>[
-    const LatLng(0, 0),
-    const LatLng(0, 1),
-    const LatLng(1, 1),
-    const LatLng(1, 0),
-  ];
-  return GeoModel([
-    GeoPolygon(points: points),
-  ]);
+  return GeoModel.fromGeoJson(_squareGeoJson);
 }
 
 AppController _buildController() {
   final config = _testConfig();
   final stateMachine = StateMachine(config: config);
-  final fileManager = FakeFileManager(
-    model: _squareModel(),
-    config: config,
-  );
+  final fileManager = FakeFileManager(config: config);
   final notifier = Notifier(
     notificationsClient: FakeLocalNotificationsClient(),
     alarmPlayer: FakeAlarmPlayer(),
@@ -138,23 +129,48 @@ AppController _buildController() {
   );
 }
 
+const String _squareGeoJson = '''
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"name": "Test Area"},
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[0,0],[1,0],[1,1],[0,1],[0,0]]]
+      }
+    }
+  ]
+}
+''';
+
 class FakeFileManager extends FileManager {
   FakeFileManager({
-    required this.model,
     required this.config,
   });
 
-  final GeoModel model;
   final AppConfig config;
 
-  @override
-  Future<GeoModel?> pickAndLoadGeoJson() async => model;
+  GeoModel get _model => _squareModel();
 
   @override
   Future<AppConfig> readConfig() async => config;
 
   @override
-  Future<GeoModel> loadBundledGeoJson(String assetPath) async => model;
+  Future<GeoModel?> pickAndLoadGeoJson() async => _model;
+
+  @override
+  Future<GeoModel> loadBundledGeoJson(String assetPath) async => _model;
+
+  @override
+  Future<XFile?> pickGeoJsonFile() async {
+    return XFile.fromData(
+      utf8.encode(_squareGeoJson),
+      name: 'test_square.geojson',
+      mimeType: 'application/geo+json',
+    );
+  }
 }
 
 class FakeEventLogger extends EventLogger {
