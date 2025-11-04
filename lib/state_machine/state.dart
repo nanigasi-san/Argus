@@ -1,5 +1,7 @@
 import 'package:meta/meta.dart';
 
+import '../geo/geo_model.dart';
+
 /// States emitted by the Argus geofence state machine.
 enum LocationStateStatus {
   waitGeoJson,
@@ -21,6 +23,8 @@ class StateSnapshot {
     this.horizontalAccuracyM,
     this.geoJsonLoaded = false,
     this.notes,
+    this.nearestBoundaryPoint,
+    this.bearingToBoundaryDeg,
   });
 
   final LocationStateStatus status;
@@ -29,6 +33,8 @@ class StateSnapshot {
   final double? horizontalAccuracyM;
   final bool geoJsonLoaded;
   final String? notes;
+  final LatLng? nearestBoundaryPoint;
+  final double? bearingToBoundaryDeg;
 
   StateSnapshot copyWith({
     LocationStateStatus? status,
@@ -37,6 +43,8 @@ class StateSnapshot {
     double? horizontalAccuracyM,
     bool? geoJsonLoaded,
     String? notes,
+    LatLng? nearestBoundaryPoint,
+    double? bearingToBoundaryDeg,
   }) {
     return StateSnapshot(
       status: status ?? this.status,
@@ -46,6 +54,10 @@ class StateSnapshot {
           horizontalAccuracyM ?? this.horizontalAccuracyM,
       geoJsonLoaded: geoJsonLoaded ?? this.geoJsonLoaded,
       notes: notes ?? this.notes,
+      nearestBoundaryPoint:
+          nearestBoundaryPoint ?? this.nearestBoundaryPoint,
+      bearingToBoundaryDeg:
+          bearingToBoundaryDeg ?? this.bearingToBoundaryDeg,
     );
   }
 }

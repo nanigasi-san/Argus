@@ -11,7 +11,6 @@ class AppConfig {
     required this.sampleIntervalS,
     required this.sampleDistanceM,
     required this.screenWakeOnLeave,
-    required this.logEnabled,
   });
 
   final double innerBufferM;
@@ -21,7 +20,6 @@ class AppConfig {
   final Map<String, int> sampleIntervalS;
   final Map<String, int> sampleDistanceM;
   final bool screenWakeOnLeave;
-  final bool logEnabled;
 
   factory AppConfig.fromJson(Map<String, dynamic> json) {
     return AppConfig(
@@ -47,7 +45,6 @@ class AppConfig {
         ),
       ),
       screenWakeOnLeave: json['screen_wake_on_leave'] as bool? ?? false,
-      logEnabled: json['log_enabled'] as bool? ?? false,
     );
   }
 
@@ -59,7 +56,6 @@ class AppConfig {
         'sample_interval_s': sampleIntervalS,
         'sample_distance_m': sampleDistanceM,
         'screen_wake_on_leave': screenWakeOnLeave,
-        'log_enabled': logEnabled,
       };
 
   static Future<AppConfig> loadDefault() async {

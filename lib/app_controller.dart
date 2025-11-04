@@ -8,6 +8,7 @@ import 'geo/area_index.dart';
 import 'geo/geo_model.dart';
 import 'io/config.dart';
 import 'io/file_manager.dart';
+import 'io/log_entry.dart';
 import 'io/logger.dart';
 import 'platform/location_service.dart';
 import 'platform/notifier.dart';
@@ -31,6 +32,7 @@ class AppController extends ChangeNotifier {
 
   AppConfig? _config;
   GeoModel _geoModel = GeoModel.empty();
+  bool _developerMode = false;
   AreaIndex _areaIndex = AreaIndex.empty();
   StateSnapshot _snapshot = StateSnapshot(
     status: LocationStateStatus.waitGeoJson,
@@ -39,13 +41,16 @@ class AppController extends ChangeNotifier {
   );
   StreamSubscription<LocationFix>? _subscription;
   String? _lastErrorMessage;
-  final List<String> _logs = <String>[];
+  String? _geoJsonFileName;
+  final List<AppLogEntry> _logs = <AppLogEntry>[];
 
   StateSnapshot get snapshot => _snapshot;
   AppConfig? get config => _config;
   bool get geoJsonLoaded => _geoModel.hasGeometry;
   String? get lastErrorMessage => _lastErrorMessage;
-  List<String> get logs => List.unmodifiable(_logs);
+  String? get geoJsonFileName => _geoJsonFileName;
+  List<AppLogEntry> get logs => List.unmodifiable(_logs);
+  bool get developerMode => _developerMode;
 
   Future<void> initialize({String? initialGeoAsset}) async {
     await _requestPermissions();
@@ -55,12 +60,19 @@ class AppController extends ChangeNotifier {
     if (initialGeoAsset != null) {
       try {
         _geoModel = await fileManager.loadBundledGeoJson(initialGeoAsset);
+        final assetFileName = initialGeoAsset.split('/').last;
+        _geoJsonFileName = _normalizeToGeoJson(assetFileName);
         _areaIndex = AreaIndex.build(_geoModel.polygons);
         stateMachine.updateGeometry(_geoModel, _areaIndex);
       } catch (_) {
         _geoModel = GeoModel.empty();
+        _geoJsonFileName = null;
         _areaIndex = AreaIndex.empty();
         _lastErrorMessage = 'Failed to load bundled GeoJSON.';
+        _logError(
+          'APP',
+          'Failed to load bundled GeoJSON.',
+        );
       }
     }
     _snapshot = _snapshot.copyWith(
@@ -73,9 +85,12 @@ class AppController extends ChangeNotifier {
           ? 'Ready to monitor'
           : 'Load GeoJSON to start monitoring',
     );
-    _addLogLine(
-      '${DateTime.now().toIso8601String()} [APP] initialized '
-      '${geoJsonLoaded ? 'with bundled GeoJSON' : 'waiting for GeoJSON'}',
+    _logInfo(
+      'APP',
+      geoJsonLoaded
+          ? 'Initialized with bundled GeoJSON.'
+          : 'Initialization completed. Waiting for GeoJSON.',
+      timestamp: _snapshot.timestamp,
     );
     notifyListeners();
   }
@@ -94,9 +109,7 @@ class AppController extends ChangeNotifier {
     await locationService.start(_config!);
     await _subscription?.cancel();
     _subscription = locationService.stream.listen(_handleFix);
-    _addLogLine(
-      '${DateTime.now().toIso8601String()} [APP] monitoring started',
-    );
+    _logInfo('APP', 'Monitoring started.');
     notifyListeners();
   }
 
@@ -104,19 +117,31 @@ class AppController extends ChangeNotifier {
     await _subscription?.cancel();
     _subscription = null;
     await locationService.stop();
-    _addLogLine(
-      '${DateTime.now().toIso8601String()} [APP] monitoring stopped',
-    );
+    _logInfo('APP', 'Monitoring stopped.');
+    notifyListeners();
+  }
+  void setDeveloperMode(bool enabled) {
+    if (_developerMode == enabled) {
+      return;
+    }
+    _developerMode = enabled;
+    _logInfo('APP', 'Developer mode ${enabled ? 'enabled' : 'disabled'}.');
     notifyListeners();
   }
 
   Future<void> reloadGeoJsonFromPicker() async {
     try {
-      final model = await fileManager.pickAndLoadGeoJson();
-      if (model == null) {
+      // ファイル名を取得するために、file_selectorを直接使用
+      final file = await fileManager.pickGeoJsonFile();
+      if (file == null) {
         return;
       }
+      final raw = await file.readAsString();
+      final model = GeoModel.fromGeoJson(raw);
       _geoModel = model;
+      // ファイル名をpathから抽出し、拡張子を.geojsonに統一
+      final extractedName = _extractFileName(file.path) ?? file.name;
+      _geoJsonFileName = _normalizeToGeoJson(extractedName);
       _areaIndex = AreaIndex.build(model.polygons);
       stateMachine.updateGeometry(_geoModel, _areaIndex);
       _snapshot = _snapshot.copyWith(
@@ -125,43 +150,75 @@ class AppController extends ChangeNotifier {
         geoJsonLoaded: true,
         notes: 'GeoJSON loaded',
       );
+      await notifier.stopAlarm();
       _lastErrorMessage = null;
-      _addLogLine(
-        '${DateTime.now().toIso8601String()} [APP] GeoJSON loaded from picker',
-      );
+      _logInfo('APP', 'GeoJSON loaded.', timestamp: _snapshot.timestamp);
       notifyListeners();
     } on FormatException catch (e) {
       _lastErrorMessage = 'Failed to parse GeoJSON: ${e.message}';
-      _addLogLine(
-        '${DateTime.now().toIso8601String()} [ERROR] ${_lastErrorMessage!}',
-      );
+      _logError('APP', _lastErrorMessage!);
       notifyListeners();
     } catch (e) {
       _lastErrorMessage = 'Unable to open file: ${e.toString()}';
-      _addLogLine(
-        '${DateTime.now().toIso8601String()} [ERROR] ${_lastErrorMessage!}',
-      );
+      _logError('APP', _lastErrorMessage!);
       notifyListeners();
     }
   }
 
+  String? _extractFileName(String path) {
+    if (path.isEmpty) return null;
+    // パスセパレータで分割して最後の要素（ファイル名）を取得
+    final parts = path.split(RegExp(r'[/\\]'));
+    final fileName = parts.last;
+    // クエリパラメータやフラグメントを除去
+    final cleanFileName = fileName.split('?').first.split('#').first;
+    return cleanFileName.isNotEmpty ? cleanFileName : null;
+  }
+
+  String _normalizeToGeoJson(String fileName) {
+    // 拡張子を除去
+    final nameWithoutExt = fileName.replaceAll(RegExp(r'\.[^.]+$'), '');
+    // .geojson拡張子を追加
+    return '$nameWithoutExt.geojson';
+  }
+
   Future<void> _handleFix(LocationFix fix) async {
     final previous = _snapshot.status;
-    final locationLog = await logger.logLocationFix(fix);
-    _addLogLine(locationLog);
+    await logger.logLocationFix(fix);
+    _logDebug(
+      'GPS',
+      'lat=${fix.latitude.toStringAsFixed(6)} '
+      'lon=${fix.longitude.toStringAsFixed(6)} '
+      'acc=${fix.accuracyMeters?.toStringAsFixed(1) ?? '-'}m',
+      timestamp: fix.timestamp,
+    );
     final evaluation = stateMachine.evaluate(fix);
     _snapshot = evaluation.copyWith(
       geoJsonLoaded: geoJsonLoaded,
     );
-    final stateLog = await logger.logStateChange(_snapshot);
-    _addLogLine(stateLog);
+    await logger.logStateChange(_snapshot);
+    _logInfo(
+      'STATE',
+      describeSnapshot(_snapshot),
+      timestamp: _snapshot.timestamp,
+    );
     await notifier.updateBadge(_snapshot.status);
     if (previous != LocationStateStatus.outer &&
         _snapshot.status == LocationStateStatus.outer) {
       await notifier.notifyOuter();
+      _logWarning(
+        'ALERT',
+        'Safe zone exited.${_buildNavHint(_snapshot)}',
+        timestamp: _snapshot.timestamp,
+      );
     } else if (previous == LocationStateStatus.outer &&
         _snapshot.status != LocationStateStatus.outer) {
       await notifier.notifyRecover();
+      _logInfo(
+        'ALERT',
+        'Returned to safe zone.',
+        timestamp: _snapshot.timestamp,
+      );
     }
     notifyListeners();
   }
@@ -172,23 +229,16 @@ class AppController extends ChangeNotifier {
     super.dispose();
   }
 
-  void _addLogLine(String line) {
-    if (line.isEmpty) {
-      return;
-    }
-    _logs.insert(0, line);
+  void _addLogEntry(AppLogEntry entry) {
+    _logs.insert(0, entry);
     if (_logs.length > 200) {
       _logs.removeLast();
     }
   }
 
   Future<void> _requestPermissions() async {
-    final status = await Permission.notification.status;
-    if (status.isDenied || status.isLimited) {
-      await Permission.notification.request();
-    } else if (status.isPermanentlyDenied) {
-      await openAppSettings();
-    }
+    await _ensureNotificationPermission();
+    await _ensureLocationPermission();
   }
 
   static Future<AppController> bootstrap() async {
@@ -196,10 +246,9 @@ class AppController extends ChangeNotifier {
     final config = await fileManager.readConfig();
     final stateMachine = StateMachine(config: config);
     final locationService = GeolocatorLocationService();
-    final logFile = await fileManager.openLogFile();
-    final logger = EventLogger(logFile);
+    final logger = EventLogger();
     final notificationsPlugin = FlutterLocalNotificationsPlugin();
-    final notifier = Notifier(notificationsPlugin);
+    final notifier = Notifier(plugin: notificationsPlugin);
     await notifier.initialize();
     final controller = AppController(
       stateMachine: stateMachine,
@@ -213,5 +262,121 @@ class AppController extends ChangeNotifier {
       initialGeoAsset: 'assets/geojson/sample_area.geojson',
     );
     return controller;
+  }
+
+  Future<void> _ensureNotificationPermission() async {
+    final status = await Permission.notification.status;
+    if (status.isPermanentlyDenied) {
+      await openAppSettings();
+      return;
+    }
+    if (status.isDenied || status.isLimited) {
+      final result = await Permission.notification.request();
+      if (result.isPermanentlyDenied) {
+        await openAppSettings();
+      }
+    }
+  }
+
+  Future<void> _ensureLocationPermission() async {
+    var status = await Permission.locationAlways.status;
+    if (status.isLimited) {
+      status = await Permission.locationAlways.request();
+    }
+    if (status.isDenied || status.isRestricted) {
+      final whenInUseStatus = await Permission.locationWhenInUse.request();
+      if (!whenInUseStatus.isGranted) {
+        return;
+      }
+      status = await Permission.locationAlways.request();
+    }
+    if (status.isPermanentlyDenied || !status.isGranted) {
+      await openAppSettings();
+    }
+  }
+
+  void _log(
+    String tag,
+    String message, {
+    AppLogLevel level = AppLogLevel.info,
+    DateTime? timestamp,
+  }) {
+    final entry = AppLogEntry(
+      tag: tag,
+      message: message,
+      level: level,
+      timestamp: timestamp ?? DateTime.now(),
+    );
+    _addLogEntry(entry);
+  }
+
+  void _logInfo(String tag, String message, {DateTime? timestamp}) {
+    _log(tag, message, level: AppLogLevel.info, timestamp: timestamp);
+  }
+
+  void _logWarning(String tag, String message, {DateTime? timestamp}) {
+    _log(tag, message, level: AppLogLevel.warning, timestamp: timestamp);
+  }
+
+  void _logError(String tag, String message, {DateTime? timestamp}) {
+    _log(tag, message, level: AppLogLevel.error, timestamp: timestamp);
+  }
+
+  void _logDebug(String tag, String message, {DateTime? timestamp}) {
+    _log(tag, message, level: AppLogLevel.debug, timestamp: timestamp);
+  }
+
+  @visibleForTesting
+  String describeSnapshot(StateSnapshot snapshot) {
+    final showNav =
+        _developerMode || snapshot.status == LocationStateStatus.outer;
+    final dist = showNav && snapshot.distanceToBoundaryM != null
+        ? '${snapshot.distanceToBoundaryM!.toStringAsFixed(2)}m'
+        : '-';
+    final accuracy = snapshot.horizontalAccuracyM != null
+        ? '${snapshot.horizontalAccuracyM!.toStringAsFixed(1)}m'
+        : '-';
+    final bearing = showNav && snapshot.bearingToBoundaryDeg != null
+        ? '${snapshot.bearingToBoundaryDeg!.toStringAsFixed(0)}deg'
+        : '-';
+    final nearest = showNav && snapshot.nearestBoundaryPoint != null
+        ? ' (${snapshot.nearestBoundaryPoint!.latitude.toStringAsFixed(5)},'
+            '${snapshot.nearestBoundaryPoint!.longitude.toStringAsFixed(5)})'
+        : '';
+    final notes =
+        (snapshot.notes ?? '').isEmpty ? '' : ' (${snapshot.notes})';
+    return 'status=${snapshot.status.name} dist=$dist acc=$accuracy '
+        'bearing=$bearing$nearest$notes';
+  }
+
+  String _buildNavHint(StateSnapshot snapshot) {
+    final distance = snapshot.distanceToBoundaryM;
+    final bearing = snapshot.bearingToBoundaryDeg;
+    final target = snapshot.nearestBoundaryPoint;
+    if (distance == null || bearing == null || target == null) {
+      return '';
+    }
+    final cardinal = _cardinalFromBearing(bearing);
+    final formattedBearing = '${bearing.toStringAsFixed(0)}deg';
+    final formattedTarget =
+        'lat=${target.latitude.toStringAsFixed(5)}, lon=${target.longitude.toStringAsFixed(5)}';
+    return ' Move ${distance.toStringAsFixed(0)}m toward $cardinal '
+        '($formattedBearing) heading to $formattedTarget.';
+  }
+
+  String _cardinalFromBearing(double bearing) {
+    const labels = <String>[
+      'N',
+      'NE',
+      'E',
+      'SE',
+      'S',
+      'SW',
+      'W',
+      'NW',
+    ];
+    final normalized = (bearing % 360 + 360) % 360;
+    final index = ((normalized + 22.5) ~/ 45) % labels.length;
+    return labels[index];
   }
 }

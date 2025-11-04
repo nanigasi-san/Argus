@@ -29,6 +29,10 @@ class FileManager {
     }
   }
 
+  Future<XFile?> pickGeoJsonFile() async {
+    return await openFile();
+  }
+
   Future<File> getConfigFile() async {
     final dir = await getApplicationDocumentsDirectory();
     final file = File('${dir.path}/config.json');

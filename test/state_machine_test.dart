@@ -21,7 +21,6 @@ void main() {
       sampleIntervalS: const {'normal': 8},
       sampleDistanceM: const {'normal': 15},
       screenWakeOnLeave: true,
-      logEnabled: true,
     );
 
     final polygon = GeoPolygon(
@@ -228,5 +227,77 @@ void main() {
     );
     snapshot = machine.evaluate(outsideAgain);
     expect(snapshot.status, LocationStateStatus.outerPending);
+  });
+
+  test('transitions from OUTER to INNER even with bad GPS when inside', () {
+    // First, transition to OUTER
+    final outsideFix = LocationFix(
+      latitude: 35.02,
+      longitude: 139.02,
+      accuracyMeters: 5,
+      timestamp: DateTime.now(),
+    );
+
+    var snapshot = machine.evaluate(outsideFix);
+    for (var i = 0; i < config.leaveConfirmSamples; i++) {
+      snapshot = machine.evaluate(
+        LocationFix(
+          latitude: outsideFix.latitude,
+          longitude: outsideFix.longitude,
+          accuracyMeters: 5,
+          timestamp: outsideFix.timestamp.add(Duration(seconds: 10 + i)),
+        ),
+      );
+    }
+    expect(snapshot.status, LocationStateStatus.outer);
+
+    // Now move back inside with bad GPS accuracy
+    final insideWithBadGPS = LocationFix(
+      latitude: 35.005,
+      longitude: 139.005,
+      accuracyMeters: 50, // > gpsAccuracyBadMeters (40)
+      timestamp: outsideFix.timestamp.add(const Duration(seconds: 30)),
+    );
+
+    snapshot = machine.evaluate(insideWithBadGPS);
+    // Should transition to INNER even with bad GPS if actually inside
+    expect(snapshot.status, LocationStateStatus.inner);
+    expect(snapshot.horizontalAccuracyM, 50);
+  });
+
+  test('maintains OUTER with bad GPS when still outside', () {
+    // First, transition to OUTER
+    final outsideFix = LocationFix(
+      latitude: 35.02,
+      longitude: 139.02,
+      accuracyMeters: 5,
+      timestamp: DateTime.now(),
+    );
+
+    var snapshot = machine.evaluate(outsideFix);
+    for (var i = 0; i < config.leaveConfirmSamples; i++) {
+      snapshot = machine.evaluate(
+        LocationFix(
+          latitude: outsideFix.latitude,
+          longitude: outsideFix.longitude,
+          accuracyMeters: 5,
+          timestamp: outsideFix.timestamp.add(Duration(seconds: 10 + i)),
+        ),
+      );
+    }
+    expect(snapshot.status, LocationStateStatus.outer);
+
+    // Stay outside with bad GPS accuracy
+    final outsideWithBadGPS = LocationFix(
+      latitude: 35.02,
+      longitude: 139.02,
+      accuracyMeters: 50, // > gpsAccuracyBadMeters (40)
+      timestamp: outsideFix.timestamp.add(const Duration(seconds: 30)),
+    );
+
+    snapshot = machine.evaluate(outsideWithBadGPS);
+    // Should maintain OUTER when still outside even with bad GPS
+    expect(snapshot.status, LocationStateStatus.outer);
+    expect(snapshot.horizontalAccuracyM, 50);
   });
 }

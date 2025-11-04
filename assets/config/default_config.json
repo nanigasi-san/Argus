@@ -5,6 +5,5 @@
   "gps_accuracy_bad_m": 40,
   "sample_interval_s": {"slow": 15, "normal": 8, "fast": 3},
   "sample_distance_m": {"slow": 25, "normal": 15, "fast": 8},
-  "screen_wake_on_leave": true,
-  "log_enabled": true
+  "screen_wake_on_leave": true
 }
