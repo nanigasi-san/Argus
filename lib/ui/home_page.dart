@@ -15,8 +15,8 @@ class HomePage extends StatelessWidget {
     return Consumer<AppController>(
       builder: (context, controller, _) {
         final snapshot = controller.snapshot;
-        final showNav =
-            controller.developerMode || snapshot.status == LocationStateStatus.outer;
+        final showNav = controller.developerMode ||
+            snapshot.status == LocationStateStatus.outer;
         return Scaffold(
           appBar: AppBar(
             title: const Text('Argus'),
@@ -36,97 +36,161 @@ class HomePage extends StatelessWidget {
           body: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _StatusBadge(status: snapshot.status),
-                const SizedBox(height: 16),
-                Text('Current state: ${snapshot.status.name}'),
-                if ((snapshot.notes ?? '').isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text('Notes: ${snapshot.notes}'),
-                ],
-                const SizedBox(height: 16),
-                Text(
-                  'Last update: ${snapshot.timestamp.toLocal()}',
+                // 中央に大きなステータス表示
+                // initの時はタップ可能でSTARTボタンとして機能
+                Expanded(
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _LargeStatusDisplay(
+                          status: snapshot.status,
+                          onTap: snapshot.status == LocationStateStatus.init
+                              ? () => controller.startMonitoring()
+                              : null,
+                        ),
+                        // GeoJSONファイル状態を表示
+                        const SizedBox(height: 24),
+                        _GeoJsonStatusDisplay(
+                          geoJsonLoaded: controller.geoJsonLoaded,
+                          fileName: controller.geoJsonFileName,
+                        ),
+                        // outerの時に方角と距離を表示
+                        if (showNav &&
+                            snapshot.status == LocationStateStatus.outer) ...[
+                          const SizedBox(height: 24),
+                          Text(
+                            '境界までの距離: '
+                            '${snapshot.distanceToBoundaryM?.toStringAsFixed(1) ?? '-'} m',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '方角: '
+                            '${snapshot.bearingToBoundaryDeg != null ? _formatBearing(snapshot.bearingToBoundaryDeg!) : '-'}',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
                 ),
-                const SizedBox(height: 8),
-                if (showNav) ...[
-                  Text(
-                    'Distance to boundary: '
-                    '${snapshot.distanceToBoundaryM?.toStringAsFixed(1) ?? '-'} m',
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Bearing to boundary: '
-                    '${snapshot.bearingToBoundaryDeg != null ? _formatBearing(snapshot.bearingToBoundaryDeg!) : '-'}',
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Nearest boundary point: '
-                    '${snapshot.nearestBoundaryPoint != null ? _formatLatLng(snapshot.nearestBoundaryPoint!) : '-'}',
-                  ),
-                  const SizedBox(height: 8),
-                ],
-                Text(
-                  'Accuracy: '
-                  '${snapshot.horizontalAccuracyM?.toStringAsFixed(1) ?? '-'} m',
-                ),
-                const SizedBox(height: 8),
-                Text('GeoJSON loaded: ${controller.geoJsonLoaded}'),
-                const SizedBox(height: 24),
-                if (controller.lastErrorMessage != null) ...[
-                  Material(
-                    color: Colors.red.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(12),
-                    child: ListTile(
-                      leading: const Icon(
-                        Icons.error_outline,
-                        color: Colors.red,
-                      ),
-                      title: Text(
-                        controller.lastErrorMessage!,
-                        style: const TextStyle(color: Colors.red),
-                      ),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.close, color: Colors.red),
-                        onPressed: controller.clearError,
+                // 詳細情報セクション（開発者モードのみ）
+                if (controller.developerMode) ...[
+                  const Divider(),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    flex: 2,
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Current state: ${snapshot.status.name}'),
+                          if ((snapshot.notes ?? '').isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Text('Notes: ${snapshot.notes}'),
+                          ],
+                          const SizedBox(height: 16),
+                          Text(
+                            'Last update: ${snapshot.timestamp.toLocal()}',
+                          ),
+                          const SizedBox(height: 8),
+                          if (showNav) ...[
+                            Text(
+                              'Distance to boundary: '
+                              '${snapshot.distanceToBoundaryM?.toStringAsFixed(1) ?? '-'} m',
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Bearing to boundary: '
+                              '${snapshot.bearingToBoundaryDeg != null ? _formatBearing(snapshot.bearingToBoundaryDeg!) : '-'}',
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Nearest boundary point: '
+                              '${snapshot.nearestBoundaryPoint != null ? _formatLatLng(snapshot.nearestBoundaryPoint!) : '-'}',
+                            ),
+                            const SizedBox(height: 8),
+                          ],
+                          Text(
+                            'Accuracy: '
+                            '${snapshot.horizontalAccuracyM?.toStringAsFixed(1) ?? '-'} m',
+                          ),
+                          const SizedBox(height: 8),
+                          Text('GeoJSON loaded: ${controller.geoJsonLoaded}'),
+                          const SizedBox(height: 24),
+                          if (controller.lastErrorMessage != null) ...[
+                            Material(
+                              color: Colors.red.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(12),
+                              child: ListTile(
+                                leading: const Icon(
+                                  Icons.error_outline,
+                                  color: Colors.red,
+                                ),
+                                title: Text(
+                                  controller.lastErrorMessage!,
+                                  style: const TextStyle(color: Colors.red),
+                                ),
+                                trailing: IconButton(
+                                  icon: const Icon(Icons.close,
+                                      color: Colors.red),
+                                  onPressed: controller.clearError,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                          ],
+                          const SizedBox(height: 24),
+                          if (controller.logs.isNotEmpty) ...[
+                            const Text(
+                              'Logs:',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            ...controller.logs.take(5).map((entry) => Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: _LogCard(entry: entry),
+                                )),
+                          ],
+                        ],
                       ),
                     ),
                   ),
-                  const SizedBox(height: 24),
-                ],
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    ElevatedButton.icon(
-                      onPressed: () => controller.reloadGeoJsonFromPicker(),
-                      icon: const Icon(Icons.file_open),
-                      label: const Text('Load GeoJSON'),
-                    ),
-                    ElevatedButton.icon(
-                      onPressed: () => controller.startMonitoring(),
-                      icon: const Icon(Icons.play_arrow),
-                      label: const Text('Start'),
+                ] else ...[
+                  // 開発者モードでない場合は、エラーメッセージのみ表示
+                  if (controller.lastErrorMessage != null) ...[
+                    const SizedBox(height: 16),
+                    Material(
+                      color: Colors.red.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                      child: ListTile(
+                        leading: const Icon(
+                          Icons.error_outline,
+                          color: Colors.red,
+                        ),
+                        title: Text(
+                          controller.lastErrorMessage!,
+                          style: const TextStyle(color: Colors.red),
+                        ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.close, color: Colors.red),
+                          onPressed: controller.clearError,
+                        ),
+                      ),
                     ),
                   ],
-                ),
-                const SizedBox(height: 24),
-                Expanded(
-                  child: controller.logs.isEmpty
-                      ? const Text(
-                          'Logs will appear once tracking starts.',
-                        )
-                      : ListView.separated(
-                          itemCount: controller.logs.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 8),
-                          itemBuilder: (context, index) {
-                            final entry = controller.logs[index];
-                            return _LogCard(entry: entry);
-                          },
-                        ),
-                ),
+                ],
               ],
             ),
           ),
@@ -141,10 +205,72 @@ class HomePage extends StatelessWidget {
   }
 }
 
-class _StatusBadge extends StatelessWidget {
-  const _StatusBadge({required this.status});
+class _GeoJsonStatusDisplay extends StatelessWidget {
+  const _GeoJsonStatusDisplay({
+    required this.geoJsonLoaded,
+    this.fileName,
+  });
+
+  final bool geoJsonLoaded;
+  final String? fileName;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    if (!geoJsonLoaded) {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.info_outline,
+            size: 16,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'Please select GeoJSON file',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(
+          Icons.map,
+          size: 16,
+          color: theme.colorScheme.primary,
+        ),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            fileName ?? 'GeoJSON',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.primary,
+              fontWeight: FontWeight.w500,
+            ),
+            textAlign: TextAlign.center,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LargeStatusDisplay extends StatelessWidget {
+  const _LargeStatusDisplay({
+    required this.status,
+    this.onTap,
+  });
 
   final LocationStateStatus status;
+  final VoidCallback? onTap;
 
   Color _color(LocationStateStatus status) {
     switch (status) {
@@ -165,13 +291,78 @@ class _StatusBadge extends StatelessWidget {
     }
   }
 
+  String _statusText(LocationStateStatus status) {
+    switch (status) {
+      case LocationStateStatus.inner:
+        return '内側';
+      case LocationStateStatus.near:
+        return '近接';
+      case LocationStateStatus.outerPending:
+        return '外側待機';
+      case LocationStateStatus.outer:
+        return '外側';
+      case LocationStateStatus.gpsBad:
+        return 'GPS不良';
+      case LocationStateStatus.waitGeoJson:
+        return 'GeoJSON待機';
+      case LocationStateStatus.init:
+        return '初期化';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Chip(
-      label: Text(status.name),
-      backgroundColor: _color(status).withValues(alpha: 0.15),
-      side: BorderSide(color: _color(status)),
+    final color = _color(status);
+    final statusText = _statusText(status);
+    final screenSize = MediaQuery.of(context).size;
+    final circleSize = screenSize.width * 0.7;
+
+    final circleWidget = Container(
+      width: circleSize,
+      height: circleSize,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color.withValues(alpha: 0.15),
+        border: Border.all(
+          color: color,
+          width: 4,
+        ),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              statusText,
+              style: TextStyle(
+                fontSize: circleSize * 0.2,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              status.name.toUpperCase(),
+              style: TextStyle(
+                fontSize: circleSize * 0.08,
+                color: color.withValues(alpha: 0.7),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
+
+    // initの時はタップ可能にする
+    if (onTap != null) {
+      return GestureDetector(
+        onTap: onTap,
+        child: circleWidget,
+      );
+    }
+
+    return circleWidget;
   }
 }
 
@@ -186,10 +377,8 @@ class _LogCard extends StatelessWidget {
     final borderColor = _borderColor(entry.level, theme);
     final backgroundColor = borderColor.withValues(alpha: 0.08);
     final icon = _iconForLevel(entry.level);
-    final normalized =
-        entry.message.replaceAll('\r\n', '\n').trimRight();
-    final timestamp =
-        entry.timestamp.toLocal().toString().split('.').first;
+    final normalized = entry.message.replaceAll('\r\n', '\n').trimRight();
+    final timestamp = entry.timestamp.toLocal().toString().split('.').first;
 
     return Card(
       elevation: 0,
