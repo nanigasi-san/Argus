@@ -52,29 +52,11 @@ class AppController extends ChangeNotifier {
   List<AppLogEntry> get logs => List.unmodifiable(_logs);
   bool get developerMode => _developerMode;
 
-  Future<void> initialize({String? initialGeoAsset}) async {
+  Future<void> initialize() async {
     await _requestPermissions();
     _config ??= await fileManager.readConfig();
     stateMachine.updateConfig(_config!);
 
-    if (initialGeoAsset != null) {
-      try {
-        _geoModel = await fileManager.loadBundledGeoJson(initialGeoAsset);
-        final assetFileName = initialGeoAsset.split('/').last;
-        _geoJsonFileName = _normalizeToGeoJson(assetFileName);
-        _areaIndex = AreaIndex.build(_geoModel.polygons);
-        stateMachine.updateGeometry(_geoModel, _areaIndex);
-      } catch (_) {
-        _geoModel = GeoModel.empty();
-        _geoJsonFileName = null;
-        _areaIndex = AreaIndex.empty();
-        _lastErrorMessage = 'Failed to load bundled GeoJSON.';
-        _logError(
-          'APP',
-          'Failed to load bundled GeoJSON.',
-        );
-      }
-    }
     _snapshot = _snapshot.copyWith(
       status: geoJsonLoaded
           ? LocationStateStatus.waitStart

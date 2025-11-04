@@ -1,34 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:file_selector/file_selector.dart';
 import 'package:path_provider/path_provider.dart';
 
-import '../geo/geo_model.dart';
 import 'config.dart';
 
 class FileManager {
-  Future<GeoModel> loadBundledGeoJson(String assetPath) async {
-    final raw = await rootBundle.loadString(assetPath);
-    return GeoModel.fromGeoJson(raw);
-  }
-
-  Future<GeoModel?> pickAndLoadGeoJson() async {
-    final file = await openFile();
-    if (file == null) {
-      return null;
-    }
-    try {
-      final raw = await file.readAsString();
-      return GeoModel.fromGeoJson(raw);
-    } on FormatException catch (e) {
-      throw FormatException('GeoJSON parse error: ${e.message}');
-    } catch (e) {
-      throw Exception('Failed to open ${file.name}: $e');
-    }
-  }
-
   Future<XFile?> pickGeoJsonFile() async {
     return await openFile();
   }

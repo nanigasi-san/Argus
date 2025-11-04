@@ -36,6 +36,7 @@ class _SettingsPageState extends State<SettingsPage> {
     // デフォルト値を読み込む
     _defaultConfig = await AppConfig.loadDefault();
 
+    if (!mounted) return;
     final controller = Provider.of<AppController>(context, listen: false);
     final config = controller.config;
     if (config != null) {
@@ -108,9 +109,7 @@ class _SettingsPageState extends State<SettingsPage> {
       }
 
       // デフォルト値を取得（まだ読み込まれていない場合）
-      if (_defaultConfig == null) {
-        _defaultConfig = await AppConfig.loadDefault();
-      }
+      _defaultConfig ??= await AppConfig.loadDefault();
 
       // 空欄の場合はデフォルト値を使用
       final innerBuffer = _innerBufferController.text.trim().isEmpty

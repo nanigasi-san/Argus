@@ -45,7 +45,7 @@ class MockFileManager extends FileManager {
 }
 
 class MockEventLogger extends EventLogger {
-  MockEventLogger(super.file);
+  MockEventLogger() : super();
 }
 
 class MockNotifier extends Notifier {
@@ -70,7 +70,7 @@ void main() {
       stateMachine: StateMachine(config: config),
       locationService: MockLocationService(),
       fileManager: mockFileManager,
-      logger: MockEventLogger(tempFile),
+      logger: MockEventLogger(),
       notifier: MockNotifier(),
     );
 

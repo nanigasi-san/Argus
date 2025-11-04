@@ -139,7 +139,36 @@
 
 ---
 
-## 3. アーキテクチャ概要
+## 3. プロジェクト構造
+
+### 3.1 ディレクトリ構成
+
+```
+lib/
+├── main.dart                    # アプリケーションエントリーポイント
+├── app_controller.dart          # アプリケーション全体の状態管理とコーディネーション
+├── geo/                         # 地理空間データ処理
+│   ├── geo_model.dart          # GeoJSONパースとGeoModel/GeoPolygon/LatLng定義
+│   ├── area_index.dart         # 空間インデックス（境界ボックスによる高速検索）
+│   └── point_in_polygon.dart   # 点とポリゴンの包含判定・距離・方位角計算
+├── state_machine/              # 状態機械
+│   ├── state.dart              # LocationStateStatus enum, StateSnapshot定義
+│   ├── state_machine.dart      # 状態遷移ロジックと評価処理
+│   └── hysteresis_counter.dart # ヒステリシスカウンタ（OUTER確定のための条件管理）
+├── platform/                    # プラットフォーム固有機能
+│   ├── location_service.dart  # 位置情報サービス（Geolocator抽象化）
+│   └── notifier.dart          # 通知・アラーム制御
+├── io/                         # ファイルI/Oと設定管理
+│   ├── config.dart            # AppConfig定義とJSONシリアライゼーション
+│   ├── file_manager.dart      # 設定ファイル・GeoJSONファイルの読み書き
+│   ├── logger.dart            # EventLogger（GPS・状態イベントの記録）
+│   └── log_entry.dart         # AppLogEntry/AppLogLevel定義
+└── ui/                         # ユーザーインターフェース
+    ├── home_page.dart         # メイン画面（状態表示、ナビゲーション情報）
+    └── settings_page.dart     # 設定画面（パラメータ調整、開発者モード）
+```
+
+### 3.2 アーキテクチャ概要
 
 | 区分             | 主要クラス                                                                     | 役割                                                                                 |
 | ---------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
@@ -153,6 +182,21 @@
 | ログ             | `EventLogger`, `AppLogEntry`, `AppLogLevel`                                    | GPS・状態イベントのメモリ記録と UI 連携、JSON エクスポート。                         |
 | I/O              | `FileManager`, `AppConfig`                                                     | 設定・GeoJSON ファイルの読み書き、ファイルピッカー。                                 |
 | UI               | `HomePage`, `SettingsPage`, `ArgusApp`                                         | 画面構成とユーザ操作ルーティング。                                                   |
+
+### 3.3 データフロー
+
+1. **初期化**: `main()` → `AppController.bootstrap()` → 各サービス初期化
+2. **GeoJSON読み込み**: `FileManager.pickGeoJsonFile()` → `GeoModel.fromGeoJson()` → `AreaIndex.build()` → `StateMachine.updateGeometry()`
+3. **位置監視**: `LocationService.stream` → `AppController._handleFix()` → `StateMachine.evaluate()` → `Notifier`更新
+4. **状態表示**: `AppController.snapshot` → `HomePage`（リアクティブ更新）
+
+### 3.4 依存関係
+
+- **AppController** ← StateMachine, LocationService, FileManager, EventLogger, Notifier
+- **StateMachine** ← GeoModel, AreaIndex, PointInPolygon, AppConfig, HysteresisCounter
+- **GeoModel** ← GeoJSON（パース）
+- **PointInPolygon** ← 地理計算（Haversine公式など）
+- **UI** ← AppController（Provider経由）
 
 全モジュールは依存注入で連結され、`AppController.bootstrap()` が標準構成を生成する。
 
