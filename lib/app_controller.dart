@@ -129,6 +129,40 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> updateConfig(AppConfig newConfig) async {
+    if (_config == null) {
+      return;
+    }
+
+    final wasMonitoring = _subscription != null;
+
+    // 監視中であれば一時停止
+    if (wasMonitoring) {
+      await stopMonitoring();
+    }
+
+    // 設定を更新
+    _config = newConfig;
+    stateMachine.updateConfig(newConfig);
+
+    // 設定をファイルに保存
+    await fileManager.saveConfig(newConfig);
+
+    _logInfo(
+      'APP',
+      'Config updated: innerBuffer=${newConfig.innerBufferM}m, '
+      'polling=${newConfig.sampleIntervalS['fast']}s, '
+      'gpsThreshold=${newConfig.gpsAccuracyBadMeters}m',
+    );
+
+    // 監視中だった場合は新しい設定で再開
+    if (wasMonitoring && geoJsonLoaded) {
+      await startMonitoring();
+    }
+
+    notifyListeners();
+  }
+
   Future<void> reloadGeoJsonFromPicker() async {
     try {
       // ファイル名を取得するために、file_selectorを直接使用
