@@ -24,12 +24,16 @@ void main() {
       final evaluation = pip.evaluatePoint(35.005, 139.005, squarePolygon);
       expect(evaluation.contains, true);
       expect(evaluation.distanceToBoundaryM, greaterThan(0));
+      expect(evaluation.nearestPoint, isNotNull);
+      expect(evaluation.bearingToBoundaryDeg, isNotNull);
     });
 
     test('correctly identifies point outside polygon', () {
       final evaluation = pip.evaluatePoint(35.02, 139.02, squarePolygon);
       expect(evaluation.contains, false);
       expect(evaluation.distanceToBoundaryM, greaterThan(0));
+      expect(evaluation.nearestPoint, isNotNull);
+      expect(evaluation.bearingToBoundaryDeg, isNotNull);
     });
 
     test('correctly identifies point on boundary', () {
@@ -43,6 +47,8 @@ void main() {
       // Point at center
       final center = pip.evaluatePoint(35.005, 139.005, squarePolygon);
       expect(center.contains, true);
+      expect(center.nearestPoint, isNotNull);
+      expect(center.bearingToBoundaryDeg, isNotNull);
 
       // Point near edge
       final nearEdge = pip.evaluatePoint(35.0, 139.009, squarePolygon);
@@ -55,11 +61,15 @@ void main() {
       final far = pip.evaluatePoint(36.0, 140.0, squarePolygon);
       expect(far.contains, false);
       expect(far.distanceToBoundaryM, greaterThan(10000));
+      expect(far.nearestPoint, isNotNull);
+      expect(far.bearingToBoundaryDeg, isNotNull);
 
       // Point close outside
       final close = pip.evaluatePoint(35.005, 139.02, squarePolygon);
       expect(close.contains, false);
       expect(close.distanceToBoundaryM, lessThan(far.distanceToBoundaryM));
+      expect(close.nearestPoint, isNotNull);
+      expect(close.bearingToBoundaryDeg, isNotNull);
     });
 
     test('handles complex polygon shape', () {
@@ -121,6 +131,24 @@ void main() {
       final atCorner = pip.evaluatePoint(35.0, 139.0, squarePolygon);
       expect(atCorner.distanceToBoundaryM, lessThan(100));
     });
+
+    test('provides reasonable bearing and nearest point', () {
+      final northOfArea = pip.evaluatePoint(35.02, 139.005, squarePolygon);
+      expect(northOfArea.contains, false);
+      expect(northOfArea.nearestPoint, isNotNull);
+      expect(
+        northOfArea.nearestPoint!.latitude,
+        closeTo(35.01, 1e-6),
+      );
+      expect(
+        northOfArea.nearestPoint!.longitude,
+        closeTo(139.005, 1e-6),
+      );
+      expect(northOfArea.bearingToBoundaryDeg, isNotNull);
+      expect(
+        northOfArea.bearingToBoundaryDeg!,
+        closeTo(180, 5),
+      );
+    });
   });
 }
-

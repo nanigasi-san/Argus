@@ -18,6 +18,8 @@ class EventLogger {
         '[STATE] ${snapshot.status.name}'
         '${snapshot.distanceToBoundaryM != null ? ' dist=${snapshot.distanceToBoundaryM!.toStringAsFixed(2)}m' : ''}'
         '${snapshot.horizontalAccuracyM != null ? ' acc=${snapshot.horizontalAccuracyM!.toStringAsFixed(1)}m' : ''}'
+        '${snapshot.bearingToBoundaryDeg != null ? ' bearing=${snapshot.bearingToBoundaryDeg!.toStringAsFixed(0)}deg' : ''}'
+        '${snapshot.nearestBoundaryPoint != null ? ' target=${snapshot.nearestBoundaryPoint!.latitude.toStringAsFixed(5)},${snapshot.nearestBoundaryPoint!.longitude.toStringAsFixed(5)}' : ''}'
         '${snapshot.notes != null ? ' note=${snapshot.notes}' : ''}';
     final record = <String, dynamic>{
       'type': 'state',
@@ -25,6 +27,9 @@ class EventLogger {
       'status': snapshot.status.name,
       'distanceToBoundaryM': snapshot.distanceToBoundaryM,
       'accuracyM': snapshot.horizontalAccuracyM,
+      'bearingDeg': snapshot.bearingToBoundaryDeg,
+      'nearestLat': snapshot.nearestBoundaryPoint?.latitude,
+      'nearestLon': snapshot.nearestBoundaryPoint?.longitude,
       'notes': snapshot.notes,
     };
     _records.add(record);

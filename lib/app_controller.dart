@@ -32,6 +32,7 @@ class AppController extends ChangeNotifier {
 
   AppConfig? _config;
   GeoModel _geoModel = GeoModel.empty();
+  bool _developerMode = false;
   AreaIndex _areaIndex = AreaIndex.empty();
   StateSnapshot _snapshot = StateSnapshot(
     status: LocationStateStatus.waitGeoJson,
@@ -40,13 +41,16 @@ class AppController extends ChangeNotifier {
   );
   StreamSubscription<LocationFix>? _subscription;
   String? _lastErrorMessage;
+  String? _geoJsonFileName;
   final List<AppLogEntry> _logs = <AppLogEntry>[];
 
   StateSnapshot get snapshot => _snapshot;
   AppConfig? get config => _config;
   bool get geoJsonLoaded => _geoModel.hasGeometry;
   String? get lastErrorMessage => _lastErrorMessage;
+  String? get geoJsonFileName => _geoJsonFileName;
   List<AppLogEntry> get logs => List.unmodifiable(_logs);
+  bool get developerMode => _developerMode;
 
   Future<void> initialize({String? initialGeoAsset}) async {
     await _requestPermissions();
@@ -56,10 +60,13 @@ class AppController extends ChangeNotifier {
     if (initialGeoAsset != null) {
       try {
         _geoModel = await fileManager.loadBundledGeoJson(initialGeoAsset);
+        final assetFileName = initialGeoAsset.split('/').last;
+        _geoJsonFileName = _normalizeToGeoJson(assetFileName);
         _areaIndex = AreaIndex.build(_geoModel.polygons);
         stateMachine.updateGeometry(_geoModel, _areaIndex);
       } catch (_) {
         _geoModel = GeoModel.empty();
+        _geoJsonFileName = null;
         _areaIndex = AreaIndex.empty();
         _lastErrorMessage = 'Failed to load bundled GeoJSON.';
         _logError(
@@ -113,14 +120,28 @@ class AppController extends ChangeNotifier {
     _logInfo('APP', 'Monitoring stopped.');
     notifyListeners();
   }
+  void setDeveloperMode(bool enabled) {
+    if (_developerMode == enabled) {
+      return;
+    }
+    _developerMode = enabled;
+    _logInfo('APP', 'Developer mode ${enabled ? 'enabled' : 'disabled'}.');
+    notifyListeners();
+  }
 
   Future<void> reloadGeoJsonFromPicker() async {
     try {
-      final model = await fileManager.pickAndLoadGeoJson();
-      if (model == null) {
+      // ファイル名を取得するために、file_selectorを直接使用
+      final file = await fileManager.pickGeoJsonFile();
+      if (file == null) {
         return;
       }
+      final raw = await file.readAsString();
+      final model = GeoModel.fromGeoJson(raw);
       _geoModel = model;
+      // ファイル名をpathから抽出し、拡張子を.geojsonに統一
+      final extractedName = _extractFileName(file.path) ?? file.name;
+      _geoJsonFileName = _normalizeToGeoJson(extractedName);
       _areaIndex = AreaIndex.build(model.polygons);
       stateMachine.updateGeometry(_geoModel, _areaIndex);
       _snapshot = _snapshot.copyWith(
@@ -144,6 +165,23 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  String? _extractFileName(String path) {
+    if (path.isEmpty) return null;
+    // パスセパレータで分割して最後の要素（ファイル名）を取得
+    final parts = path.split(RegExp(r'[/\\]'));
+    final fileName = parts.last;
+    // クエリパラメータやフラグメントを除去
+    final cleanFileName = fileName.split('?').first.split('#').first;
+    return cleanFileName.isNotEmpty ? cleanFileName : null;
+  }
+
+  String _normalizeToGeoJson(String fileName) {
+    // 拡張子を除去
+    final nameWithoutExt = fileName.replaceAll(RegExp(r'\.[^.]+$'), '');
+    // .geojson拡張子を追加
+    return '$nameWithoutExt.geojson';
+  }
+
   Future<void> _handleFix(LocationFix fix) async {
     final previous = _snapshot.status;
     await logger.logLocationFix(fix);
@@ -161,7 +199,7 @@ class AppController extends ChangeNotifier {
     await logger.logStateChange(_snapshot);
     _logInfo(
       'STATE',
-      _describeSnapshot(_snapshot),
+      describeSnapshot(_snapshot),
       timestamp: _snapshot.timestamp,
     );
     await notifier.updateBadge(_snapshot.status);
@@ -170,7 +208,7 @@ class AppController extends ChangeNotifier {
       await notifier.notifyOuter();
       _logWarning(
         'ALERT',
-        'Safe zone exited.',
+        'Safe zone exited.${_buildNavHint(_snapshot)}',
         timestamp: _snapshot.timestamp,
       );
     } else if (previous == LocationStateStatus.outer &&
@@ -288,15 +326,57 @@ class AppController extends ChangeNotifier {
     _log(tag, message, level: AppLogLevel.debug, timestamp: timestamp);
   }
 
-  String _describeSnapshot(StateSnapshot snapshot) {
-    final dist = snapshot.distanceToBoundaryM != null
+  @visibleForTesting
+  String describeSnapshot(StateSnapshot snapshot) {
+    final showNav =
+        _developerMode || snapshot.status == LocationStateStatus.outer;
+    final dist = showNav && snapshot.distanceToBoundaryM != null
         ? '${snapshot.distanceToBoundaryM!.toStringAsFixed(2)}m'
         : '-';
     final accuracy = snapshot.horizontalAccuracyM != null
         ? '${snapshot.horizontalAccuracyM!.toStringAsFixed(1)}m'
         : '-';
+    final bearing = showNav && snapshot.bearingToBoundaryDeg != null
+        ? '${snapshot.bearingToBoundaryDeg!.toStringAsFixed(0)}deg'
+        : '-';
+    final nearest = showNav && snapshot.nearestBoundaryPoint != null
+        ? ' (${snapshot.nearestBoundaryPoint!.latitude.toStringAsFixed(5)},'
+            '${snapshot.nearestBoundaryPoint!.longitude.toStringAsFixed(5)})'
+        : '';
     final notes =
         (snapshot.notes ?? '').isEmpty ? '' : ' (${snapshot.notes})';
-    return 'status=${snapshot.status.name} dist=$dist acc=$accuracy$notes';
+    return 'status=${snapshot.status.name} dist=$dist acc=$accuracy '
+        'bearing=$bearing$nearest$notes';
+  }
+
+  String _buildNavHint(StateSnapshot snapshot) {
+    final distance = snapshot.distanceToBoundaryM;
+    final bearing = snapshot.bearingToBoundaryDeg;
+    final target = snapshot.nearestBoundaryPoint;
+    if (distance == null || bearing == null || target == null) {
+      return '';
+    }
+    final cardinal = _cardinalFromBearing(bearing);
+    final formattedBearing = '${bearing.toStringAsFixed(0)}deg';
+    final formattedTarget =
+        'lat=${target.latitude.toStringAsFixed(5)}, lon=${target.longitude.toStringAsFixed(5)}';
+    return ' Move ${distance.toStringAsFixed(0)}m toward $cardinal '
+        '($formattedBearing) heading to $formattedTarget.';
+  }
+
+  String _cardinalFromBearing(double bearing) {
+    const labels = <String>[
+      'N',
+      'NE',
+      'E',
+      'SE',
+      'S',
+      'SW',
+      'W',
+      'NW',
+    ];
+    final normalized = (bearing % 360 + 360) % 360;
+    final index = ((normalized + 22.5) ~/ 45) % labels.length;
+    return labels[index];
   }
 }
