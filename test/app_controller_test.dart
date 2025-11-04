@@ -157,10 +157,8 @@ class FakeFileManager extends FileManager {
   @override
   Future<AppConfig> readConfig() async => config;
 
-  @override
   Future<GeoModel?> pickAndLoadGeoJson() async => _model;
 
-  @override
   Future<GeoModel> loadBundledGeoJson(String assetPath) async => _model;
 
   @override

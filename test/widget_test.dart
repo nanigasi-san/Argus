@@ -64,7 +64,6 @@ void main() {
     // Create a minimal mock AppController for testing
     final mockFileManager = MockFileManager();
     final config = await mockFileManager.readConfig();
-    final tempFile = await mockFileManager.openLogFile();
 
     final controller = AppController(
       stateMachine: StateMachine(config: config),
