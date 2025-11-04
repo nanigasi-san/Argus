@@ -135,6 +135,7 @@
 ### SettingsPage
 
 - 設定値（バッファ・確認条件・精度閾値など）をテキスト表示。
+- Developer mode switch reveals distance/bearing details for debugging; defaults to OFF in production.
 - 「Export logs」ボタンで JSON ダイアログ表示。
 
 ---

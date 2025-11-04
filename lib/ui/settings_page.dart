@@ -32,6 +32,15 @@ class SettingsPage extends StatelessWidget {
                         '${config.gpsAccuracyBadMeters} m',
                       ),
                       const SizedBox(height: 16),
+                      SwitchListTile.adaptive(
+                        title: const Text('Developer mode'),
+                        subtitle: const Text(
+                          'Show distance/bearing details even inside the geofence.',
+                        ),
+                        value: controller.developerMode,
+                        onChanged: controller.setDeveloperMode,
+                      ),
+                      const SizedBox(height: 16),
                       ElevatedButton(
                         onPressed: () async {
                           final export =

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:meta/meta.dart';
 
 import 'geo/area_index.dart';
 import 'geo/geo_model.dart';
@@ -32,6 +33,7 @@ class AppController extends ChangeNotifier {
 
   AppConfig? _config;
   GeoModel _geoModel = GeoModel.empty();
+  bool _developerMode = false;
   AreaIndex _areaIndex = AreaIndex.empty();
   StateSnapshot _snapshot = StateSnapshot(
     status: LocationStateStatus.waitGeoJson,
@@ -47,6 +49,7 @@ class AppController extends ChangeNotifier {
   bool get geoJsonLoaded => _geoModel.hasGeometry;
   String? get lastErrorMessage => _lastErrorMessage;
   List<AppLogEntry> get logs => List.unmodifiable(_logs);
+  bool get developerMode => _developerMode;
 
   Future<void> initialize({String? initialGeoAsset}) async {
     await _requestPermissions();
@@ -113,6 +116,14 @@ class AppController extends ChangeNotifier {
     _logInfo('APP', 'Monitoring stopped.');
     notifyListeners();
   }
+  void setDeveloperMode(bool enabled) {
+    if (_developerMode == enabled) {
+      return;
+    }
+    _developerMode = enabled;
+    _logInfo('APP', 'Developer mode ${enabled ? 'enabled' : 'disabled'}.');
+    notifyListeners();
+  }
 
   Future<void> reloadGeoJsonFromPicker() async {
     try {
@@ -161,7 +172,7 @@ class AppController extends ChangeNotifier {
     await logger.logStateChange(_snapshot);
     _logInfo(
       'STATE',
-      _describeSnapshot(_snapshot),
+      describeSnapshot(_snapshot),
       timestamp: _snapshot.timestamp,
     );
     await notifier.updateBadge(_snapshot.status);
@@ -288,8 +299,10 @@ class AppController extends ChangeNotifier {
     _log(tag, message, level: AppLogLevel.debug, timestamp: timestamp);
   }
 
-  String _describeSnapshot(StateSnapshot snapshot) {
-    final showNav = snapshot.status == LocationStateStatus.outer;
+  @visibleForTesting
+  String describeSnapshot(StateSnapshot snapshot) {
+    final showNav =
+        _developerMode || snapshot.status == LocationStateStatus.outer;
     final dist = showNav && snapshot.distanceToBoundaryM != null
         ? '${snapshot.distanceToBoundaryM!.toStringAsFixed(2)}m'
         : '-';

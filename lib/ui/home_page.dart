@@ -15,7 +15,8 @@ class HomePage extends StatelessWidget {
     return Consumer<AppController>(
       builder: (context, controller, _) {
         final snapshot = controller.snapshot;
-        final showNav = snapshot.status == LocationStateStatus.outer;
+        final showNav =
+            controller.developerMode || snapshot.status == LocationStateStatus.outer;
         return Scaffold(
           appBar: AppBar(
             title: const Text('Argus'),

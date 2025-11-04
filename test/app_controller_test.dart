@@ -50,6 +50,47 @@ void main() {
       expect(stateMachine.current, LocationStateStatus.init);
       expect(alarm.stopCount, 1);
     });
+
+    test('describeSnapshot hides navigation details before OUTER', () {
+      final controller = _buildController();
+      final snapshot = StateSnapshot(
+        status: LocationStateStatus.inner,
+        timestamp: DateTime.now(),
+        distanceToBoundaryM: 42.5,
+        horizontalAccuracyM: 5,
+        bearingToBoundaryDeg: 123,
+        nearestBoundaryPoint: const LatLng(1, 2),
+      );
+
+      final description = controller.describeSnapshot(snapshot);
+
+      expect(description, contains('status=inner'));
+      expect(description, contains('dist=-'));
+      expect(description, contains('bearing=-'));
+      expect(description.contains('1.00000'), isFalse);
+    });
+
+    test('describeSnapshot reveals navigation details in developer mode', () {
+      final controller = _buildController();
+      controller.setDeveloperMode(true);
+      final snapshot = StateSnapshot(
+        status: LocationStateStatus.inner,
+        timestamp: DateTime.now(),
+        distanceToBoundaryM: 42.5,
+        horizontalAccuracyM: 5,
+        bearingToBoundaryDeg: 123,
+        nearestBoundaryPoint: const LatLng(1, 2),
+      );
+
+      final description = controller.describeSnapshot(snapshot);
+
+      expect(description, contains('status=inner'));
+      expect(description.contains('dist=-'), isFalse);
+      expect(description.contains('bearing=-'), isFalse);
+      expect(description, contains('42.50m'));
+      expect(description, contains('123deg'));
+      expect(description, contains('(1.00000,2.00000)'));
+    });
   });
 }
 
@@ -75,6 +116,26 @@ GeoModel _squareModel() {
   return GeoModel([
     GeoPolygon(points: points),
   ]);
+}
+
+AppController _buildController() {
+  final config = _testConfig();
+  final stateMachine = StateMachine(config: config);
+  final fileManager = FakeFileManager(
+    model: _squareModel(),
+    config: config,
+  );
+  final notifier = Notifier(
+    notificationsClient: FakeLocalNotificationsClient(),
+    alarmPlayer: FakeAlarmPlayer(),
+  );
+  return AppController(
+    stateMachine: stateMachine,
+    locationService: FakeLocationService(),
+    fileManager: fileManager,
+    logger: FakeEventLogger(),
+    notifier: notifier,
+  );
 }
 
 class FakeFileManager extends FileManager {
