@@ -141,18 +141,18 @@
 
 ## 3. アーキテクチャ概要
 
-| 区分 | 主要クラス | 役割 |
-| --- | --- | --- |
-| 中核ロジック | `AppController` | アプリ全体の状態管理、位置ストリームの購読、ログ記録、通知制御。 |
-| 状態機械 | `StateMachine`, `StateSnapshot`, `LocationStateStatus` | 位置評価と状態管理、ヒステリシス処理。 |
-| ジオメトリ | `GeoModel`, `GeoPolygon`, `LatLng` | GeoJSON パース、ポリゴンデータの保持。 |
-| 空間インデックス | `AreaIndex` | ポリゴンの境界ボックスによる空間インデックス。位置に基づいて候補ポリゴンを絞り込み。 |
-| 点とポリゴン判定 | `PointInPolygon`, `PointInPolygonEvaluation` | Ray Casting による包含判定、最近接点・距離・方位角の計算。 |
-| 位置サービス | `LocationService`, `GeolocatorLocationService`, `LocationFix` | 位置ストリームの開始・停止、権限確認、プラットフォーム固有設定。 |
-| 通知 | `Notifier`, `AlarmPlayer`（`RingtoneAlarmPlayer`）, `LocalNotificationsClient` | 通知チャンネル作成、アラーム音制御、バッジ状態。 |
-| ログ | `EventLogger`, `AppLogEntry`, `AppLogLevel` | GPS・状態イベントのメモリ記録と UI 連携、JSON エクスポート。 |
-| I/O | `FileManager`, `AppConfig` | 設定・GeoJSON ファイルの読み書き、ファイルピッカー。 |
-| UI | `HomePage`, `SettingsPage`, `ArgusApp` | 画面構成とユーザ操作ルーティング。 |
+| 区分             | 主要クラス                                                                     | 役割                                                                                 |
+| ---------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| 中核ロジック     | `AppController`                                                                | アプリ全体の状態管理、位置ストリームの購読、ログ記録、通知制御。                     |
+| 状態機械         | `StateMachine`, `StateSnapshot`, `LocationStateStatus`                         | 位置評価と状態管理、ヒステリシス処理。                                               |
+| ジオメトリ       | `GeoModel`, `GeoPolygon`, `LatLng`                                             | GeoJSON パース、ポリゴンデータの保持。                                               |
+| 空間インデックス | `AreaIndex`                                                                    | ポリゴンの境界ボックスによる空間インデックス。位置に基づいて候補ポリゴンを絞り込み。 |
+| 点とポリゴン判定 | `PointInPolygon`, `PointInPolygonEvaluation`                                   | Ray Casting による包含判定、最近接点・距離・方位角の計算。                           |
+| 位置サービス     | `LocationService`, `GeolocatorLocationService`, `LocationFix`                  | 位置ストリームの開始・停止、権限確認、プラットフォーム固有設定。                     |
+| 通知             | `Notifier`, `AlarmPlayer`（`RingtoneAlarmPlayer`）, `LocalNotificationsClient` | 通知チャンネル作成、アラーム音制御、バッジ状態。                                     |
+| ログ             | `EventLogger`, `AppLogEntry`, `AppLogLevel`                                    | GPS・状態イベントのメモリ記録と UI 連携、JSON エクスポート。                         |
+| I/O              | `FileManager`, `AppConfig`                                                     | 設定・GeoJSON ファイルの読み書き、ファイルピッカー。                                 |
+| UI               | `HomePage`, `SettingsPage`, `ArgusApp`                                         | 画面構成とユーザ操作ルーティング。                                                   |
 
 全モジュールは依存注入で連結され、`AppController.bootstrap()` が標準構成を生成する。
 
@@ -162,15 +162,15 @@
 
 ### 4.1 状態一覧
 
-| 状態 | 説明 | 遷移条件 |
-| --- | --- | --- |
-| `waitGeoJson` | GeoJSON 未ロード。ユーザにロード操作を促す。 | GeoJSON が未ロードの状態。 |
-| `init` | 監視準備完了。位置ストリームは未開始または安定待ち。 | GeoJSON ロード後、位置監視開始前。 |
-| `inner` | エリア内かつバッファより十分内側。 | `contains == true && distanceToBoundaryM >= innerBufferM` |
-| `near` | エリア内だがバッファ距離未満。 | `contains == true && distanceToBoundaryM < innerBufferM` |
-| `outerPending` | エリア外候補。ヒステリシス確定待ち。 | `contains == false && !hysteresis.isSatisfied` |
-| `outer` | エリア外確定。通知・アラーム発火。 | `contains == false && hysteresis.isSatisfied` |
-| `gpsBad` | 位置精度不足。OUTER 維持しつつも補正が入る。 | `accuracyMeters > gpsAccuracyBadMeters && status != outer` |
+| 状態           | 説明                                                 | 遷移条件                                                   |
+| -------------- | ---------------------------------------------------- | ---------------------------------------------------------- |
+| `waitGeoJson`  | GeoJSON 未ロード。ユーザにロード操作を促す。         | GeoJSON が未ロードの状態。                                 |
+| `init`         | 監視準備完了。位置ストリームは未開始または安定待ち。 | GeoJSON ロード後、位置監視開始前。                         |
+| `inner`        | エリア内かつバッファより十分内側。                   | `contains == true && distanceToBoundaryM >= innerBufferM`  |
+| `near`         | エリア内だがバッファ距離未満。                       | `contains == true && distanceToBoundaryM < innerBufferM`   |
+| `outerPending` | エリア外候補。ヒステリシス確定待ち。                 | `contains == false && !hysteresis.isSatisfied`             |
+| `outer`        | エリア外確定。通知・アラーム発火。                   | `contains == false && hysteresis.isSatisfied`              |
+| `gpsBad`       | 位置精度不足。OUTER 維持しつつも補正が入る。         | `accuracyMeters > gpsAccuracyBadMeters && status != outer` |
 
 ### 4.2 判定パラメータ
 
@@ -194,6 +194,61 @@
      - 条件を満たせば `outer`
      - 満たさなければ `outerPending`
 4. **距離・方位角計算**: 包含判定と同時に `PointInPolygon` が最寄り境界点・距離・方位角を計算。`StateSnapshot` に格納。
+
+### 4.3.1 状態遷移図
+
+```mermaid
+stateDiagram-v2
+    [*] --> waitGeoJson: 初期状態
+    
+    waitGeoJson --> init: GeoJSONロード完了<br/>(updateGeometry)
+    waitGeoJson --> waitGeoJson: GeoJSON未ロード<br/>(evaluate)
+    
+    init --> inner: エリア内<br/>(精度良好, distance >= innerBufferM)
+    init --> near: エリア内<br/>(精度良好, distance < innerBufferM)
+    init --> outerPending: エリア外<br/>(精度良好, hysteresis未到達)
+    init --> gpsBad: 精度不良<br/>(accuracy > gpsAccuracyBadMeters)
+    
+    inner --> inner: エリア内<br/>(精度良好, distance >= innerBufferM)
+    inner --> near: エリア内<br/>(精度良好, distance < innerBufferM)
+    inner --> outerPending: エリア外<br/>(精度良好, hysteresis未到達)
+    inner --> gpsBad: 精度不良
+    
+    near --> inner: エリア内<br/>(精度良好, distance >= innerBufferM)
+    near --> near: エリア内<br/>(精度良好, distance < innerBufferM)
+    near --> outerPending: エリア外<br/>(精度良好, hysteresis未到達)
+    near --> gpsBad: 精度不良
+    
+    outerPending --> inner: エリア内に戻る<br/>(精度良好, distance >= innerBufferM)
+    outerPending --> near: エリア内に戻る<br/>(精度良好, distance < innerBufferM)
+    outerPending --> outer: エリア外継続<br/>(精度良好, hysteresis到達)
+    outerPending --> outerPending: エリア外継続<br/>(精度良好, hysteresis未到達)
+    outerPending --> gpsBad: 精度不良
+    
+    outer --> inner: エリア内に戻る<br/>(精度良好, distance >= innerBufferM)
+    outer --> near: エリア内に戻る<br/>(精度良好, distance < innerBufferM)
+    outer --> inner: エリア内に戻る<br/>(精度不良でも内側なら)
+    outer --> near: エリア内に戻る<br/>(精度不良でも内側なら)
+    outer --> outer: エリア外継続<br/>(精度不良でも外側なら維持)
+    
+    gpsBad --> inner: 精度改善 + エリア内<br/>(distance >= innerBufferM)
+    gpsBad --> near: 精度改善 + エリア内<br/>(distance < innerBufferM)
+    gpsBad --> gpsBad: 精度不良継続
+    gpsBad --> outerPending: 精度改善 + エリア外<br/>(hysteresis未到達)
+    
+    waitGeoJson --> waitGeoJson: GeoJSON未ロード<br/>(evaluate)
+```
+
+**状態遷移の説明**:
+
+- **waitGeoJson → init**: `updateGeometry()` で GeoJSON がロードされたとき
+- **精度良好時の遷移**:
+  - エリア内: `inner` または `near`（距離に応じて）
+  - エリア外: `outerPending`（hysteresis未到達）または `outer`（hysteresis到達）
+- **精度不良時の遷移**:
+  - OUTER 以外の状態: `gpsBad` に遷移
+  - OUTER 状態: 内側に戻ったか判定し、内側なら `inner`/`near`、外側なら `outer` を維持
+- **hysteresis**: エリア内に戻ると即座にリセットされ、`inner`/`near` に遷移
 
 ### 4.4 ヒステリシスカウンタ
 
@@ -279,15 +334,15 @@
 
 ### 8.2 設定項目
 
-| 項目 | キー | 型 | デフォルト | 説明 |
-| --- | --- | --- | --- | --- |
-| Inner buffer | `inner_buffer_m` | double | 30.0 | エリア境界との距離バッファ（メートル）。この距離未満で `near` 状態になる。 |
-| Leave confirm samples | `leave_confirm_samples` | int | 3 | OUTER 確定に必要な連続サンプル数。 |
-| Leave confirm seconds | `leave_confirm_seconds` | int | 10 | OUTER 確定に必要な経過秒数。 |
-| GPS bad threshold | `gps_accuracy_bad_m` | double | 40.0 | 位置精度がこの値を超えると `gpsBad` 状態になる（メートル）。 |
-| Sample interval | `sample_interval_s` | Map<String, int> | `{"slow": 15, "normal": 8, "fast": 3}` | 位置取得間隔（秒）。`fast` が優先的に使用される。 |
-| Sample distance | `sample_distance_m` | Map<String, int> | `{"slow": 25, "normal": 15, "fast": 8}` | 距離フィルタ（未使用、位置サービスでは 0m 固定）。 |
-| Screen wake on leave | `screen_wake_on_leave` | bool | true | 離脱時に画面を点灯するか（未使用）。 |
+| 項目                  | キー                    | 型               | デフォルト                              | 説明                                                                       |
+| --------------------- | ----------------------- | ---------------- | --------------------------------------- | -------------------------------------------------------------------------- |
+| Inner buffer          | `inner_buffer_m`        | double           | 30.0                                    | エリア境界との距離バッファ（メートル）。この距離未満で `near` 状態になる。 |
+| Leave confirm samples | `leave_confirm_samples` | int              | 3                                       | OUTER 確定に必要な連続サンプル数。                                         |
+| Leave confirm seconds | `leave_confirm_seconds` | int              | 10                                      | OUTER 確定に必要な経過秒数。                                               |
+| GPS bad threshold     | `gps_accuracy_bad_m`    | double           | 40.0                                    | 位置精度がこの値を超えると `gpsBad` 状態になる（メートル）。               |
+| Sample interval       | `sample_interval_s`     | Map<String, int> | `{"slow": 15, "normal": 8, "fast": 3}`  | 位置取得間隔（秒）。`fast` が優先的に使用される。                          |
+| Sample distance       | `sample_distance_m`     | Map<String, int> | `{"slow": 25, "normal": 15, "fast": 8}` | 距離フィルタ（未使用、位置サービスでは 0m 固定）。                         |
+| Screen wake on leave  | `screen_wake_on_leave`  | bool             | true                                    | 離脱時に画面を点灯するか（未使用）。                                       |
 
 ---
 
