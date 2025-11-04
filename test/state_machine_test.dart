@@ -21,7 +21,6 @@ void main() {
       sampleIntervalS: const {'normal': 8},
       sampleDistanceM: const {'normal': 15},
       screenWakeOnLeave: true,
-      logEnabled: true,
     );
 
     final polygon = GeoPolygon(

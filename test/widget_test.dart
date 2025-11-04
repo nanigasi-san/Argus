@@ -5,8 +5,6 @@
 // gestures. You can also use WidgetTester to find child widgets in the widget
 // tree, read text, and verify that the values of widget properties are correct.
 
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:argus/main.dart';
@@ -35,17 +33,6 @@ class MockFileManager extends FileManager {
   Future<AppConfig> readConfig() async {
     return AppConfig.loadDefault();
   }
-
-  @override
-  Future<File> openLogFile() async {
-    // Return a temporary file for testing
-    final tempDir = Directory.systemTemp;
-    return File('${tempDir.path}/test_argus.log');
-  }
-}
-
-class MockEventLogger extends EventLogger {
-  MockEventLogger(super.file);
 }
 
 class MockNotifier extends Notifier {
@@ -64,13 +51,11 @@ void main() {
     // Create a minimal mock AppController for testing
     final mockFileManager = MockFileManager();
     final config = await mockFileManager.readConfig();
-    final tempFile = await mockFileManager.openLogFile();
-
     final controller = AppController(
       stateMachine: StateMachine(config: config),
       locationService: MockLocationService(),
       fileManager: mockFileManager,
-      logger: MockEventLogger(tempFile),
+      logger: EventLogger(),
       notifier: MockNotifier(),
     );
 

@@ -59,6 +59,10 @@ class StateMachine {
   void updateGeometry(GeoModel geoModel, AreaIndex index) {
     _geoModel = geoModel;
     _areaIndex = index;
+    _hysteresis.reset();
+    _current = geoModel.hasGeometry
+        ? LocationStateStatus.init
+        : LocationStateStatus.waitGeoJson;
   }
 
   StateSnapshot evaluate(LocationFix fix) {

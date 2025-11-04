@@ -60,10 +60,9 @@ class GeolocatorLocationService implements LocationService {
         intervalDuration: interval,
         forceLocationManager: false,
         foregroundNotificationConfig: const ForegroundNotificationConfig(
-          notificationTitle: 'Argus is monitoring your location',
-          notificationText:
-              'Location tracking stays active even when the screen is off.',
-          notificationChannelName: 'Argus background monitoring',
+          notificationTitle: 'Argusが位置情報を監視中です',
+          notificationText: '画面を消しても位置情報の追跡は継続されます。',
+          notificationChannelName: 'Argusバックグラウンド監視',
           enableWakeLock: true,
           setOngoing: true,
         ),

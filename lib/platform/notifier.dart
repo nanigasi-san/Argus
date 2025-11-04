@@ -5,10 +5,19 @@ import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 import '../state_machine/state.dart';
 
 class Notifier {
-  Notifier([FlutterLocalNotificationsPlugin? plugin])
-      : _notifications = plugin ?? FlutterLocalNotificationsPlugin();
+  Notifier({
+    FlutterLocalNotificationsPlugin? plugin,
+    LocalNotificationsClient? notificationsClient,
+    AlarmPlayer? alarmPlayer,
+  })  : _notifications =
+            notificationsClient ??
+                FlutterLocalNotificationsClient(
+                  plugin ?? FlutterLocalNotificationsPlugin(),
+                ),
+        _alarmPlayer = alarmPlayer ?? const RingtoneAlarmPlayer();
 
-  final FlutterLocalNotificationsPlugin _notifications;
+  final LocalNotificationsClient _notifications;
+  final AlarmPlayer _alarmPlayer;
 
   final ValueNotifier<LocationStateStatus> badgeState =
       ValueNotifier<LocationStateStatus>(
@@ -16,9 +25,9 @@ class Notifier {
   );
 
   static const _channelId = 'argus_alerts';
-  static const _channelName = 'Argus Alerts';
+  static const _channelName = 'Argus警告';
   static const _channelDescription =
-      'High priority alerts when leaving the geo-fenced area.';
+      'ジオフェンスの安全エリアから離れたときに通知します。';
   static const int _outerNotificationId = 1001;
 
   bool _initialized = false;
@@ -32,16 +41,14 @@ class Notifier {
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
     const initSettings = InitializationSettings(android: androidInit);
     await _notifications.initialize(initSettings);
-
-    final androidPlugin = _notifications.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
-    if (androidPlugin != null) {
-      try {
-        await (androidPlugin as dynamic).requestPermission();
-      } catch (_) {
-        // Older Android plugin versions might not expose requestPermission.
-      }
-      const channel = AndroidNotificationChannel(
+    await _notifications.requestPermissions(
+      alert: true,
+      badge: true,
+      sound: true,
+      critical: true,
+    );
+    await _notifications.ensureAndroidChannel(
+      const AndroidNotificationChannel(
         _channelId,
         _channelName,
         description: _channelDescription,
@@ -49,17 +56,7 @@ class Notifier {
         playSound: true,
         enableVibration: true,
         audioAttributesUsage: AudioAttributesUsage.alarm,
-      );
-      await androidPlugin.createNotificationChannel(channel);
-    }
-
-    final iosPlugin = _notifications.resolvePlatformSpecificImplementation<
-        IOSFlutterLocalNotificationsPlugin>();
-    await iosPlugin?.requestPermissions(
-      alert: true,
-      badge: true,
-      sound: true,
-      critical: true,
+      ),
     );
 
     _initialized = true;
@@ -78,7 +75,7 @@ class Notifier {
       category: AndroidNotificationCategory.alarm,
       fullScreenIntent: true,
       audioAttributesUsage: AudioAttributesUsage.alarm,
-      ticker: 'Argus alert',
+      ticker: 'Argus警告',
     );
     const iosDetails = DarwinNotificationDetails(
       presentAlert: true,
@@ -91,16 +88,12 @@ class Notifier {
     );
     await _notifications.show(
       _outerNotificationId,
-      'Argus Alert',
-      'You have left the safe zone.',
+      'Argus警告',
+      '競技エリアから離れています。',
       notificationDetails,
     );
     if (!_isRinging) {
-      await FlutterRingtonePlayer().playAlarm(
-        looping: true,
-        volume: 1.0,
-        asAlarm: true,
-      );
+      await _alarmPlayer.start();
       _isRinging = true;
     }
   }
@@ -118,8 +111,120 @@ class Notifier {
 
   Future<void> stopAlarm() async {
     if (_isRinging) {
-      await FlutterRingtonePlayer().stop();
+      await _alarmPlayer.stop();
       _isRinging = false;
     }
+  }
+}
+
+abstract class LocalNotificationsClient {
+  Future<void> initialize(InitializationSettings settings);
+  Future<void> requestPermissions({
+    bool alert = true,
+    bool badge = true,
+    bool sound = true,
+    bool critical = true,
+  });
+  Future<void> ensureAndroidChannel(AndroidNotificationChannel channel);
+  Future<void> show(
+    int id,
+    String? title,
+    String? body,
+    NotificationDetails details,
+  );
+  Future<void> cancel(int id);
+}
+
+class FlutterLocalNotificationsClient implements LocalNotificationsClient {
+  FlutterLocalNotificationsClient(this._plugin);
+
+  final FlutterLocalNotificationsPlugin _plugin;
+
+  @override
+  Future<void> initialize(InitializationSettings settings) async {
+    await _plugin.initialize(settings);
+  }
+
+  @override
+  Future<void> requestPermissions({
+    bool alert = true,
+    bool badge = true,
+    bool sound = true,
+    bool critical = true,
+  }) async {
+    final androidPlugin =
+        _plugin.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+    if (androidPlugin != null) {
+      try {
+        await (androidPlugin as dynamic).requestPermission();
+      } catch (_) {
+        // Older Android plugin versions might not expose requestPermission.
+      }
+    }
+
+    final iosPlugin = _plugin.resolvePlatformSpecificImplementation<
+        IOSFlutterLocalNotificationsPlugin>();
+    await iosPlugin?.requestPermissions(
+      alert: alert,
+      badge: badge,
+      sound: sound,
+      critical: critical,
+    );
+  }
+
+  @override
+  Future<void> ensureAndroidChannel(
+    AndroidNotificationChannel channel,
+  ) async {
+    final androidPlugin =
+        _plugin.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+    if (androidPlugin != null) {
+      await androidPlugin.createNotificationChannel(channel);
+    }
+  }
+
+  @override
+  Future<void> show(
+    int id,
+    String? title,
+    String? body,
+    NotificationDetails details,
+  ) {
+    return _plugin.show(
+      id,
+      title,
+      body,
+      details,
+    );
+  }
+
+  @override
+  Future<void> cancel(int id) {
+    return _plugin.cancel(id);
+  }
+}
+
+abstract class AlarmPlayer {
+  Future<void> start();
+  Future<void> stop();
+}
+
+class RingtoneAlarmPlayer implements AlarmPlayer {
+  const RingtoneAlarmPlayer();
+
+  @override
+  Future<void> start() {
+    return FlutterRingtonePlayer().playAlarm(
+      looping: true,
+      volume: 1.0,
+      asAlarm: true,
+    );
+  }
+
+  @override
+  Future<void> stop() {
+    return FlutterRingtonePlayer().stop();
   }
 }
