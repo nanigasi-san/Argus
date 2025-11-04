@@ -8,6 +8,7 @@ import 'geo/area_index.dart';
 import 'geo/geo_model.dart';
 import 'io/config.dart';
 import 'io/file_manager.dart';
+import 'io/log_entry.dart';
 import 'io/logger.dart';
 import 'platform/location_service.dart';
 import 'platform/notifier.dart';
@@ -39,13 +40,13 @@ class AppController extends ChangeNotifier {
   );
   StreamSubscription<LocationFix>? _subscription;
   String? _lastErrorMessage;
-  final List<String> _logs = <String>[];
+  final List<AppLogEntry> _logs = <AppLogEntry>[];
 
   StateSnapshot get snapshot => _snapshot;
   AppConfig? get config => _config;
   bool get geoJsonLoaded => _geoModel.hasGeometry;
   String? get lastErrorMessage => _lastErrorMessage;
-  List<String> get logs => List.unmodifiable(_logs);
+  List<AppLogEntry> get logs => List.unmodifiable(_logs);
 
   Future<void> initialize({String? initialGeoAsset}) async {
     await _requestPermissions();
@@ -61,6 +62,10 @@ class AppController extends ChangeNotifier {
         _geoModel = GeoModel.empty();
         _areaIndex = AreaIndex.empty();
         _lastErrorMessage = 'Failed to load bundled GeoJSON.';
+        _logError(
+          'APP',
+          'Failed to load bundled GeoJSON.',
+        );
       }
     }
     _snapshot = _snapshot.copyWith(
@@ -73,9 +78,12 @@ class AppController extends ChangeNotifier {
           ? 'Ready to monitor'
           : 'Load GeoJSON to start monitoring',
     );
-    _addLogLine(
-      '${DateTime.now().toIso8601String()} [APP] initialized '
-      '${geoJsonLoaded ? 'with bundled GeoJSON' : 'waiting for GeoJSON'}',
+    _logInfo(
+      'APP',
+      geoJsonLoaded
+          ? 'Initialized with bundled GeoJSON.'
+          : 'Initialization completed. Waiting for GeoJSON.',
+      timestamp: _snapshot.timestamp,
     );
     notifyListeners();
   }
@@ -94,9 +102,7 @@ class AppController extends ChangeNotifier {
     await locationService.start(_config!);
     await _subscription?.cancel();
     _subscription = locationService.stream.listen(_handleFix);
-    _addLogLine(
-      '${DateTime.now().toIso8601String()} [APP] monitoring started',
-    );
+    _logInfo('APP', 'Monitoring started.');
     notifyListeners();
   }
 
@@ -104,9 +110,7 @@ class AppController extends ChangeNotifier {
     await _subscription?.cancel();
     _subscription = null;
     await locationService.stop();
-    _addLogLine(
-      '${DateTime.now().toIso8601String()} [APP] monitoring stopped',
-    );
+    _logInfo('APP', 'Monitoring stopped.');
     notifyListeners();
   }
 
@@ -125,43 +129,58 @@ class AppController extends ChangeNotifier {
         geoJsonLoaded: true,
         notes: 'GeoJSON loaded',
       );
+      await notifier.stopAlarm();
       _lastErrorMessage = null;
-      _addLogLine(
-        '${DateTime.now().toIso8601String()} [APP] GeoJSON loaded from picker',
-      );
+      _logInfo('APP', 'GeoJSON loaded.', timestamp: _snapshot.timestamp);
       notifyListeners();
     } on FormatException catch (e) {
       _lastErrorMessage = 'Failed to parse GeoJSON: ${e.message}';
-      _addLogLine(
-        '${DateTime.now().toIso8601String()} [ERROR] ${_lastErrorMessage!}',
-      );
+      _logError('APP', _lastErrorMessage!);
       notifyListeners();
     } catch (e) {
       _lastErrorMessage = 'Unable to open file: ${e.toString()}';
-      _addLogLine(
-        '${DateTime.now().toIso8601String()} [ERROR] ${_lastErrorMessage!}',
-      );
+      _logError('APP', _lastErrorMessage!);
       notifyListeners();
     }
   }
 
   Future<void> _handleFix(LocationFix fix) async {
     final previous = _snapshot.status;
-    final locationLog = await logger.logLocationFix(fix);
-    _addLogLine(locationLog);
+    await logger.logLocationFix(fix);
+    _logDebug(
+      'GPS',
+      'lat=${fix.latitude.toStringAsFixed(6)} '
+      'lon=${fix.longitude.toStringAsFixed(6)} '
+      'acc=${fix.accuracyMeters?.toStringAsFixed(1) ?? '-'}m',
+      timestamp: fix.timestamp,
+    );
     final evaluation = stateMachine.evaluate(fix);
     _snapshot = evaluation.copyWith(
       geoJsonLoaded: geoJsonLoaded,
     );
-    final stateLog = await logger.logStateChange(_snapshot);
-    _addLogLine(stateLog);
+    await logger.logStateChange(_snapshot);
+    _logInfo(
+      'STATE',
+      _describeSnapshot(_snapshot),
+      timestamp: _snapshot.timestamp,
+    );
     await notifier.updateBadge(_snapshot.status);
     if (previous != LocationStateStatus.outer &&
         _snapshot.status == LocationStateStatus.outer) {
       await notifier.notifyOuter();
+      _logWarning(
+        'ALERT',
+        'Safe zone exited.',
+        timestamp: _snapshot.timestamp,
+      );
     } else if (previous == LocationStateStatus.outer &&
         _snapshot.status != LocationStateStatus.outer) {
       await notifier.notifyRecover();
+      _logInfo(
+        'ALERT',
+        'Returned to safe zone.',
+        timestamp: _snapshot.timestamp,
+      );
     }
     notifyListeners();
   }
@@ -172,23 +191,16 @@ class AppController extends ChangeNotifier {
     super.dispose();
   }
 
-  void _addLogLine(String line) {
-    if (line.isEmpty) {
-      return;
-    }
-    _logs.insert(0, line);
+  void _addLogEntry(AppLogEntry entry) {
+    _logs.insert(0, entry);
     if (_logs.length > 200) {
       _logs.removeLast();
     }
   }
 
   Future<void> _requestPermissions() async {
-    final status = await Permission.notification.status;
-    if (status.isDenied || status.isLimited) {
-      await Permission.notification.request();
-    } else if (status.isPermanentlyDenied) {
-      await openAppSettings();
-    }
+    await _ensureNotificationPermission();
+    await _ensureLocationPermission();
   }
 
   static Future<AppController> bootstrap() async {
@@ -196,10 +208,9 @@ class AppController extends ChangeNotifier {
     final config = await fileManager.readConfig();
     final stateMachine = StateMachine(config: config);
     final locationService = GeolocatorLocationService();
-    final logFile = await fileManager.openLogFile();
-    final logger = EventLogger(logFile);
+    final logger = EventLogger();
     final notificationsPlugin = FlutterLocalNotificationsPlugin();
-    final notifier = Notifier(notificationsPlugin);
+    final notifier = Notifier(plugin: notificationsPlugin);
     await notifier.initialize();
     final controller = AppController(
       stateMachine: stateMachine,
@@ -213,5 +224,79 @@ class AppController extends ChangeNotifier {
       initialGeoAsset: 'assets/geojson/sample_area.geojson',
     );
     return controller;
+  }
+
+  Future<void> _ensureNotificationPermission() async {
+    final status = await Permission.notification.status;
+    if (status.isPermanentlyDenied) {
+      await openAppSettings();
+      return;
+    }
+    if (status.isDenied || status.isLimited) {
+      final result = await Permission.notification.request();
+      if (result.isPermanentlyDenied) {
+        await openAppSettings();
+      }
+    }
+  }
+
+  Future<void> _ensureLocationPermission() async {
+    var status = await Permission.locationAlways.status;
+    if (status.isLimited) {
+      status = await Permission.locationAlways.request();
+    }
+    if (status.isDenied || status.isRestricted) {
+      final whenInUseStatus = await Permission.locationWhenInUse.request();
+      if (!whenInUseStatus.isGranted) {
+        return;
+      }
+      status = await Permission.locationAlways.request();
+    }
+    if (status.isPermanentlyDenied || !status.isGranted) {
+      await openAppSettings();
+    }
+  }
+
+  void _log(
+    String tag,
+    String message, {
+    AppLogLevel level = AppLogLevel.info,
+    DateTime? timestamp,
+  }) {
+    final entry = AppLogEntry(
+      tag: tag,
+      message: message,
+      level: level,
+      timestamp: timestamp ?? DateTime.now(),
+    );
+    _addLogEntry(entry);
+  }
+
+  void _logInfo(String tag, String message, {DateTime? timestamp}) {
+    _log(tag, message, level: AppLogLevel.info, timestamp: timestamp);
+  }
+
+  void _logWarning(String tag, String message, {DateTime? timestamp}) {
+    _log(tag, message, level: AppLogLevel.warning, timestamp: timestamp);
+  }
+
+  void _logError(String tag, String message, {DateTime? timestamp}) {
+    _log(tag, message, level: AppLogLevel.error, timestamp: timestamp);
+  }
+
+  void _logDebug(String tag, String message, {DateTime? timestamp}) {
+    _log(tag, message, level: AppLogLevel.debug, timestamp: timestamp);
+  }
+
+  String _describeSnapshot(StateSnapshot snapshot) {
+    final dist = snapshot.distanceToBoundaryM != null
+        ? '${snapshot.distanceToBoundaryM!.toStringAsFixed(2)}m'
+        : '-';
+    final accuracy = snapshot.horizontalAccuracyM != null
+        ? '${snapshot.horizontalAccuracyM!.toStringAsFixed(1)}m'
+        : '-';
+    final notes =
+        (snapshot.notes ?? '').isEmpty ? '' : ' (${snapshot.notes})';
+    return 'status=${snapshot.status.name} dist=$dist acc=$accuracy$notes';
   }
 }

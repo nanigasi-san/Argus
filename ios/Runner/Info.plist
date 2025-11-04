@@ -20,8 +20,12 @@
   <string>1</string>
   <key>LSRequiresIPhoneOS</key>
   <true/>
+  <key>NSLocationWhenInUseUsageDescription</key>
+  <string>アプリを使用中に安全エリアを監視するため、位置情報へのアクセスが必要です。</string>
+  <key>NSLocationAlwaysUsageDescription</key>
+  <string>バックグラウンド実行中も安全エリアを監視するため、常時の位置情報アクセスが必要です。</string>
   <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-  <string>警戒エリアの監視に位置情報を使用します。</string>
+  <string>安全エリアからの離脱を検知するため、常に位置情報を取得します。</string>
   <key>UILaunchStoryboardName</key>
   <string>LaunchScreen</string>
   <key>UIMainStoryboardFile</key>

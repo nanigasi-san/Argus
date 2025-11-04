@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_controller.dart';
+import '../io/log_entry.dart';
 import '../state_machine/state.dart';
 import 'settings_page.dart';
 
@@ -93,11 +94,6 @@ class HomePage extends StatelessWidget {
                       icon: const Icon(Icons.play_arrow),
                       label: const Text('Start'),
                     ),
-                    ElevatedButton.icon(
-                      onPressed: () => controller.stopMonitoring(),
-                      icon: const Icon(Icons.stop),
-                      label: const Text('Stop'),
-                    ),
                   ],
                 ),
                 const SizedBox(height: 24),
@@ -106,14 +102,13 @@ class HomePage extends StatelessWidget {
                       ? const Text(
                           'Logs will appear once tracking starts.',
                         )
-                      : ListView.builder(
+                      : ListView.separated(
                           itemCount: controller.logs.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 8),
                           itemBuilder: (context, index) {
-                            final logLine = controller.logs[index];
-                            return Text(
-                              logLine,
-                              style: const TextStyle(fontFamily: 'monospace'),
-                            );
+                            final entry = controller.logs[index];
+                            return _LogCard(entry: entry);
                           },
                         ),
                 ),
@@ -162,5 +157,96 @@ class _StatusBadge extends StatelessWidget {
       backgroundColor: _color(status).withValues(alpha: 0.15),
       side: BorderSide(color: _color(status)),
     );
+  }
+}
+
+class _LogCard extends StatelessWidget {
+  const _LogCard({required this.entry});
+
+  final AppLogEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final borderColor = _borderColor(entry.level, theme);
+    final backgroundColor = borderColor.withValues(alpha: 0.08);
+    final icon = _iconForLevel(entry.level);
+    final normalized =
+        entry.message.replaceAll('\r\n', '\n').trimRight();
+    final timestamp =
+        entry.timestamp.toLocal().toString().split('.').first;
+
+    return Card(
+      elevation: 0,
+      color: backgroundColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: borderColor),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                if (icon != null) ...[
+                  Icon(icon, size: 16, color: borderColor),
+                  const SizedBox(width: 6),
+                ],
+                Text(
+                  entry.tag,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: borderColor,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  timestamp,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            SelectableText(
+              normalized.isEmpty ? '(no message)' : normalized,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontFamily: 'monospace',
+                height: 1.3,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Color _borderColor(AppLogLevel level, ThemeData theme) {
+    switch (level) {
+      case AppLogLevel.error:
+        return theme.colorScheme.error;
+      case AppLogLevel.warning:
+        return theme.colorScheme.tertiary;
+      case AppLogLevel.debug:
+        return theme.colorScheme.outlineVariant;
+      case AppLogLevel.info:
+        return theme.colorScheme.primary;
+    }
+  }
+
+  IconData? _iconForLevel(AppLogLevel level) {
+    switch (level) {
+      case AppLogLevel.error:
+        return Icons.error_outline;
+      case AppLogLevel.warning:
+        return Icons.warning_amber_outlined;
+      case AppLogLevel.info:
+        return Icons.info_outline;
+      case AppLogLevel.debug:
+        return Icons.notes;
+    }
   }
 }

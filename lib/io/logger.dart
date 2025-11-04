@@ -1,26 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
-import 'package:collection/collection.dart';
-import 'package:logger/logger.dart';
-
-import '../state_machine/state.dart';
 import '../platform/location_service.dart';
+import '../state_machine/state.dart';
 
 class EventLogger {
-  EventLogger(this._file)
-      : _logger = Logger(
-          printer: PrettyPrinter(
-            lineLength: 80,
-            printEmojis: false,
-          ),
-        );
+  EventLogger();
 
-  final File _file;
-  final Logger _logger;
   final StreamController<Map<String, dynamic>> _events =
       StreamController<Map<String, dynamic>>.broadcast();
+  final List<Map<String, dynamic>> _records = <Map<String, dynamic>>[];
 
   Stream<Map<String, dynamic>> get events => _events.stream;
 
@@ -38,55 +27,9 @@ class EventLogger {
       'accuracyM': snapshot.horizontalAccuracyM,
       'notes': snapshot.notes,
     };
+    _records.add(record);
     _events.add(record);
-    _logger.i(message);
-    await _appendCsv(record);
     return message;
-  }
-
-  Future<void> _appendCsv(Map<String, dynamic> record) async {
-    final exists = await _file.exists();
-    final sink = _file.openWrite(mode: FileMode.append);
-    if (!exists) {
-      sink.writeln(
-        'timestamp,lat,lon,status,dist_to_boundary_m,'
-        'horiz_accuracy_m,battery_pct',
-      );
-    }
-    sink.writeln(
-      '${record['timestamp']},'
-      '${record['lat'] ?? ''},'
-      '${record['lon'] ?? ''},'
-      '${record['status'] ?? ''},'
-      '${record['distanceToBoundaryM'] ?? ''},'
-      '${record['accuracyM'] ?? ''},'
-      '${record['batteryPct'] ?? ''},',
-    );
-    await sink.flush();
-    await sink.close();
-  }
-
-  Future<String> exportJsonl() async {
-    if (!await _file.exists()) {
-      return '';
-    }
-    final exports = await _file.readAsLines();
-    final buffer = StringBuffer();
-    for (final line in exports.skip(1)) {
-      if (line.trim().isEmpty) continue;
-      final parts = line.split(',');
-      final map = {
-        'timestamp': parts.elementAtOrNull(0),
-        'lat': parts.elementAtOrNull(1),
-        'lon': parts.elementAtOrNull(2),
-        'status': parts.elementAtOrNull(3),
-        'dist_to_boundary_m': parts.elementAtOrNull(4),
-        'horiz_accuracy_m': parts.elementAtOrNull(5),
-        'battery_pct': parts.elementAtOrNull(6),
-      };
-      buffer.writeln(jsonEncode(map));
-    }
-    return buffer.toString();
   }
 
   Future<String> logLocationFix(LocationFix fix) async {
@@ -103,9 +46,13 @@ class EventLogger {
       'accuracyM': fix.accuracyMeters,
       'batteryPct': fix.batteryPercent,
     };
+    _records.add(record);
     _events.add(record);
-    _logger.d(message);
-    await _appendCsv(record);
     return message;
+  }
+
+  Future<String> exportJsonl() async {
+    const encoder = JsonEncoder.withIndent('  ');
+    return encoder.convert(_records);
   }
 }

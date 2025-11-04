@@ -59,6 +59,13 @@ class GeolocatorLocationService implements LocationService {
         distanceFilter: distanceFilter,
         intervalDuration: interval,
         forceLocationManager: false,
+        foregroundNotificationConfig: const ForegroundNotificationConfig(
+          notificationTitle: 'Argusが位置情報を監視中です',
+          notificationText: '画面を消しても位置情報の追跡は継続されます。',
+          notificationChannelName: 'Argusバックグラウンド監視',
+          enableWakeLock: true,
+          setOngoing: true,
+        ),
       );
     } else if (Platform.isIOS || Platform.isMacOS) {
       settings = AppleSettings(
@@ -103,8 +110,17 @@ class GeolocatorLocationService implements LocationService {
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
     }
-    return permission == LocationPermission.always ||
-        permission == LocationPermission.whileInUse;
+    if (permission == LocationPermission.deniedForever) {
+      await Geolocator.openAppSettings();
+      return false;
+    }
+    if (permission == LocationPermission.whileInUse) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.whileInUse) {
+        await Geolocator.openAppSettings();
+      }
+    }
+    return permission == LocationPermission.always;
   }
 }
 

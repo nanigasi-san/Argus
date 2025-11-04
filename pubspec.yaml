@@ -13,7 +13,6 @@ dependencies:
   file_selector: ^1.0.1
   path_provider: ^2.1.1
   json_annotation: ^4.8.1
-  logger: ^2.0.2
   collection: ^1.17.2
   meta: ^1.10.0
   provider: ^6.0.5
