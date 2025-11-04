@@ -204,10 +204,13 @@ class HomePage extends StatelessWidget {
                       // 中央に大きなステータス表示
                       // waitStartの時はタップ可能でSTARTボタンとして機能
                       Expanded(
-                        child: Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
+                        child: SingleChildScrollView(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
                               // GPS精度を常に表示
                               Text(
                                 'GPS精度: ${snapshot.horizontalAccuracyM?.toStringAsFixed(1) ?? '-'} m',
@@ -273,6 +276,7 @@ class HomePage extends StatelessWidget {
                             ],
                           ),
                         ),
+                      ),
                       ),
                       // 開発者モードでない場合は、エラーメッセージのみ表示
                       if (controller.lastErrorMessage != null) ...[
