@@ -283,7 +283,10 @@ class AppController extends ChangeNotifier {
     final locationService = GeolocatorLocationService();
     final logger = EventLogger();
     final notificationsPlugin = FlutterLocalNotificationsPlugin();
-    final notifier = Notifier(plugin: notificationsPlugin);
+    final notifier = Notifier(
+      plugin: notificationsPlugin,
+      vibrationPlayer: RepeatingVibrationPlayer(),
+    );
     await notifier.initialize();
     final controller = AppController(
       stateMachine: stateMachine,

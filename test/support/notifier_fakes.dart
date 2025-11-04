@@ -59,3 +59,18 @@ class FakeAlarmPlayer implements AlarmPlayer {
     stopCount += 1;
   }
 }
+
+class FakeVibrationPlayer implements VibrationPlayer {
+  int startCount = 0;
+  int stopCount = 0;
+
+  @override
+  Future<void> start() async {
+    startCount += 1;
+  }
+
+  @override
+  Future<void> stop() async {
+    stopCount += 1;
+  }
+}
