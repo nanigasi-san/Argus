@@ -45,7 +45,7 @@
 - **状態機械**: `StateMachine` が GeoJSON と設定値（閾値）を参照し、位置情報を評価して状態を算出。
 - **状態一覧**:
   - `waitGeoJson`: GeoJSON 未ロード。ユーザにロード操作を促す。
-  - `init`: 監視準備完了。位置ストリームは未開始または安定待ち。
+  - `waitStart`: 監視準備完了。位置ストリームは未開始。スタートボタンを待っている状態。
   - `inner`: エリア内かつバッファより十分内側（`distanceToBoundaryM >= innerBufferM`）。
   - `near`: エリア内だがバッファ距離未満（`distanceToBoundaryM < innerBufferM`）。
   - `outerPending`: エリア外候補。ヒステリシス確定待ち。
@@ -103,7 +103,7 @@
 
 - **AppBar**: タイトル Argus、Settings への遷移アイコン。
 - **Body**:
-  1. **状態バッジ**: 大きな円形バッジ（画面幅の70%）で状態を表示。状態別カラー（inner: 緑、near: オレンジ、outerPending: 深オレンジ、outer: 赤、gpsBad: グレー、waitGeoJson: 青灰、init: 青）。`init` 状態ではタップ可能で START ボタンとして機能。
+  1. **状態バッジ**: 大きな円形バッジ（画面幅の70%）で状態を表示。状態別カラー（inner: 緑、near: オレンジ、outerPending: 深オレンジ、outer: 赤、gpsBad: グレー、waitGeoJson: 青灰、waitStart: 青）。`waitStart` 状態ではタップ可能で START ボタンとして機能。
   2. **GeoJSON ファイル状態**: ロード済み/未ロードの表示。ロード済みの場合はファイル名を表示。
   3. **退避ナビゲーション**: OUTER 状態時または開発者モード時に距離・方角を表示。
   4. **開発者モード情報**: 開発者モード有効時のみ表示
@@ -139,20 +139,64 @@
 
 ---
 
-## 3. アーキテクチャ概要
+## 3. プロジェクト構造
 
-| 区分 | 主要クラス | 役割 |
-| --- | --- | --- |
-| 中核ロジック | `AppController` | アプリ全体の状態管理、位置ストリームの購読、ログ記録、通知制御。 |
-| 状態機械 | `StateMachine`, `StateSnapshot`, `LocationStateStatus` | 位置評価と状態管理、ヒステリシス処理。 |
-| ジオメトリ | `GeoModel`, `GeoPolygon`, `LatLng` | GeoJSON パース、ポリゴンデータの保持。 |
-| 空間インデックス | `AreaIndex` | ポリゴンの境界ボックスによる空間インデックス。位置に基づいて候補ポリゴンを絞り込み。 |
-| 点とポリゴン判定 | `PointInPolygon`, `PointInPolygonEvaluation` | Ray Casting による包含判定、最近接点・距離・方位角の計算。 |
-| 位置サービス | `LocationService`, `GeolocatorLocationService`, `LocationFix` | 位置ストリームの開始・停止、権限確認、プラットフォーム固有設定。 |
-| 通知 | `Notifier`, `AlarmPlayer`（`RingtoneAlarmPlayer`）, `LocalNotificationsClient` | 通知チャンネル作成、アラーム音制御、バッジ状態。 |
-| ログ | `EventLogger`, `AppLogEntry`, `AppLogLevel` | GPS・状態イベントのメモリ記録と UI 連携、JSON エクスポート。 |
-| I/O | `FileManager`, `AppConfig` | 設定・GeoJSON ファイルの読み書き、ファイルピッカー。 |
-| UI | `HomePage`, `SettingsPage`, `ArgusApp` | 画面構成とユーザ操作ルーティング。 |
+### 3.1 ディレクトリ構成
+
+```
+lib/
+├── main.dart                    # アプリケーションエントリーポイント
+├── app_controller.dart          # アプリケーション全体の状態管理とコーディネーション
+├── geo/                         # 地理空間データ処理
+│   ├── geo_model.dart          # GeoJSONパースとGeoModel/GeoPolygon/LatLng定義
+│   ├── area_index.dart         # 空間インデックス（境界ボックスによる高速検索）
+│   └── point_in_polygon.dart   # 点とポリゴンの包含判定・距離・方位角計算
+├── state_machine/              # 状態機械
+│   ├── state.dart              # LocationStateStatus enum, StateSnapshot定義
+│   ├── state_machine.dart      # 状態遷移ロジックと評価処理
+│   └── hysteresis_counter.dart # ヒステリシスカウンタ（OUTER確定のための条件管理）
+├── platform/                    # プラットフォーム固有機能
+│   ├── location_service.dart  # 位置情報サービス（Geolocator抽象化）
+│   └── notifier.dart          # 通知・アラーム制御
+├── io/                         # ファイルI/Oと設定管理
+│   ├── config.dart            # AppConfig定義とJSONシリアライゼーション
+│   ├── file_manager.dart      # 設定ファイル・GeoJSONファイルの読み書き
+│   ├── logger.dart            # EventLogger（GPS・状態イベントの記録）
+│   └── log_entry.dart         # AppLogEntry/AppLogLevel定義
+└── ui/                         # ユーザーインターフェース
+    ├── home_page.dart         # メイン画面（状態表示、ナビゲーション情報）
+    └── settings_page.dart     # 設定画面（パラメータ調整、開発者モード）
+```
+
+### 3.2 アーキテクチャ概要
+
+| 区分             | 主要クラス                                                                     | 役割                                                                                 |
+| ---------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| 中核ロジック     | `AppController`                                                                | アプリ全体の状態管理、位置ストリームの購読、ログ記録、通知制御。                     |
+| 状態機械         | `StateMachine`, `StateSnapshot`, `LocationStateStatus`                         | 位置評価と状態管理、ヒステリシス処理。                                               |
+| ジオメトリ       | `GeoModel`, `GeoPolygon`, `LatLng`                                             | GeoJSON パース、ポリゴンデータの保持。                                               |
+| 空間インデックス | `AreaIndex`                                                                    | ポリゴンの境界ボックスによる空間インデックス。位置に基づいて候補ポリゴンを絞り込み。 |
+| 点とポリゴン判定 | `PointInPolygon`, `PointInPolygonEvaluation`                                   | Ray Casting による包含判定、最近接点・距離・方位角の計算。                           |
+| 位置サービス     | `LocationService`, `GeolocatorLocationService`, `LocationFix`                  | 位置ストリームの開始・停止、権限確認、プラットフォーム固有設定。                     |
+| 通知             | `Notifier`, `AlarmPlayer`（`RingtoneAlarmPlayer`）, `LocalNotificationsClient` | 通知チャンネル作成、アラーム音制御、バッジ状態。                                     |
+| ログ             | `EventLogger`, `AppLogEntry`, `AppLogLevel`                                    | GPS・状態イベントのメモリ記録と UI 連携、JSON エクスポート。                         |
+| I/O              | `FileManager`, `AppConfig`                                                     | 設定・GeoJSON ファイルの読み書き、ファイルピッカー。                                 |
+| UI               | `HomePage`, `SettingsPage`, `ArgusApp`                                         | 画面構成とユーザ操作ルーティング。                                                   |
+
+### 3.3 データフロー
+
+1. **初期化**: `main()` → `AppController.bootstrap()` → 各サービス初期化
+2. **GeoJSON読み込み**: `FileManager.pickGeoJsonFile()` → `GeoModel.fromGeoJson()` → `AreaIndex.build()` → `StateMachine.updateGeometry()`
+3. **位置監視**: `LocationService.stream` → `AppController._handleFix()` → `StateMachine.evaluate()` → `Notifier`更新
+4. **状態表示**: `AppController.snapshot` → `HomePage`（リアクティブ更新）
+
+### 3.4 依存関係
+
+- **AppController** ← StateMachine, LocationService, FileManager, EventLogger, Notifier
+- **StateMachine** ← GeoModel, AreaIndex, PointInPolygon, AppConfig, HysteresisCounter
+- **GeoModel** ← GeoJSON（パース）
+- **PointInPolygon** ← 地理計算（Haversine公式など）
+- **UI** ← AppController（Provider経由）
 
 全モジュールは依存注入で連結され、`AppController.bootstrap()` が標準構成を生成する。
 
@@ -162,15 +206,15 @@
 
 ### 4.1 状態一覧
 
-| 状態 | 説明 | 遷移条件 |
-| --- | --- | --- |
-| `waitGeoJson` | GeoJSON 未ロード。ユーザにロード操作を促す。 | GeoJSON が未ロードの状態。 |
-| `init` | 監視準備完了。位置ストリームは未開始または安定待ち。 | GeoJSON ロード後、位置監視開始前。 |
-| `inner` | エリア内かつバッファより十分内側。 | `contains == true && distanceToBoundaryM >= innerBufferM` |
-| `near` | エリア内だがバッファ距離未満。 | `contains == true && distanceToBoundaryM < innerBufferM` |
-| `outerPending` | エリア外候補。ヒステリシス確定待ち。 | `contains == false && !hysteresis.isSatisfied` |
-| `outer` | エリア外確定。通知・アラーム発火。 | `contains == false && hysteresis.isSatisfied` |
-| `gpsBad` | 位置精度不足。OUTER 維持しつつも補正が入る。 | `accuracyMeters > gpsAccuracyBadMeters && status != outer` |
+| 状態           | 説明                                         | 遷移条件                                                   |
+| -------------- | -------------------------------------------- | ---------------------------------------------------------- |
+| `waitGeoJson`  | GeoJSON 未ロード。ユーザにロード操作を促す。 | GeoJSON が未ロードの状態。                                 |
+| `waitStart`    | 監視準備完了。位置ストリームは未開始。       | GeoJSON ロード後、位置監視開始前。                         |
+| `inner`        | エリア内かつバッファより十分内側。           | `contains == true && distanceToBoundaryM >= innerBufferM`  |
+| `near`         | エリア内だがバッファ距離未満。               | `contains == true && distanceToBoundaryM < innerBufferM`   |
+| `outerPending` | エリア外候補。ヒステリシス確定待ち。         | `contains == false && !hysteresis.isSatisfied`             |
+| `outer`        | エリア外確定。通知・アラーム発火。           | `contains == false && hysteresis.isSatisfied`              |
+| `gpsBad`       | 位置精度不足。OUTER 維持しつつも補正が入る。 | `accuracyMeters > gpsAccuracyBadMeters && status != outer` |
 
 ### 4.2 判定パラメータ
 
@@ -194,6 +238,63 @@
      - 条件を満たせば `outer`
      - 満たさなければ `outerPending`
 4. **距離・方位角計算**: 包含判定と同時に `PointInPolygon` が最寄り境界点・距離・方位角を計算。`StateSnapshot` に格納。
+
+### 4.3.1 状態遷移図
+
+**監視開始前の状態遷移**:
+- `waitGeoJson` → `waitStart`: GeoJSONロード完了時（`updateGeometry()`）
+- `waitGeoJson`: GeoJSON未ロード時に`evaluate()`が呼ばれた場合
+
+**監視開始後の状態遷移**（位置評価により発生）:
+
+```mermaid
+stateDiagram-v2
+    [*] --> waitGeoJson: 初期状態
+    waitGeoJson --> waitStart: GeoJSONロード完了<br/>(updateGeometry)
+    
+    waitStart --> inner: 監視開始後<br/>エリア内(精度良好, distance >= innerBufferM)
+    waitStart --> near: 監視開始後<br/>エリア内(精度良好, distance < innerBufferM)
+    waitStart --> outerPending: 監視開始後<br/>エリア外(精度良好, hysteresis未到達)
+    waitStart --> gpsBad: 監視開始後<br/>精度不良
+    
+    inner --> inner: エリア内継続<br/>(精度良好, distance >= innerBufferM)
+    inner --> near: エリア内<br/>(精度良好, distance < innerBufferM)
+    inner --> outerPending: エリア外<br/>(精度良好, hysteresis未到達)
+    inner --> gpsBad: 精度不良
+    
+    near --> inner: エリア内<br/>(精度良好, distance >= innerBufferM)
+    near --> near: エリア内継続<br/>(精度良好, distance < innerBufferM)
+    near --> outerPending: エリア外<br/>(精度良好, hysteresis未到達)
+    near --> gpsBad: 精度不良
+    
+    outerPending --> inner: エリア内に戻る<br/>(精度良好, distance >= innerBufferM)
+    outerPending --> near: エリア内に戻る<br/>(精度良好, distance < innerBufferM)
+    outerPending --> outer: エリア外継続<br/>(精度良好, hysteresis到達)
+    outerPending --> outerPending: エリア外継続<br/>(精度良好, hysteresis未到達)
+    outerPending --> gpsBad: 精度不良
+    
+    outer --> inner: エリア内に戻る<br/>(精度良好, distance >= innerBufferM)
+    outer --> near: エリア内に戻る<br/>(精度良好, distance < innerBufferM)
+    outer --> inner: エリア内に戻る<br/>(精度不良でも内側)
+    outer --> near: エリア内に戻る<br/>(精度不良でも内側)
+    outer --> outer: エリア外継続<br/>(精度不良でも外側)
+    
+    gpsBad --> inner: 精度改善 + エリア内<br/>(distance >= innerBufferM)
+    gpsBad --> near: 精度改善 + エリア内<br/>(distance < innerBufferM)
+    gpsBad --> outerPending: 精度改善 + エリア外<br/>(hysteresis未到達)
+    gpsBad --> gpsBad: 精度不良継続
+```
+
+**状態遷移の説明**:
+
+- **waitGeoJson → waitStart**: `updateGeometry()` で GeoJSON がロードされたとき
+- **精度良好時の遷移**:
+  - エリア内: `inner` または `near`（距離に応じて）
+  - エリア外: `outerPending`（hysteresis未到達）または `outer`（hysteresis到達）
+- **精度不良時の遷移**:
+  - OUTER 以外の状態: `gpsBad` に遷移
+  - OUTER 状態: 内側に戻ったか判定し、内側なら `inner`/`near`、外側なら `outer` を維持
+- **hysteresis**: エリア内に戻ると即座にリセットされ、`inner`/`near` に遷移
 
 ### 4.4 ヒステリシスカウンタ
 
@@ -279,15 +380,15 @@
 
 ### 8.2 設定項目
 
-| 項目 | キー | 型 | デフォルト | 説明 |
-| --- | --- | --- | --- | --- |
-| Inner buffer | `inner_buffer_m` | double | 30.0 | エリア境界との距離バッファ（メートル）。この距離未満で `near` 状態になる。 |
-| Leave confirm samples | `leave_confirm_samples` | int | 3 | OUTER 確定に必要な連続サンプル数。 |
-| Leave confirm seconds | `leave_confirm_seconds` | int | 10 | OUTER 確定に必要な経過秒数。 |
-| GPS bad threshold | `gps_accuracy_bad_m` | double | 40.0 | 位置精度がこの値を超えると `gpsBad` 状態になる（メートル）。 |
-| Sample interval | `sample_interval_s` | Map<String, int> | `{"slow": 15, "normal": 8, "fast": 3}` | 位置取得間隔（秒）。`fast` が優先的に使用される。 |
-| Sample distance | `sample_distance_m` | Map<String, int> | `{"slow": 25, "normal": 15, "fast": 8}` | 距離フィルタ（未使用、位置サービスでは 0m 固定）。 |
-| Screen wake on leave | `screen_wake_on_leave` | bool | true | 離脱時に画面を点灯するか（未使用）。 |
+| 項目                  | キー                    | 型               | デフォルト                              | 説明                                                                       |
+| --------------------- | ----------------------- | ---------------- | --------------------------------------- | -------------------------------------------------------------------------- |
+| Inner buffer          | `inner_buffer_m`        | double           | 30.0                                    | エリア境界との距離バッファ（メートル）。この距離未満で `near` 状態になる。 |
+| Leave confirm samples | `leave_confirm_samples` | int              | 3                                       | OUTER 確定に必要な連続サンプル数。                                         |
+| Leave confirm seconds | `leave_confirm_seconds` | int              | 10                                      | OUTER 確定に必要な経過秒数。                                               |
+| GPS bad threshold     | `gps_accuracy_bad_m`    | double           | 40.0                                    | 位置精度がこの値を超えると `gpsBad` 状態になる（メートル）。               |
+| Sample interval       | `sample_interval_s`     | Map<String, int> | `{"slow": 15, "normal": 8, "fast": 3}`  | 位置取得間隔（秒）。`fast` が優先的に使用される。                          |
+| Sample distance       | `sample_distance_m`     | Map<String, int> | `{"slow": 25, "normal": 15, "fast": 8}` | 距離フィルタ（未使用、位置サービスでは 0m 固定）。                         |
+| Screen wake on leave  | `screen_wake_on_leave`  | bool             | true                                    | 離脱時に画面を点灯するか（未使用）。                                       |
 
 ---
 
@@ -297,7 +398,7 @@
 
 - **AppBar**: タイトル Argus、Settings への遷移アイコン。
 - **Body**:
-  1. **状態バッジ**: 大きな円形バッジ（画面幅の70%）で状態を表示。状態別カラー。`init` 状態ではタップ可能で START ボタンとして機能。
+  1. **状態バッジ**: 大きな円形バッジ（画面幅の70%）で状態を表示。状態別カラー。`waitStart` 状態ではタップ可能で START ボタンとして機能。
   2. **GeoJSON ファイル状態**: ロード済み/未ロードの表示。ロード済みの場合はファイル名を表示。
   3. **退避ナビゲーション**: OUTER 状態時または開発者モード時に距離・方角を表示。
   4. **開発者モード情報**: 開発者モード有効時のみ表示（詳細は上記参照）。
@@ -320,7 +421,7 @@
   - `geo_model_test.dart`: GeoJSON パーサの挙動。
   - `point_in_polygon_test.dart`: 点とポリゴンの関係判定。
   - `platform/notifier_test.dart`: OUTER→INNER→OUTER でアラーム切り替え。
-  - `app_controller_test.dart`: GeoJSON 再読込で init 状態・アラーム停止を確認。
+  - `app_controller_test.dart`: GeoJSON 再読込で waitStart 状態・アラーム停止を確認。
 
 - `flutter analyze` を CI ベースラインとし、警告ゼロを維持。
 

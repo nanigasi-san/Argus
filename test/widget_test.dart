@@ -45,7 +45,7 @@ class MockFileManager extends FileManager {
 }
 
 class MockEventLogger extends EventLogger {
-  MockEventLogger(super.file);
+  MockEventLogger() : super();
 }
 
 class MockNotifier extends Notifier {
@@ -64,13 +64,12 @@ void main() {
     // Create a minimal mock AppController for testing
     final mockFileManager = MockFileManager();
     final config = await mockFileManager.readConfig();
-    final tempFile = await mockFileManager.openLogFile();
 
     final controller = AppController(
       stateMachine: StateMachine(config: config),
       locationService: MockLocationService(),
       fileManager: mockFileManager,
-      logger: MockEventLogger(tempFile),
+      logger: MockEventLogger(),
       notifier: MockNotifier(),
     );
 

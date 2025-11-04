@@ -1,26 +1,10 @@
 import '../geo/area_index.dart';
 import '../geo/geo_model.dart';
 import '../geo/point_in_polygon.dart';
-import '../platform/location_service.dart';
 import '../io/config.dart';
+import '../platform/location_service.dart';
 import 'hysteresis_counter.dart';
 import 'state.dart';
-
-class StateMachineContext {
-  StateMachineContext({
-    required this.config,
-    required this.geoModel,
-    required this.areaIndex,
-    required this.pointInPolygon,
-  });
-
-  final AppConfig config;
-  final GeoModel geoModel;
-  final AreaIndex areaIndex;
-  final PointInPolygon pointInPolygon;
-
-  bool get hasGeometry => geoModel.hasGeometry;
-}
 
 class StateMachine {
   StateMachine({
@@ -59,7 +43,7 @@ class StateMachine {
     _areaIndex = index;
     _hysteresis.reset();
     _current = geoModel.hasGeometry
-        ? LocationStateStatus.init
+        ? LocationStateStatus.waitStart
         : LocationStateStatus.waitGeoJson;
   }
 

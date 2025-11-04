@@ -52,32 +52,14 @@ class AppController extends ChangeNotifier {
   List<AppLogEntry> get logs => List.unmodifiable(_logs);
   bool get developerMode => _developerMode;
 
-  Future<void> initialize({String? initialGeoAsset}) async {
+  Future<void> initialize() async {
     await _requestPermissions();
     _config ??= await fileManager.readConfig();
     stateMachine.updateConfig(_config!);
 
-    if (initialGeoAsset != null) {
-      try {
-        _geoModel = await fileManager.loadBundledGeoJson(initialGeoAsset);
-        final assetFileName = initialGeoAsset.split('/').last;
-        _geoJsonFileName = _normalizeToGeoJson(assetFileName);
-        _areaIndex = AreaIndex.build(_geoModel.polygons);
-        stateMachine.updateGeometry(_geoModel, _areaIndex);
-      } catch (_) {
-        _geoModel = GeoModel.empty();
-        _geoJsonFileName = null;
-        _areaIndex = AreaIndex.empty();
-        _lastErrorMessage = 'Failed to load bundled GeoJSON.';
-        _logError(
-          'APP',
-          'Failed to load bundled GeoJSON.',
-        );
-      }
-    }
     _snapshot = _snapshot.copyWith(
       status: geoJsonLoaded
-          ? LocationStateStatus.init
+          ? LocationStateStatus.waitStart
           : LocationStateStatus.waitGeoJson,
       timestamp: DateTime.now(),
       geoJsonLoaded: geoJsonLoaded,
@@ -120,6 +102,7 @@ class AppController extends ChangeNotifier {
     _logInfo('APP', 'Monitoring stopped.');
     notifyListeners();
   }
+
   void setDeveloperMode(bool enabled) {
     if (_developerMode == enabled) {
       return;
@@ -129,25 +112,70 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> updateConfig(AppConfig newConfig) async {
+    if (_config == null) {
+      return;
+    }
+
+    final wasMonitoring = _subscription != null;
+
+    // 監視中であれば一時停止
+    if (wasMonitoring) {
+      await stopMonitoring();
+    }
+
+    // 設定を更新
+    _config = newConfig;
+    stateMachine.updateConfig(newConfig);
+
+    // 設定をファイルに保存
+    await fileManager.saveConfig(newConfig);
+
+    _logInfo(
+      'APP',
+      'Config updated: innerBuffer=${newConfig.innerBufferM}m, '
+          'polling=${newConfig.sampleIntervalS['fast']}s, '
+          'gpsThreshold=${newConfig.gpsAccuracyBadMeters}m',
+    );
+
+    // 監視中だった場合は新しい設定で再開
+    if (wasMonitoring && geoJsonLoaded) {
+      await startMonitoring();
+    }
+
+    notifyListeners();
+  }
+
   Future<void> reloadGeoJsonFromPicker() async {
+    // 先に監視を停止（ファイル操作前に停止）
+    await stopMonitoring();
+
     try {
       // ファイル名を取得するために、file_selectorを直接使用
       final file = await fileManager.pickGeoJsonFile();
       if (file == null) {
+        // キャンセル時は何もしない（ログも出さない）
         return;
       }
+
       final raw = await file.readAsString();
       final model = GeoModel.fromGeoJson(raw);
+
       _geoModel = model;
       // ファイル名をpathから抽出し、拡張子を.geojsonに統一
       final extractedName = _extractFileName(file.path) ?? file.name;
       _geoJsonFileName = _normalizeToGeoJson(extractedName);
       _areaIndex = AreaIndex.build(model.polygons);
       stateMachine.updateGeometry(_geoModel, _areaIndex);
-      _snapshot = _snapshot.copyWith(
-        status: LocationStateStatus.init,
+
+      // waitStart状態に戻し、距離・方位角などの情報をクリア
+      _snapshot = StateSnapshot(
+        status: LocationStateStatus.waitStart,
         timestamp: DateTime.now(),
         geoJsonLoaded: true,
+        distanceToBoundaryM: null,
+        bearingToBoundaryDeg: null,
+        nearestBoundaryPoint: null,
         notes: 'GeoJSON loaded',
       );
       await notifier.stopAlarm();
@@ -159,6 +187,13 @@ class AppController extends ChangeNotifier {
       _logError('APP', _lastErrorMessage!);
       notifyListeners();
     } catch (e) {
+      // ファイルピッカーをキャンセルした場合などはエラーログを出さない
+      final errorMessage = e.toString().toLowerCase();
+      if (errorMessage.contains('cancel') ||
+          errorMessage.contains('user') ||
+          errorMessage.contains('abort')) {
+        return;
+      }
       _lastErrorMessage = 'Unable to open file: ${e.toString()}';
       _logError('APP', _lastErrorMessage!);
       notifyListeners();
@@ -188,8 +223,8 @@ class AppController extends ChangeNotifier {
     _logDebug(
       'GPS',
       'lat=${fix.latitude.toStringAsFixed(6)} '
-      'lon=${fix.longitude.toStringAsFixed(6)} '
-      'acc=${fix.accuracyMeters?.toStringAsFixed(1) ?? '-'}m',
+          'lon=${fix.longitude.toStringAsFixed(6)} '
+          'acc=${fix.accuracyMeters?.toStringAsFixed(1) ?? '-'}m',
       timestamp: fix.timestamp,
     );
     final evaluation = stateMachine.evaluate(fix);
@@ -258,9 +293,7 @@ class AppController extends ChangeNotifier {
       notifier: notifier,
     );
     controller._config = config;
-    await controller.initialize(
-      initialGeoAsset: 'assets/geojson/sample_area.geojson',
-    );
+    await controller.initialize();
     return controller;
   }
 
@@ -343,8 +376,7 @@ class AppController extends ChangeNotifier {
         ? ' (${snapshot.nearestBoundaryPoint!.latitude.toStringAsFixed(5)},'
             '${snapshot.nearestBoundaryPoint!.longitude.toStringAsFixed(5)})'
         : '';
-    final notes =
-        (snapshot.notes ?? '').isEmpty ? '' : ' (${snapshot.notes})';
+    final notes = (snapshot.notes ?? '').isEmpty ? '' : ' (${snapshot.notes})';
     return 'status=${snapshot.status.name} dist=$dist acc=$accuracy '
         'bearing=$bearing$nearest$notes';
   }

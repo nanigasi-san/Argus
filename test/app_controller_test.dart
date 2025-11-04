@@ -45,11 +45,11 @@ void main() {
       expect(alarm.playCount, 1);
 
       await controller.reloadGeoJsonFromPicker();
-      expect(controller.snapshot.status, LocationStateStatus.init);
+      expect(controller.snapshot.status, LocationStateStatus.waitStart);
 
-      expect(controller.snapshot.status, LocationStateStatus.init);
+      expect(controller.snapshot.status, LocationStateStatus.waitStart);
       expect(controller.geoJsonLoaded, isTrue);
-      expect(stateMachine.current, LocationStateStatus.init);
+      expect(stateMachine.current, LocationStateStatus.waitStart);
       expect(alarm.stopCount, 1);
     });
 
@@ -157,10 +157,8 @@ class FakeFileManager extends FileManager {
   @override
   Future<AppConfig> readConfig() async => config;
 
-  @override
   Future<GeoModel?> pickAndLoadGeoJson() async => _model;
 
-  @override
   Future<GeoModel> loadBundledGeoJson(String assetPath) async => _model;
 
   @override
