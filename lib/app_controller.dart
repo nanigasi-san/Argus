@@ -15,6 +15,10 @@ import 'platform/notifier.dart';
 import 'state_machine/state.dart';
 import 'state_machine/state_machine.dart';
 
+/// アプリケーション全体の状態と動作を管理するコントローラ。
+///
+/// 位置情報の監視、GeoJSONの読み込み、設定管理、ログ記録などを統合的に処理します。
+/// ChangeNotifierを継承しており、状態変更時にUIに通知します。
 class AppController extends ChangeNotifier {
   AppController({
     required this.stateMachine,
@@ -52,6 +56,9 @@ class AppController extends ChangeNotifier {
   List<AppLogEntry> get logs => List.unmodifiable(_logs);
   bool get developerMode => _developerMode;
 
+  /// アプリケーションを初期化します。
+  ///
+  /// 権限の要求、設定ファイルの読み込み、状態マシンの初期化を行います。
   Future<void> initialize() async {
     await _requestPermissions();
     _config ??= await fileManager.readConfig();
@@ -77,6 +84,7 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// エラーメッセージをクリアします。
   void clearError() {
     if (_lastErrorMessage != null) {
       _lastErrorMessage = null;
@@ -95,6 +103,7 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 位置情報の監視を停止します。
   Future<void> stopMonitoring() async {
     await _subscription?.cancel();
     _subscription = null;
@@ -103,6 +112,9 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 開発者モードの有効/無効を切り替えます。
+  ///
+  /// 開発者モードが有効な場合、UIに詳細な状態情報が表示されます。
   void setDeveloperMode(bool enabled) {
     if (_developerMode == enabled) {
       return;
@@ -112,6 +124,9 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// アプリケーション設定を更新します。
+  ///
+  /// 監視中の場合は一時停止してから設定を更新し、再開します。
   Future<void> updateConfig(AppConfig newConfig) async {
     if (_config == null) {
       return;
@@ -146,6 +161,10 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// ファイルピッカーからGeoJSONファイルを読み込みます。
+  ///
+  /// ファイルが正常に読み込まれた場合、状態マシンとエリアインデックスを更新します。
+  /// エラーが発生した場合は、エラーメッセージを設定します。
   Future<void> reloadGeoJsonFromPicker() async {
     // 先に監視を停止（ファイル操作前に停止）
     await stopMonitoring();
@@ -200,6 +219,7 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  /// パスからファイル名を抽出します。
   String? _extractFileName(String path) {
     if (path.isEmpty) return null;
     // パスセパレータで分割して最後の要素（ファイル名）を取得
@@ -210,6 +230,7 @@ class AppController extends ChangeNotifier {
     return cleanFileName.isNotEmpty ? cleanFileName : null;
   }
 
+  /// ファイル名の拡張子を.geojsonに正規化します。
   String _normalizeToGeoJson(String fileName) {
     // 拡張子を除去
     final nameWithoutExt = fileName.replaceAll(RegExp(r'\.[^.]+$'), '');

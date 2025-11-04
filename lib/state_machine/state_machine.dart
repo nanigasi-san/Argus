@@ -6,6 +6,10 @@ import '../platform/location_service.dart';
 import 'hysteresis_counter.dart';
 import 'state.dart';
 
+/// 位置情報とGeoJSONに基づいて状態遷移を管理する状態マシン。
+///
+/// 位置情報がエリア内外どちらにあるかを判定し、ヒステリシス機構を使用して
+/// 状態の遷移を制御します。
 class StateMachine {
   StateMachine({
     required AppConfig config,
@@ -30,6 +34,9 @@ class StateMachine {
 
   LocationStateStatus get current => _current;
 
+  /// 設定を更新します。
+  ///
+  /// ヒステリシスカウンタも新しい設定で再初期化されます。
   void updateConfig(AppConfig config) {
     _config = config;
     _hysteresis = HysteresisCounter(
@@ -38,6 +45,9 @@ class StateMachine {
     );
   }
 
+  /// GeoJSONジオメトリとエリアインデックスを更新します。
+  ///
+  /// ヒステリシスカウンタもリセットされます。
   void updateGeometry(GeoModel geoModel, AreaIndex index) {
     _geoModel = geoModel;
     _areaIndex = index;
@@ -47,6 +57,9 @@ class StateMachine {
         : LocationStateStatus.waitGeoJson;
   }
 
+  /// 位置情報を評価し、現在の状態を返します。
+  ///
+  /// 評価結果はStateSnapshotとして返され、現在の状態も更新されます。
   StateSnapshot evaluate(LocationFix fix) {
     final snapshot = _evaluateInternal(fix);
     _current = snapshot.status;

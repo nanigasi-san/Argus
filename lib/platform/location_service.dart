@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 
 import '../io/config.dart';
 
+/// 位置情報のスナップショットを表すクラス。
 class LocationFix {
   const LocationFix({
     required this.latitude,
@@ -22,12 +23,16 @@ class LocationFix {
   final double? batteryPercent;
 }
 
+/// 位置情報サービスへの抽象インターフェース。
+///
+/// プラットフォーム固有の実装はこのインターフェースを実装します。
 abstract class LocationService {
   Stream<LocationFix> get stream;
   Future<void> start(AppConfig config);
   Future<void> stop();
 }
 
+/// Geolocatorパッケージを使用した位置情報サービスの実装。
 class GeolocatorLocationService implements LocationService {
   GeolocatorLocationService();
 

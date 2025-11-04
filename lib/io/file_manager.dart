@@ -6,7 +6,11 @@ import 'package:path_provider/path_provider.dart';
 
 import 'config.dart';
 
+/// ファイル操作を管理するクラス。
+///
+/// GeoJSONファイルの選択、設定ファイルの読み書き、ログファイルの取得を提供します。
 class FileManager {
+  /// GeoJSONファイルを選択するファイルピッカーを開きます。
   Future<XFile?> pickGeoJsonFile() async {
     const XTypeGroup typeGroup = XTypeGroup(
       label: 'GeoJSON files',
@@ -15,6 +19,9 @@ class FileManager {
     return await openFile(acceptedTypeGroups: [typeGroup]);
   }
 
+  /// 設定ファイルのパスを取得します。
+  ///
+  /// ファイルが存在しない場合はデフォルト設定で作成します。
   Future<File> getConfigFile() async {
     final dir = await getApplicationDocumentsDirectory();
     final file = File('${dir.path}/config.json');
@@ -25,11 +32,15 @@ class FileManager {
     return file;
   }
 
+  /// 設定をファイルに保存します。
   Future<void> saveConfig(AppConfig config) async {
     final file = await getConfigFile();
     await file.writeAsString(jsonEncode(config.toJson()));
   }
 
+  /// 設定ファイルを読み込みます。
+  ///
+  /// ファイルの読み込みに失敗した場合は、デフォルト設定を返します。
   Future<AppConfig> readConfig() async {
     try {
       final file = await getConfigFile();
@@ -41,6 +52,9 @@ class FileManager {
     }
   }
 
+  /// ログファイルのパスを取得します。
+  ///
+  /// ファイルが存在しない場合は作成します。
   Future<File> openLogFile() async {
     final dir = await getApplicationDocumentsDirectory();
     final file = File('${dir.path}/argus.log');
