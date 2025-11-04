@@ -8,12 +8,12 @@
 
 | ファイル名 | 対象クラス/機能 | テスト数 |
 | --------- | -------------- | ------- |
-| `state_machine_test.dart` | `StateMachine`, 状態遷移 | 9 |
+| `state_machine_test.dart` | `StateMachine`, ��ԑJ�� | 11 |
 | `hysteresis_counter_test.dart` | `HysteresisCounter` | 7 |
 | `point_in_polygon_test.dart` | `PointInPolygon`, 内外判定 | 9 |
 | `geo_model_test.dart` | `GeoModel`, `GeoPolygon`, GeoJSONパース | 13 |
 | `app_controller_test.dart` | `AppController` | 3 |
-| **総計** | | **41** |
+| **���v** | | **43** |
 
 ---
 
@@ -77,6 +77,14 @@
   2. 内部に移動して `INNER`
   3. 再度外部に移動
 - **期待結果**: 再度外部に移動した際、`OUTER_PENDING` からヒステリシスを再開
+
+#### 1.10 `transitions from OUTER to INNER even with bad GPS when inside`
+- **狙い**: OUTER 維持中でも測位精度が悪いまま内側へ戻った際に即座に inner へ復帰することを確認
+- **期待結果**: 状態が `LocationStateStatus.inner` へ遷移し、ヒステリシスがリセットされる
+
+#### 1.11 `maintains OUTER with bad GPS when still outside`
+- **狙い**: OUTER 継続中に精度が悪化しても位置が依然として外側なら OUTER を維持することを確認
+- **期待結果**: 状態は `LocationStateStatus.outer` のまま継続し、距離情報が保持される
 
 ---
 

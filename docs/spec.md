@@ -92,7 +92,7 @@
 - `leaveConfirmSeconds`: OUTER 確定に必要な経過秒数。
 - `gpsAccuracyBadMeters`: 精度閾値。超過で `gpsBad`。
 - Each evaluation pass reuses PointInPolygon results for both containment and nearest-boundary calculations to avoid duplicate work.
-
+- When OUTER is active but a new fix with poor accuracy is actually inside the area, the machine resets hysteresis and returns to INNER/NEAR immediately.
 状態遷移は既存テスト（`test/state_machine_test.dart`）により INNER/NEAR/OUTER の代表ケースが保証される。
 
 ---
@@ -150,7 +150,6 @@
   - `point_in_polygon_test.dart`: 点とポリゴンの関係判定。
   - `platform/notifier_test.dart`: OUTER→INNER→OUTER でアラーム切り替え。
   - `app_controller_test.dart`: GeoJSON 再読込で init 状態・アラーム停止を確認。
-  - `widget_test.dart`: 基本ウィジェット構成のレンダリング確認。
 
 - `flutter analyze` を CI ベースラインとし、警告ゼロを維持。
 

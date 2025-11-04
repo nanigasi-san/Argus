@@ -1,5 +1,3 @@
-import 'package:collection/collection.dart';
-
 import '../geo/area_index.dart';
 import '../geo/geo_model.dart';
 import '../geo/point_in_polygon.dart';
@@ -85,10 +83,9 @@ class StateMachine {
     if (fix.accuracyMeters == null ||
         fix.accuracyMeters! > _config.gpsAccuracyBadMeters) {
       // outer になった場合は GPS_BAD の精度チェックでは取り消さない。
+      // ただし、実際に内側に戻ったかどうかはチェックする必要がある
       if (_current == LocationStateStatus.outer) {
-        // OUTER状態の場合は精度が悪くてもOUTERを維持する
-        // この場合は次の評価に進む（ヒステリシスはリセットしない）
-        // ただし、OUTER状態を維持するため、距離計算を試みる
+        // OUTER状態の場合、精度が悪くても内側に戻ったかどうかをチェック
         final candidatePolys = _areaIndex
             .lookup(
               fix.latitude,
@@ -98,17 +95,36 @@ class StateMachine {
         final searchPolys =
             candidatePolys.isEmpty ? _geoModel.polygons : candidatePolys;
 
-        final nearestEval = searchPolys
-            .map(
-              (poly) => _pip.evaluatePoint(
-                fix.latitude,
-                fix.longitude,
-                poly,
-              ),
-            )
-            .sortedBy<num>((r) => r.distanceToBoundaryM)
-            .firstOrNull;
+        final polygonEval = _evaluatePolygons(
+          fix.latitude,
+          fix.longitude,
+          searchPolys,
+        );
 
+        // Check if the fix has re-entered the area
+        final insideEval = polygonEval.inside;
+
+        if (insideEval != null && insideEval.contains) {
+          // When accuracy is poor but we are inside, treat as INNER/NEAR
+          _hysteresis.reset();
+          final distance = insideEval.distanceToBoundaryM;
+          final isNear = distance < _config.innerBufferM;
+          return StateSnapshot(
+            status:
+                isNear ? LocationStateStatus.near : LocationStateStatus.inner,
+            timestamp: fix.timestamp,
+            horizontalAccuracyM: fix.accuracyMeters,
+            distanceToBoundaryM: distance,
+            geoJsonLoaded: true,
+            nearestBoundaryPoint: insideEval.nearestPoint,
+            bearingToBoundaryDeg: insideEval.bearingToBoundaryDeg,
+            notes:
+                'Low accuracy ${fix.accuracyMeters?.toStringAsFixed(1) ?? '-'}m, but inside area',
+          );
+        }
+
+        // Otherwise stay in OUTER with best-effort distance
+        final nearestEval = polygonEval.nearest;
         final distance = nearestEval?.distanceToBoundaryM;
         return StateSnapshot(
           status: LocationStateStatus.outer,
@@ -143,18 +159,13 @@ class StateMachine {
     final searchPolys =
         candidatePolys.isEmpty ? _geoModel.polygons : candidatePolys;
 
-    final evaluations = searchPolys
-        .map(
-          (poly) => _pip.evaluatePoint(
-            fix.latitude,
-            fix.longitude,
-            poly,
-          ),
-        )
-        .toList(growable: false);
+    final polygonEval = _evaluatePolygons(
+      fix.latitude,
+      fix.longitude,
+      searchPolys,
+    );
 
-    final evaluation =
-        evaluations.firstWhereOrNull((result) => result.contains);
+    final evaluation = polygonEval.inside;
 
     if (evaluation != null && evaluation.contains) {
       _hysteresis.reset();
@@ -171,9 +182,7 @@ class StateMachine {
       );
     }
 
-    final nearest = evaluations
-        .sortedBy<num>((r) => r.distanceToBoundaryM)
-        .firstOrNull;
+    final nearest = polygonEval.nearest;
 
     final distance = nearest?.distanceToBoundaryM;
     final reached = _hysteresis.addSample(fix.timestamp) && distance != null;
@@ -205,4 +214,38 @@ class StateMachine {
     // outer になった場合は GPS_BAD の精度チェックでは取り消さない。
     return outerSnapshot;
   }
+
+  _PolygonEvaluationResult _evaluatePolygons(
+    double latitude,
+    double longitude,
+    Iterable<GeoPolygon> polygons,
+  ) {
+    PointInPolygonEvaluation? inside;
+    PointInPolygonEvaluation? nearest;
+    for (final polygon in polygons) {
+      final evaluation = _pip.evaluatePoint(
+        latitude,
+        longitude,
+        polygon,
+      );
+      if (nearest == null ||
+          evaluation.distanceToBoundaryM < nearest.distanceToBoundaryM) {
+        nearest = evaluation;
+      }
+      if (inside == null && evaluation.contains) {
+        inside = evaluation;
+      }
+    }
+    return _PolygonEvaluationResult(inside: inside, nearest: nearest);
+  }
+}
+
+class _PolygonEvaluationResult {
+  const _PolygonEvaluationResult({
+    this.inside,
+    this.nearest,
+  });
+
+  final PointInPolygonEvaluation? inside;
+  final PointInPolygonEvaluation? nearest;
 }
