@@ -1,6 +1,9 @@
 # Argus
 ![App icon](./icon.png)
 
+[![codecov](https://codecov.io/gh/YOUR_USERNAME/Argus/branch/main/graph/badge.svg)](https://codecov.io/gh/YOUR_USERNAME/Argus)
+[![CI](https://github.com/YOUR_USERNAME/Argus/workflows/CI/badge.svg)](https://github.com/YOUR_USERNAME/Argus/actions)
+
 ## テストカバレッジ
 
 ```bash
