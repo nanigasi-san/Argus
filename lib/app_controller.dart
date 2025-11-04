@@ -155,16 +155,24 @@ class AppController extends ChangeNotifier {
       }
       final raw = await file.readAsString();
       final model = GeoModel.fromGeoJson(raw);
+      // 監視を停止
+      await stopMonitoring();
+
       _geoModel = model;
       // ファイル名をpathから抽出し、拡張子を.geojsonに統一
       final extractedName = _extractFileName(file.path) ?? file.name;
       _geoJsonFileName = _normalizeToGeoJson(extractedName);
       _areaIndex = AreaIndex.build(model.polygons);
       stateMachine.updateGeometry(_geoModel, _areaIndex);
-      _snapshot = _snapshot.copyWith(
+
+      // waitStart状態に戻し、距離・方位角などの情報をクリア
+      _snapshot = StateSnapshot(
         status: LocationStateStatus.waitStart,
         timestamp: DateTime.now(),
         geoJsonLoaded: true,
+        distanceToBoundaryM: null,
+        bearingToBoundaryDeg: null,
+        nearestBoundaryPoint: null,
         notes: 'GeoJSON loaded',
       );
       await notifier.stopAlarm();
