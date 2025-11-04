@@ -183,12 +183,8 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> _requestPermissions() async {
-    final status = await Permission.notification.status;
-    if (status.isDenied || status.isLimited) {
-      await Permission.notification.request();
-    } else if (status.isPermanentlyDenied) {
-      await openAppSettings();
-    }
+    await _ensureNotificationPermission();
+    await _ensureLocationPermission();
   }
 
   static Future<AppController> bootstrap() async {
@@ -213,5 +209,36 @@ class AppController extends ChangeNotifier {
       initialGeoAsset: 'assets/geojson/sample_area.geojson',
     );
     return controller;
+  }
+
+  Future<void> _ensureNotificationPermission() async {
+    final status = await Permission.notification.status;
+    if (status.isPermanentlyDenied) {
+      await openAppSettings();
+      return;
+    }
+    if (status.isDenied || status.isLimited) {
+      final result = await Permission.notification.request();
+      if (result.isPermanentlyDenied) {
+        await openAppSettings();
+      }
+    }
+  }
+
+  Future<void> _ensureLocationPermission() async {
+    var status = await Permission.locationAlways.status;
+    if (status.isLimited) {
+      status = await Permission.locationAlways.request();
+    }
+    if (status.isDenied || status.isRestricted) {
+      final whenInUseStatus = await Permission.locationWhenInUse.request();
+      if (!whenInUseStatus.isGranted) {
+        return;
+      }
+      status = await Permission.locationAlways.request();
+    }
+    if (status.isPermanentlyDenied || !status.isGranted) {
+      await openAppSettings();
+    }
   }
 }

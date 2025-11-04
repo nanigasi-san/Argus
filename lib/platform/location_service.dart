@@ -59,6 +59,14 @@ class GeolocatorLocationService implements LocationService {
         distanceFilter: distanceFilter,
         intervalDuration: interval,
         forceLocationManager: false,
+        foregroundNotificationConfig: const ForegroundNotificationConfig(
+          notificationTitle: 'Argus is monitoring your location',
+          notificationText:
+              'Location tracking stays active even when the screen is off.',
+          notificationChannelName: 'Argus background monitoring',
+          enableWakeLock: true,
+          setOngoing: true,
+        ),
       );
     } else if (Platform.isIOS || Platform.isMacOS) {
       settings = AppleSettings(
@@ -103,8 +111,17 @@ class GeolocatorLocationService implements LocationService {
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
     }
-    return permission == LocationPermission.always ||
-        permission == LocationPermission.whileInUse;
+    if (permission == LocationPermission.deniedForever) {
+      await Geolocator.openAppSettings();
+      return false;
+    }
+    if (permission == LocationPermission.whileInUse) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.whileInUse) {
+        await Geolocator.openAppSettings();
+      }
+    }
+    return permission == LocationPermission.always;
   }
 }
 

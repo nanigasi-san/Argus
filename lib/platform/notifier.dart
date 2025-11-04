@@ -67,7 +67,7 @@ class Notifier {
 
   Future<void> notifyOuter() async {
     await initialize();
-    final androidDetails = AndroidNotificationDetails(
+    final androidDetails = const AndroidNotificationDetails(
       _channelId,
       _channelName,
       channelDescription: _channelDescription,
