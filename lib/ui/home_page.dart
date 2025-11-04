@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_controller.dart';
+import '../geo/geo_model.dart';
 import '../io/log_entry.dart';
 import '../state_machine/state.dart';
 import 'settings_page.dart';
@@ -14,6 +15,7 @@ class HomePage extends StatelessWidget {
     return Consumer<AppController>(
       builder: (context, controller, _) {
         final snapshot = controller.snapshot;
+        final showNav = snapshot.status == LocationStateStatus.outer;
         return Scaffold(
           appBar: AppBar(
             title: const Text('Argus'),
@@ -47,11 +49,23 @@ class HomePage extends StatelessWidget {
                   'Last update: ${snapshot.timestamp.toLocal()}',
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  'Distance to boundary: '
-                  '${snapshot.distanceToBoundaryM?.toStringAsFixed(1) ?? '-'} m',
-                ),
-                const SizedBox(height: 8),
+                if (showNav) ...[
+                  Text(
+                    'Distance to boundary: '
+                    '${snapshot.distanceToBoundaryM?.toStringAsFixed(1) ?? '-'} m',
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Bearing to boundary: '
+                    '${snapshot.bearingToBoundaryDeg != null ? _formatBearing(snapshot.bearingToBoundaryDeg!) : '-'}',
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Nearest boundary point: '
+                    '${snapshot.nearestBoundaryPoint != null ? _formatLatLng(snapshot.nearestBoundaryPoint!) : '-'}',
+                  ),
+                  const SizedBox(height: 8),
+                ],
                 Text(
                   'Accuracy: '
                   '${snapshot.horizontalAccuracyM?.toStringAsFixed(1) ?? '-'} m',
@@ -249,4 +263,24 @@ class _LogCard extends StatelessWidget {
         return Icons.notes;
     }
   }
+}
+
+String _formatBearing(double bearing) {
+  const labels = <String>[
+    'N',
+    'NE',
+    'E',
+    'SE',
+    'S',
+    'SW',
+    'W',
+    'NW',
+  ];
+  final normalized = (bearing % 360 + 360) % 360;
+  final index = ((normalized + 22.5) ~/ 45) % labels.length;
+  return '${normalized.toStringAsFixed(0)}deg (${labels[index]})';
+}
+
+String _formatLatLng(LatLng point) {
+  return '${point.latitude.toStringAsFixed(5)}, ${point.longitude.toStringAsFixed(5)}';
 }

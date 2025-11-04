@@ -116,6 +116,8 @@ class StateMachine {
           horizontalAccuracyM: fix.accuracyMeters,
           distanceToBoundaryM: distance,
           geoJsonLoaded: true,
+          nearestBoundaryPoint: nearestEval?.nearestPoint,
+          bearingToBoundaryDeg: nearestEval?.bearingToBoundaryDeg,
           notes:
               'Low accuracy ${fix.accuracyMeters?.toStringAsFixed(1) ?? '-'}m, but maintaining OUTER state',
         );
@@ -161,6 +163,8 @@ class StateMachine {
         horizontalAccuracyM: fix.accuracyMeters,
         distanceToBoundaryM: distance,
         geoJsonLoaded: true,
+        nearestBoundaryPoint: evaluation.nearestPoint,
+        bearingToBoundaryDeg: evaluation.bearingToBoundaryDeg,
       );
     }
 
@@ -185,6 +189,8 @@ class StateMachine {
         horizontalAccuracyM: fix.accuracyMeters,
         distanceToBoundaryM: distance,
         geoJsonLoaded: true,
+        nearestBoundaryPoint: nearest?.nearestPoint,
+        bearingToBoundaryDeg: nearest?.bearingToBoundaryDeg,
         notes: 'Monitoring exit hysteresis',
       );
     }
@@ -195,6 +201,8 @@ class StateMachine {
       horizontalAccuracyM: fix.accuracyMeters,
       distanceToBoundaryM: distance,
       geoJsonLoaded: true,
+      nearestBoundaryPoint: nearest?.nearestPoint,
+      bearingToBoundaryDeg: nearest?.bearingToBoundaryDeg,
       notes: 'Confirmed exit',
     );
 

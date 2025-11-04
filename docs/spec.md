@@ -1,4 +1,4 @@
-# Argus 仕様書 v5（2025-11-03 時点）
+﻿# Argus 仕様書 v5（2025-11-03 時点）
 
 本ドキュメントは Flutter 製アプリ Argus の現行コード（ブランチ `background`）をもとに構成・挙動・テスト観点を整理したものです。最新コードに追従するため、旧バージョンからの差分を含め全面的に更新しています。
 
@@ -169,3 +169,11 @@
 - Geolocator: <https://pub.dev/packages/geolocator>
 - flutter_local_notifications: <https://pub.dev/packages/flutter_local_notifications>
 - permission_handler: <https://pub.dev/packages/permission_handler>
+
+## 10. 退避ナビゲーション
+
+- INNER/NEAR states keep navigation distance/bearing hidden; cues surface only after OUTER is confirmed.
+
+- OUTER/OUTER_PENDING 状態では最寄り境界点（緯度経度）と距離・推奨方角を表示し、復帰までの目標地点を提示する。
+- StateSnapshot に方位角（deg）と最寄り境界点座標を保持し、ログ/通知メッセージで案内に利用する。
+- HomePage では距離・方角（方位記号付き）・ターゲット座標を表示して方向感覚を補助する。

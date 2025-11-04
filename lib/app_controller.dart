@@ -170,7 +170,7 @@ class AppController extends ChangeNotifier {
       await notifier.notifyOuter();
       _logWarning(
         'ALERT',
-        'Safe zone exited.',
+        'Safe zone exited.${_buildNavHint(_snapshot)}',
         timestamp: _snapshot.timestamp,
       );
     } else if (previous == LocationStateStatus.outer &&
@@ -289,14 +289,54 @@ class AppController extends ChangeNotifier {
   }
 
   String _describeSnapshot(StateSnapshot snapshot) {
-    final dist = snapshot.distanceToBoundaryM != null
+    final showNav = snapshot.status == LocationStateStatus.outer;
+    final dist = showNav && snapshot.distanceToBoundaryM != null
         ? '${snapshot.distanceToBoundaryM!.toStringAsFixed(2)}m'
         : '-';
     final accuracy = snapshot.horizontalAccuracyM != null
         ? '${snapshot.horizontalAccuracyM!.toStringAsFixed(1)}m'
         : '-';
+    final bearing = showNav && snapshot.bearingToBoundaryDeg != null
+        ? '${snapshot.bearingToBoundaryDeg!.toStringAsFixed(0)}deg'
+        : '-';
+    final nearest = showNav && snapshot.nearestBoundaryPoint != null
+        ? ' (${snapshot.nearestBoundaryPoint!.latitude.toStringAsFixed(5)},'
+            '${snapshot.nearestBoundaryPoint!.longitude.toStringAsFixed(5)})'
+        : '';
     final notes =
         (snapshot.notes ?? '').isEmpty ? '' : ' (${snapshot.notes})';
-    return 'status=${snapshot.status.name} dist=$dist acc=$accuracy$notes';
+    return 'status=${snapshot.status.name} dist=$dist acc=$accuracy '
+        'bearing=$bearing$nearest$notes';
+  }
+
+  String _buildNavHint(StateSnapshot snapshot) {
+    final distance = snapshot.distanceToBoundaryM;
+    final bearing = snapshot.bearingToBoundaryDeg;
+    final target = snapshot.nearestBoundaryPoint;
+    if (distance == null || bearing == null || target == null) {
+      return '';
+    }
+    final cardinal = _cardinalFromBearing(bearing);
+    final formattedBearing = '${bearing.toStringAsFixed(0)}deg';
+    final formattedTarget =
+        'lat=${target.latitude.toStringAsFixed(5)}, lon=${target.longitude.toStringAsFixed(5)}';
+    return ' Move ${distance.toStringAsFixed(0)}m toward $cardinal '
+        '($formattedBearing) heading to $formattedTarget.';
+  }
+
+  String _cardinalFromBearing(double bearing) {
+    const labels = <String>[
+      'N',
+      'NE',
+      'E',
+      'SE',
+      'S',
+      'SW',
+      'W',
+      'NW',
+    ];
+    final normalized = (bearing % 360 + 360) % 360;
+    final index = ((normalized + 22.5) ~/ 45) % labels.length;
+    return labels[index];
   }
 }
