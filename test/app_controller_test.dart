@@ -45,11 +45,11 @@ void main() {
       expect(alarm.playCount, 1);
 
       await controller.reloadGeoJsonFromPicker();
-      expect(controller.snapshot.status, LocationStateStatus.init);
+      expect(controller.snapshot.status, LocationStateStatus.waitStart);
 
-      expect(controller.snapshot.status, LocationStateStatus.init);
+      expect(controller.snapshot.status, LocationStateStatus.waitStart);
       expect(controller.geoJsonLoaded, isTrue);
-      expect(stateMachine.current, LocationStateStatus.init);
+      expect(stateMachine.current, LocationStateStatus.waitStart);
       expect(alarm.stopCount, 1);
     });
 

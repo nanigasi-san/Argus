@@ -46,9 +46,24 @@ class HomePage extends StatelessWidget {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               const SizedBox(height: 16),
+                              if (snapshot.status ==
+                                  LocationStateStatus.waitStart) ...[
+                                Text(
+                                  '↓ Press this button to start',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 8),
+                              ],
                               _LargeStatusDisplay(
                                 status: snapshot.status,
-                                onTap: snapshot.status == LocationStateStatus.init
+                                onTap: snapshot.status ==
+                                        LocationStateStatus.waitStart
                                     ? () => controller.startMonitoring()
                                     : null,
                               ),
@@ -123,7 +138,8 @@ class HomePage extends StatelessWidget {
                                 '${snapshot.horizontalAccuracyM?.toStringAsFixed(1) ?? '-'} m',
                               ),
                               const SizedBox(height: 8),
-                              Text('GeoJSON loaded: ${controller.geoJsonLoaded}'),
+                              Text(
+                                  'GeoJSON loaded: ${controller.geoJsonLoaded}'),
                               const SizedBox(height: 24),
                               if (controller.lastErrorMessage != null) ...[
                                 Material(
@@ -157,10 +173,13 @@ class HomePage extends StatelessWidget {
                                   ),
                                 ),
                                 const SizedBox(height: 8),
-                                ...controller.logs.take(5).map((entry) => Padding(
-                                      padding: const EdgeInsets.only(bottom: 8),
-                                      child: _LogCard(entry: entry),
-                                    )),
+                                ...controller.logs
+                                    .take(5)
+                                    .map((entry) => Padding(
+                                          padding:
+                                              const EdgeInsets.only(bottom: 8),
+                                          child: _LogCard(entry: entry),
+                                        )),
                               ],
                             ],
                           ),
@@ -171,15 +190,30 @@ class HomePage extends StatelessWidget {
                 : Column(
                     children: [
                       // 中央に大きなステータス表示
-                      // initの時はタップ可能でSTARTボタンとして機能
+                      // waitStartの時はタップ可能でSTARTボタンとして機能
                       Expanded(
                         child: Center(
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
+                              if (snapshot.status ==
+                                  LocationStateStatus.waitStart) ...[
+                                Text(
+                                  '↓ Press this button to start',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 8),
+                              ],
                               _LargeStatusDisplay(
                                 status: snapshot.status,
-                                onTap: snapshot.status == LocationStateStatus.init
+                                onTap: snapshot.status ==
+                                        LocationStateStatus.waitStart
                                     ? () => controller.startMonitoring()
                                     : null,
                               ),
@@ -191,7 +225,8 @@ class HomePage extends StatelessWidget {
                               ),
                               // outerの時に方角と距離を表示
                               if (showNav &&
-                                  snapshot.status == LocationStateStatus.outer) ...[
+                                  snapshot.status ==
+                                      LocationStateStatus.outer) ...[
                                 const SizedBox(height: 24),
                                 Text(
                                   '境界までの距離: '
@@ -332,7 +367,7 @@ class _LargeStatusDisplay extends StatelessWidget {
         return Colors.grey;
       case LocationStateStatus.waitGeoJson:
         return Colors.blueGrey;
-      case LocationStateStatus.init:
+      case LocationStateStatus.waitStart:
         return Colors.blue;
     }
   }
@@ -351,8 +386,8 @@ class _LargeStatusDisplay extends StatelessWidget {
         return 'GPS不良';
       case LocationStateStatus.waitGeoJson:
         return 'GeoJSON待機';
-      case LocationStateStatus.init:
-        return '初期化';
+      case LocationStateStatus.waitStart:
+        return 'スタート待機';
     }
   }
 
@@ -377,9 +412,11 @@ class _LargeStatusDisplay extends StatelessWidget {
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Text(
               statusText,
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: circleSize * 0.2,
                 fontWeight: FontWeight.bold,
@@ -389,6 +426,7 @@ class _LargeStatusDisplay extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               status.name.toUpperCase(),
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: circleSize * 0.08,
                 color: color.withValues(alpha: 0.7),
@@ -400,7 +438,7 @@ class _LargeStatusDisplay extends StatelessWidget {
       ),
     );
 
-    // initの時はタップ可能にする
+    // waitStartの時はタップ可能にする
     if (onTap != null) {
       return GestureDetector(
         onTap: onTap,

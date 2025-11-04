@@ -59,7 +59,7 @@ class StateMachine {
     _areaIndex = index;
     _hysteresis.reset();
     _current = geoModel.hasGeometry
-        ? LocationStateStatus.init
+        ? LocationStateStatus.waitStart
         : LocationStateStatus.waitGeoJson;
   }
 

@@ -45,7 +45,7 @@
 - **状態機械**: `StateMachine` が GeoJSON と設定値（閾値）を参照し、位置情報を評価して状態を算出。
 - **状態一覧**:
   - `waitGeoJson`: GeoJSON 未ロード。ユーザにロード操作を促す。
-  - `init`: 監視準備完了。位置ストリームは未開始または安定待ち。
+  - `waitStart`: 監視準備完了。位置ストリームは未開始。スタートボタンを待っている状態。
   - `inner`: エリア内かつバッファより十分内側（`distanceToBoundaryM >= innerBufferM`）。
   - `near`: エリア内だがバッファ距離未満（`distanceToBoundaryM < innerBufferM`）。
   - `outerPending`: エリア外候補。ヒステリシス確定待ち。
@@ -103,7 +103,7 @@
 
 - **AppBar**: タイトル Argus、Settings への遷移アイコン。
 - **Body**:
-  1. **状態バッジ**: 大きな円形バッジ（画面幅の70%）で状態を表示。状態別カラー（inner: 緑、near: オレンジ、outerPending: 深オレンジ、outer: 赤、gpsBad: グレー、waitGeoJson: 青灰、init: 青）。`init` 状態ではタップ可能で START ボタンとして機能。
+  1. **状態バッジ**: 大きな円形バッジ（画面幅の70%）で状態を表示。状態別カラー（inner: 緑、near: オレンジ、outerPending: 深オレンジ、outer: 赤、gpsBad: グレー、waitGeoJson: 青灰、waitStart: 青）。`waitStart` 状態ではタップ可能で START ボタンとして機能。
   2. **GeoJSON ファイル状態**: ロード済み/未ロードの表示。ロード済みの場合はファイル名を表示。
   3. **退避ナビゲーション**: OUTER 状態時または開発者モード時に距離・方角を表示。
   4. **開発者モード情報**: 開発者モード有効時のみ表示
@@ -162,15 +162,15 @@
 
 ### 4.1 状態一覧
 
-| 状態           | 説明                                                 | 遷移条件                                                   |
-| -------------- | ---------------------------------------------------- | ---------------------------------------------------------- |
-| `waitGeoJson`  | GeoJSON 未ロード。ユーザにロード操作を促す。         | GeoJSON が未ロードの状態。                                 |
-| `init`         | 監視準備完了。位置ストリームは未開始または安定待ち。 | GeoJSON ロード後、位置監視開始前。                         |
-| `inner`        | エリア内かつバッファより十分内側。                   | `contains == true && distanceToBoundaryM >= innerBufferM`  |
-| `near`         | エリア内だがバッファ距離未満。                       | `contains == true && distanceToBoundaryM < innerBufferM`   |
-| `outerPending` | エリア外候補。ヒステリシス確定待ち。                 | `contains == false && !hysteresis.isSatisfied`             |
-| `outer`        | エリア外確定。通知・アラーム発火。                   | `contains == false && hysteresis.isSatisfied`              |
-| `gpsBad`       | 位置精度不足。OUTER 維持しつつも補正が入る。         | `accuracyMeters > gpsAccuracyBadMeters && status != outer` |
+| 状態           | 説明                                         | 遷移条件                                                   |
+| -------------- | -------------------------------------------- | ---------------------------------------------------------- |
+| `waitGeoJson`  | GeoJSON 未ロード。ユーザにロード操作を促す。 | GeoJSON が未ロードの状態。                                 |
+| `waitStart`    | 監視準備完了。位置ストリームは未開始。       | GeoJSON ロード後、位置監視開始前。                         |
+| `inner`        | エリア内かつバッファより十分内側。           | `contains == true && distanceToBoundaryM >= innerBufferM`  |
+| `near`         | エリア内だがバッファ距離未満。               | `contains == true && distanceToBoundaryM < innerBufferM`   |
+| `outerPending` | エリア外候補。ヒステリシス確定待ち。         | `contains == false && !hysteresis.isSatisfied`             |
+| `outer`        | エリア外確定。通知・アラーム発火。           | `contains == false && hysteresis.isSatisfied`              |
+| `gpsBad`       | 位置精度不足。OUTER 維持しつつも補正が入る。 | `accuracyMeters > gpsAccuracyBadMeters && status != outer` |
 
 ### 4.2 判定パラメータ
 
@@ -197,25 +197,29 @@
 
 ### 4.3.1 状態遷移図
 
+**監視開始前の状態遷移**:
+- `waitGeoJson` → `waitStart`: GeoJSONロード完了時（`updateGeometry()`）
+- `waitGeoJson`: GeoJSON未ロード時に`evaluate()`が呼ばれた場合
+
+**監視開始後の状態遷移**（位置評価により発生）:
+
 ```mermaid
 stateDiagram-v2
     [*] --> waitGeoJson: 初期状態
+    waitGeoJson --> waitStart: GeoJSONロード完了<br/>(updateGeometry)
     
-    waitGeoJson --> init: GeoJSONロード完了<br/>(updateGeometry)
-    waitGeoJson --> waitGeoJson: GeoJSON未ロード<br/>(evaluate)
+    waitStart --> inner: 監視開始後<br/>エリア内(精度良好, distance >= innerBufferM)
+    waitStart --> near: 監視開始後<br/>エリア内(精度良好, distance < innerBufferM)
+    waitStart --> outerPending: 監視開始後<br/>エリア外(精度良好, hysteresis未到達)
+    waitStart --> gpsBad: 監視開始後<br/>精度不良
     
-    init --> inner: エリア内<br/>(精度良好, distance >= innerBufferM)
-    init --> near: エリア内<br/>(精度良好, distance < innerBufferM)
-    init --> outerPending: エリア外<br/>(精度良好, hysteresis未到達)
-    init --> gpsBad: 精度不良<br/>(accuracy > gpsAccuracyBadMeters)
-    
-    inner --> inner: エリア内<br/>(精度良好, distance >= innerBufferM)
+    inner --> inner: エリア内継続<br/>(精度良好, distance >= innerBufferM)
     inner --> near: エリア内<br/>(精度良好, distance < innerBufferM)
     inner --> outerPending: エリア外<br/>(精度良好, hysteresis未到達)
     inner --> gpsBad: 精度不良
     
     near --> inner: エリア内<br/>(精度良好, distance >= innerBufferM)
-    near --> near: エリア内<br/>(精度良好, distance < innerBufferM)
+    near --> near: エリア内継続<br/>(精度良好, distance < innerBufferM)
     near --> outerPending: エリア外<br/>(精度良好, hysteresis未到達)
     near --> gpsBad: 精度不良
     
@@ -227,21 +231,19 @@ stateDiagram-v2
     
     outer --> inner: エリア内に戻る<br/>(精度良好, distance >= innerBufferM)
     outer --> near: エリア内に戻る<br/>(精度良好, distance < innerBufferM)
-    outer --> inner: エリア内に戻る<br/>(精度不良でも内側なら)
-    outer --> near: エリア内に戻る<br/>(精度不良でも内側なら)
-    outer --> outer: エリア外継続<br/>(精度不良でも外側なら維持)
+    outer --> inner: エリア内に戻る<br/>(精度不良でも内側)
+    outer --> near: エリア内に戻る<br/>(精度不良でも内側)
+    outer --> outer: エリア外継続<br/>(精度不良でも外側)
     
     gpsBad --> inner: 精度改善 + エリア内<br/>(distance >= innerBufferM)
     gpsBad --> near: 精度改善 + エリア内<br/>(distance < innerBufferM)
-    gpsBad --> gpsBad: 精度不良継続
     gpsBad --> outerPending: 精度改善 + エリア外<br/>(hysteresis未到達)
-    
-    waitGeoJson --> waitGeoJson: GeoJSON未ロード<br/>(evaluate)
+    gpsBad --> gpsBad: 精度不良継続
 ```
 
 **状態遷移の説明**:
 
-- **waitGeoJson → init**: `updateGeometry()` で GeoJSON がロードされたとき
+- **waitGeoJson → waitStart**: `updateGeometry()` で GeoJSON がロードされたとき
 - **精度良好時の遷移**:
   - エリア内: `inner` または `near`（距離に応じて）
   - エリア外: `outerPending`（hysteresis未到達）または `outer`（hysteresis到達）
@@ -352,7 +354,7 @@ stateDiagram-v2
 
 - **AppBar**: タイトル Argus、Settings への遷移アイコン。
 - **Body**:
-  1. **状態バッジ**: 大きな円形バッジ（画面幅の70%）で状態を表示。状態別カラー。`init` 状態ではタップ可能で START ボタンとして機能。
+  1. **状態バッジ**: 大きな円形バッジ（画面幅の70%）で状態を表示。状態別カラー。`waitStart` 状態ではタップ可能で START ボタンとして機能。
   2. **GeoJSON ファイル状態**: ロード済み/未ロードの表示。ロード済みの場合はファイル名を表示。
   3. **退避ナビゲーション**: OUTER 状態時または開発者モード時に距離・方角を表示。
   4. **開発者モード情報**: 開発者モード有効時のみ表示（詳細は上記参照）。
@@ -375,7 +377,7 @@ stateDiagram-v2
   - `geo_model_test.dart`: GeoJSON パーサの挙動。
   - `point_in_polygon_test.dart`: 点とポリゴンの関係判定。
   - `platform/notifier_test.dart`: OUTER→INNER→OUTER でアラーム切り替え。
-  - `app_controller_test.dart`: GeoJSON 再読込で init 状態・アラーム停止を確認。
+  - `app_controller_test.dart`: GeoJSON 再読込で waitStart 状態・アラーム停止を確認。
 
 - `flutter analyze` を CI ベースラインとし、警告ゼロを維持。
 

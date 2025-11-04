@@ -5,7 +5,7 @@ import '../geo/geo_model.dart';
 /// States emitted by the Argus geofence state machine.
 enum LocationStateStatus {
   waitGeoJson,
-  init,
+  waitStart,
   gpsBad,
   inner,
   near,

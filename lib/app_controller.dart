@@ -77,7 +77,7 @@ class AppController extends ChangeNotifier {
     }
     _snapshot = _snapshot.copyWith(
       status: geoJsonLoaded
-          ? LocationStateStatus.init
+          ? LocationStateStatus.waitStart
           : LocationStateStatus.waitGeoJson,
       timestamp: DateTime.now(),
       geoJsonLoaded: geoJsonLoaded,
@@ -120,6 +120,7 @@ class AppController extends ChangeNotifier {
     _logInfo('APP', 'Monitoring stopped.');
     notifyListeners();
   }
+
   void setDeveloperMode(bool enabled) {
     if (_developerMode == enabled) {
       return;
@@ -151,8 +152,8 @@ class AppController extends ChangeNotifier {
     _logInfo(
       'APP',
       'Config updated: innerBuffer=${newConfig.innerBufferM}m, '
-      'polling=${newConfig.sampleIntervalS['fast']}s, '
-      'gpsThreshold=${newConfig.gpsAccuracyBadMeters}m',
+          'polling=${newConfig.sampleIntervalS['fast']}s, '
+          'gpsThreshold=${newConfig.gpsAccuracyBadMeters}m',
     );
 
     // 監視中だった場合は新しい設定で再開
@@ -179,7 +180,7 @@ class AppController extends ChangeNotifier {
       _areaIndex = AreaIndex.build(model.polygons);
       stateMachine.updateGeometry(_geoModel, _areaIndex);
       _snapshot = _snapshot.copyWith(
-        status: LocationStateStatus.init,
+        status: LocationStateStatus.waitStart,
         timestamp: DateTime.now(),
         geoJsonLoaded: true,
         notes: 'GeoJSON loaded',
@@ -222,8 +223,8 @@ class AppController extends ChangeNotifier {
     _logDebug(
       'GPS',
       'lat=${fix.latitude.toStringAsFixed(6)} '
-      'lon=${fix.longitude.toStringAsFixed(6)} '
-      'acc=${fix.accuracyMeters?.toStringAsFixed(1) ?? '-'}m',
+          'lon=${fix.longitude.toStringAsFixed(6)} '
+          'acc=${fix.accuracyMeters?.toStringAsFixed(1) ?? '-'}m',
       timestamp: fix.timestamp,
     );
     final evaluation = stateMachine.evaluate(fix);
@@ -292,9 +293,7 @@ class AppController extends ChangeNotifier {
       notifier: notifier,
     );
     controller._config = config;
-    await controller.initialize(
-      initialGeoAsset: 'assets/geojson/sample_area.geojson',
-    );
+    await controller.initialize();
     return controller;
   }
 
@@ -377,8 +376,7 @@ class AppController extends ChangeNotifier {
         ? ' (${snapshot.nearestBoundaryPoint!.latitude.toStringAsFixed(5)},'
             '${snapshot.nearestBoundaryPoint!.longitude.toStringAsFixed(5)})'
         : '';
-    final notes =
-        (snapshot.notes ?? '').isEmpty ? '' : ' (${snapshot.notes})';
+    final notes = (snapshot.notes ?? '').isEmpty ? '' : ' (${snapshot.notes})';
     return 'status=${snapshot.status.name} dist=$dist acc=$accuracy '
         'bearing=$bearing$nearest$notes';
   }
