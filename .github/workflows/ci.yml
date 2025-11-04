@@ -35,36 +35,33 @@ jobs:
             echo "## Coverage Report" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             
-            # Calculate overall coverage
-            total_lines=$(grep -c "^DA:" coverage/lcov.info || echo "0")
-            hit_lines=$(grep "^DA:" coverage/lcov.info | grep -c ",1$" || echo "0")
-            
-            if [ "$total_lines" -gt 0 ]; then
-              coverage_percent=$(awk "BEGIN {printf \"%.1f\", ($hit_lines / $total_lines) * 100}")
-              echo "### Overall Coverage: ${coverage_percent}%" >> $GITHUB_STEP_SUMMARY
-              echo "- **Total Lines**: $total_lines" >> $GITHUB_STEP_SUMMARY
-              echo "- **Hit Lines**: $hit_lines" >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
-            fi
-            
-            # Parse and display file coverage using Python script if available
+            # Parse and display coverage using Python script (more accurate)
             if [ -f scripts/parse_coverage.py ]; then
-              python3 scripts/parse_coverage.py >> $GITHUB_STEP_SUMMARY 2>&1 || echo "Note: Coverage parsing completed"
+              # Run Python script and capture output
+              python_output=$(python3 scripts/parse_coverage.py 2>&1)
+              
+              # Extract values from Python output (format: "Overall Coverage: 51.5%")
+              overall_coverage=$(echo "$python_output" | grep "Overall Coverage:" | sed 's/Overall Coverage: //')
+              total_lines=$(echo "$python_output" | grep "Total Lines:" | sed 's/Total Lines: //')
+              hit_lines=$(echo "$python_output" | grep "Hit Lines:" | sed 's/Hit Lines: //')
+              
+              # Write to GitHub step summary
+              echo "### Overall Coverage: ${overall_coverage}" >> $GITHUB_STEP_SUMMARY
+              echo "- **Total Lines**: ${total_lines}" >> $GITHUB_STEP_SUMMARY
+              echo "- **Hit Lines**: ${hit_lines}" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "### File Coverage" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              echo "$python_output" | grep -A 1000 "File Coverage:" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              
+              # Display in console (use Python script output directly)
+              echo "=== Coverage Summary ==="
+              echo "$python_output"
             else
+              echo "⚠️ Coverage parsing script not found (scripts/parse_coverage.py)" >> $GITHUB_STEP_SUMMARY
               echo "### File Coverage" >> $GITHUB_STEP_SUMMARY
               echo "Coverage details available in the artifact." >> $GITHUB_STEP_SUMMARY
-            fi
-            
-            # Display coverage in console
-            echo "=== Coverage Summary ===" 
-            if [ -f scripts/parse_coverage.py ]; then
-              python3 scripts/parse_coverage.py
-            else
-              echo "Total lines: $total_lines"
-              echo "Hit lines: $hit_lines"
-              if [ "$total_lines" -gt 0 ]; then
-                echo "Coverage: ${coverage_percent}%"
-              fi
             fi
           else
             echo "⚠️ No coverage file found (coverage/lcov.info)"
