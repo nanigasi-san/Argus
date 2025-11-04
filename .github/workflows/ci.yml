@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [ '*' ]
+  pull_request:
+    branches: [ '*' ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 'stable'
+          channel: 'stable'
+
+      - name: Verify Flutter installation
+        run: flutter --version
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Run tests with coverage
+        run: flutter test --coverage
+
+      - name: Generate coverage report
+        if: always()
+        run: |
+          if [ -f coverage/lcov.info ]; then
+            echo "## Coverage Report" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            # Calculate overall coverage
+            total_lines=$(grep -c "^DA:" coverage/lcov.info || echo "0")
+            hit_lines=$(grep "^DA:" coverage/lcov.info | grep -c ",1$" || echo "0")
+            
+            if [ "$total_lines" -gt 0 ]; then
+              coverage_percent=$(awk "BEGIN {printf \"%.1f\", ($hit_lines / $total_lines) * 100}")
+              echo "### Overall Coverage: ${coverage_percent}%" >> $GITHUB_STEP_SUMMARY
+              echo "- **Total Lines**: $total_lines" >> $GITHUB_STEP_SUMMARY
+              echo "- **Hit Lines**: $hit_lines" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            # Parse and display file coverage using Python script if available
+            if [ -f scripts/parse_coverage.py ]; then
+              python3 scripts/parse_coverage.py >> $GITHUB_STEP_SUMMARY 2>&1 || echo "Note: Coverage parsing completed"
+            else
+              echo "### File Coverage" >> $GITHUB_STEP_SUMMARY
+              echo "Coverage details available in the artifact." >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            # Display coverage in console
+            echo "=== Coverage Summary ===" 
+            if [ -f scripts/parse_coverage.py ]; then
+              python3 scripts/parse_coverage.py
+            else
+              echo "Total lines: $total_lines"
+              echo "Hit lines: $hit_lines"
+              if [ "$total_lines" -gt 0 ]; then
+                echo "Coverage: ${coverage_percent}%"
+              fi
+            fi
+          else
+            echo "⚠️ No coverage file found (coverage/lcov.info)"
+          fi
+
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/lcov.info
+          retention-days: 30
+          if-no-files-found: warn
+
