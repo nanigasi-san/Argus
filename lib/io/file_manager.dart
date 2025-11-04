@@ -8,7 +8,11 @@ import 'config.dart';
 
 class FileManager {
   Future<XFile?> pickGeoJsonFile() async {
-    return await openFile();
+    const XTypeGroup typeGroup = XTypeGroup(
+      label: 'GeoJSON files',
+      extensions: ['geojson', 'json', 'bin'],
+    );
+    return await openFile(acceptedTypeGroups: [typeGroup]);
   }
 
   Future<File> getConfigFile() async {

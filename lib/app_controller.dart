@@ -147,16 +147,19 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> reloadGeoJsonFromPicker() async {
+    // 先に監視を停止（ファイル操作前に停止）
+    await stopMonitoring();
+
     try {
       // ファイル名を取得するために、file_selectorを直接使用
       final file = await fileManager.pickGeoJsonFile();
       if (file == null) {
+        // キャンセル時は何もしない（ログも出さない）
         return;
       }
+
       final raw = await file.readAsString();
       final model = GeoModel.fromGeoJson(raw);
-      // 監視を停止
-      await stopMonitoring();
 
       _geoModel = model;
       // ファイル名をpathから抽出し、拡張子を.geojsonに統一
@@ -184,6 +187,13 @@ class AppController extends ChangeNotifier {
       _logError('APP', _lastErrorMessage!);
       notifyListeners();
     } catch (e) {
+      // ファイルピッカーをキャンセルした場合などはエラーログを出さない
+      final errorMessage = e.toString().toLowerCase();
+      if (errorMessage.contains('cancel') ||
+          errorMessage.contains('user') ||
+          errorMessage.contains('abort')) {
+        return;
+      }
       _lastErrorMessage = 'Unable to open file: ${e.toString()}';
       _logError('APP', _lastErrorMessage!);
       notifyListeners();
