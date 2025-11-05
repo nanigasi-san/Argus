@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -169,38 +171,16 @@ class AppController extends ChangeNotifier {
     // 先に監視を停止（ファイル操作前に停止）
     await stopMonitoring();
 
+    final file = await fileManager.pickGeoJsonFile();
+    if (file == null) {
+      // キャンセル時は何もしない（ログも出さない）
+      return;
+    }
+
     try {
-      // ファイル名を取得するために、file_selectorを直接使用
-      final file = await fileManager.pickGeoJsonFile();
-      if (file == null) {
-        // キャンセル時は何もしない（ログも出さない）
-        return;
-      }
-
-      final raw = await file.readAsString();
-      final model = GeoModel.fromGeoJson(raw);
-
-      _geoModel = model;
-      // ファイル名をpathから抽出し、拡張子を.geojsonに統一
-      final extractedName = _extractFileName(file.path) ?? file.name;
-      _geoJsonFileName = _normalizeToGeoJson(extractedName);
-      _areaIndex = AreaIndex.build(model.polygons);
-      stateMachine.updateGeometry(_geoModel, _areaIndex);
-
-      // waitStart状態に戻し、距離・方位角などの情報をクリア
-      _snapshot = StateSnapshot(
-        status: LocationStateStatus.waitStart,
-        timestamp: DateTime.now(),
-        geoJsonLoaded: true,
-        distanceToBoundaryM: null,
-        bearingToBoundaryDeg: null,
-        nearestBoundaryPoint: null,
-        notes: 'GeoJSON loaded',
-      );
-      await notifier.stopAlarm();
-      _lastErrorMessage = null;
-      _logInfo('APP', 'GeoJSON loaded.', timestamp: _snapshot.timestamp);
-      notifyListeners();
+      final model = await _readGeoJsonModel(file);
+      final fileName = _resolveGeoJsonFileName(file);
+      await _applyLoadedGeoJson(model, fileName);
     } on FormatException catch (e) {
       _lastErrorMessage = 'Failed to parse GeoJSON: ${e.message}';
       _logError('APP', _lastErrorMessage!);
@@ -217,6 +197,39 @@ class AppController extends ChangeNotifier {
       _logError('APP', _lastErrorMessage!);
       notifyListeners();
     }
+  }
+
+  Future<GeoModel> _readGeoJsonModel(XFile file) async {
+    final raw = await file.readAsString();
+    return GeoModel.fromGeoJson(raw);
+  }
+
+  String _resolveGeoJsonFileName(XFile file) {
+    final extractedName = _extractFileName(file.path) ?? file.name;
+    return _normalizeToGeoJson(extractedName);
+  }
+
+  Future<void> _applyLoadedGeoJson(GeoModel model, String fileName) async {
+    final snapshotTimestamp = DateTime.now();
+    _geoModel = model;
+    _geoJsonFileName = fileName;
+    _areaIndex = AreaIndex.build(model.polygons);
+    stateMachine.updateGeometry(_geoModel, _areaIndex);
+
+    _snapshot = StateSnapshot(
+      status: LocationStateStatus.waitStart,
+      timestamp: snapshotTimestamp,
+      geoJsonLoaded: true,
+      distanceToBoundaryM: null,
+      bearingToBoundaryDeg: null,
+      nearestBoundaryPoint: null,
+      notes: 'GeoJSON loaded',
+    );
+
+    await notifier.stopAlarm();
+    _lastErrorMessage = null;
+    _logInfo('APP', 'GeoJSON loaded.', timestamp: snapshotTimestamp);
+    notifyListeners();
   }
 
   /// パスからファイル名を抽出します。
