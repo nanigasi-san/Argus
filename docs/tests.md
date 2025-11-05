@@ -44,7 +44,7 @@
 #### 1.4 `returns WAIT_GEOJSON when GeoJSON is not loaded`
 - **目的**: GeoJSON未ロード時に `WAIT_GEOJSON` 状態になることを確認
 - **前提条件**: `StateMachine` にGeoJSONが設定されていない
-- **期待結果**: `LocationStateStatus.waitGeoJson`, `geoJsonLoaded = false`
+- **期待結果**: `LocationStateStatus.waitGeoJson`, `hasGeoJson = false`
 
 #### 1.5 `returns GPS_BAD when accuracy is too low`
 - **目的**: GPS精度が設定値（40m）を超える場合に `GPS_BAD` 状態になることを確認

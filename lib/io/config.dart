@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart' show rootBundle;
 
+/// アプリケーションの監視設定を保持するモデル。
 class AppConfig {
   AppConfig({
     required this.innerBufferM,
@@ -58,6 +59,7 @@ class AppConfig {
         'screen_wake_on_leave': screenWakeOnLeave,
       };
 
+  /// アセットに含まれるデフォルト設定を読み込みます。
   static Future<AppConfig> loadDefault() async {
     final text = await rootBundle
         .loadString('assets/config/default_config.json');

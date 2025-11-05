@@ -1,5 +1,6 @@
 import 'geo_model.dart';
 
+/// ポリゴンのバウンディングボックスに基づく簡易空間インデックス。
 class AreaIndex {
   AreaIndex(this._entries);
 
@@ -22,6 +23,7 @@ class AreaIndex {
 
   final List<_AreaEntry> _entries;
 
+  /// 指定座標に関連するポリゴン候補を列挙します。
   Iterable<GeoPolygon> lookup(double lat, double lon) sync* {
     for (final entry in _entries) {
       if (lat >= entry.minLat &&

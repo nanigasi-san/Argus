@@ -5,13 +5,13 @@ import 'package:argus/platform/notifier.dart';
 class FakeLocalNotificationsClient implements LocalNotificationsClient {
   final List<int> shownIds = <int>[];
   final List<int> cancelledIds = <int>[];
-  bool initialized = false;
+  bool isInitialized = false;
   AndroidNotificationChannel? lastChannel;
-  bool requestedPermissions = false;
+  bool hasRequestedPermissions = false;
 
   @override
   Future<void> initialize(InitializationSettings settings) async {
-    initialized = true;
+    isInitialized = true;
   }
 
   @override
@@ -21,7 +21,7 @@ class FakeLocalNotificationsClient implements LocalNotificationsClient {
     bool sound = true,
     bool critical = true,
   }) async {
-    requestedPermissions = true;
+    hasRequestedPermissions = true;
   }
 
   @override

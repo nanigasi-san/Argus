@@ -36,6 +36,7 @@ class EventLogger {
       'bearingDeg': snapshot.bearingToBoundaryDeg,
       'nearestLat': snapshot.nearestBoundaryPoint?.latitude,
       'nearestLon': snapshot.nearestBoundaryPoint?.longitude,
+      'hasGeoJson': snapshot.hasGeoJson,
       'notes': snapshot.notes,
     };
     _records.add(record);

@@ -461,6 +461,6 @@ stateDiagram-v2
 
 ### 12.3 開発者モード
 
-- `AppController.developerMode`: ブール値で管理。`setDeveloperMode()` で切り替え。
+- `AppController.isDeveloperModeEnabled`: ブール値で管理。`setDeveloperMode()` で切り替え。
 - 開発者モード有効時: すべての状態で距離・方位・最寄り境界点を表示。
 - 開発者モード無効時: OUTER 状態時のみ距離・方位・最寄り境界点を表示。

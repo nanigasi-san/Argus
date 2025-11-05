@@ -7,6 +7,7 @@ import '../io/log_entry.dart';
 import '../state_machine/state.dart';
 import 'settings_page.dart';
 
+/// 監視状態と操作を表示するメイン画面。
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
@@ -15,7 +16,7 @@ class HomePage extends StatelessWidget {
     return Consumer<AppController>(
       builder: (context, controller, _) {
         final snapshot = controller.snapshot;
-        final showNav = controller.developerMode ||
+        final shouldShowNavigation = controller.isDeveloperModeEnabled ||
             snapshot.status == LocationStateStatus.outer;
         return Scaffold(
           appBar: AppBar(
@@ -35,7 +36,7 @@ class HomePage extends StatelessWidget {
           ),
           body: Padding(
             padding: const EdgeInsets.all(16),
-            child: controller.developerMode
+            child: controller.isDeveloperModeEnabled
                 ? Column(
                     children: [
                       // 開発者モードの時は上部を縮小
@@ -82,11 +83,11 @@ class HomePage extends StatelessWidget {
                               // GeoJSONファイル状態を表示
                               const SizedBox(height: 24),
                               _GeoJsonStatusDisplay(
-                                geoJsonLoaded: controller.geoJsonLoaded,
+                                hasGeoJson: controller.hasGeoJson,
                                 fileName: controller.geoJsonFileName,
                               ),
                               // developerモードでは常に方角と距離を表示
-                              if (showNav) ...[
+                              if (shouldShowNavigation) ...[
                                 const SizedBox(height: 24),
                                 Text(
                                   '境界までの距離: '
@@ -151,7 +152,7 @@ class HomePage extends StatelessWidget {
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                  'GeoJSON loaded: ${controller.geoJsonLoaded}'),
+                                  'GeoJSON loaded: ${controller.hasGeoJson ? 'Yes' : 'No'}'),
                               const SizedBox(height: 24),
                               if (controller.lastErrorMessage != null) ...[
                                 Material(
@@ -247,11 +248,11 @@ class HomePage extends StatelessWidget {
                               // GeoJSONファイル状態を表示
                               const SizedBox(height: 24),
                               _GeoJsonStatusDisplay(
-                                geoJsonLoaded: controller.geoJsonLoaded,
+                                hasGeoJson: controller.hasGeoJson,
                                 fileName: controller.geoJsonFileName,
                               ),
                               // outerの時に方角と距離を表示
-                              if (showNav &&
+                              if (shouldShowNavigation &&
                                   snapshot.status ==
                                       LocationStateStatus.outer) ...[
                                 const SizedBox(height: 24),
@@ -316,18 +317,18 @@ class HomePage extends StatelessWidget {
 
 class _GeoJsonStatusDisplay extends StatelessWidget {
   const _GeoJsonStatusDisplay({
-    required this.geoJsonLoaded,
+    required this.hasGeoJson,
     this.fileName,
   });
 
-  final bool geoJsonLoaded;
+  final bool hasGeoJson;
   final String? fileName;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    if (!geoJsonLoaded) {
+    if (!hasGeoJson) {
       return Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [

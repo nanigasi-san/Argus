@@ -1,5 +1,7 @@
+/// ログメッセージの重要度を表す列挙。
 enum AppLogLevel { debug, info, warning, error }
 
+/// アプリケーションログの1件分のレコード。
 class AppLogEntry {
   AppLogEntry({
     required this.timestamp,

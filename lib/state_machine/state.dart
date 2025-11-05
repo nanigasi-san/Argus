@@ -13,7 +13,7 @@ enum LocationStateStatus {
   outer,
 }
 
-/// Holds the outcome of the latest state machine evaluation.
+/// 状態マシンの最新評価結果を保持します。
 @immutable
 class StateSnapshot {
   const StateSnapshot({
@@ -21,7 +21,7 @@ class StateSnapshot {
     required this.timestamp,
     this.distanceToBoundaryM,
     this.horizontalAccuracyM,
-    this.geoJsonLoaded = false,
+    this.hasGeoJson = false,
     this.notes,
     this.nearestBoundaryPoint,
     this.bearingToBoundaryDeg,
@@ -31,7 +31,7 @@ class StateSnapshot {
   final DateTime timestamp;
   final double? distanceToBoundaryM;
   final double? horizontalAccuracyM;
-  final bool geoJsonLoaded;
+  final bool hasGeoJson;
   final String? notes;
   final LatLng? nearestBoundaryPoint;
   final double? bearingToBoundaryDeg;
@@ -41,7 +41,7 @@ class StateSnapshot {
     DateTime? timestamp,
     double? distanceToBoundaryM,
     double? horizontalAccuracyM,
-    bool? geoJsonLoaded,
+    bool? hasGeoJson,
     String? notes,
     LatLng? nearestBoundaryPoint,
     double? bearingToBoundaryDeg,
@@ -52,7 +52,7 @@ class StateSnapshot {
       distanceToBoundaryM: distanceToBoundaryM ?? this.distanceToBoundaryM,
       horizontalAccuracyM:
           horizontalAccuracyM ?? this.horizontalAccuracyM,
-      geoJsonLoaded: geoJsonLoaded ?? this.geoJsonLoaded,
+      hasGeoJson: hasGeoJson ?? this.hasGeoJson,
       notes: notes ?? this.notes,
       nearestBoundaryPoint:
           nearestBoundaryPoint ?? this.nearestBoundaryPoint,

@@ -93,7 +93,7 @@ class StateMachine {
 bool _isAlarming = false;
 bool _isRunning = false;
 bool _shouldContinue = false;
-bool geoJsonLoaded => _geoModel.hasGeometry;
+bool hasGeoJson => _geoModel.hasGeometry;
 ```
 
 **悪い例:**

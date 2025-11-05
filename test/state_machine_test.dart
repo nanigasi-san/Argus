@@ -102,7 +102,7 @@ void main() {
 
     final snapshot = machineWithoutGeometry.evaluate(fix);
     expect(snapshot.status, LocationStateStatus.waitGeoJson);
-    expect(snapshot.geoJsonLoaded, false);
+    expect(snapshot.hasGeoJson, false);
   });
 
   test('returns GPS_BAD when accuracy is too low', () {

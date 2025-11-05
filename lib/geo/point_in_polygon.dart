@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'geo_model.dart';
 
+/// 点がポリゴン内にあるかと境界までの距離を表す評価結果。
 class PointInPolygonEvaluation {
   const PointInPolygonEvaluation({
     required this.contains,
@@ -16,6 +17,7 @@ class PointInPolygonEvaluation {
   final double? bearingToBoundaryDeg;
 }
 
+/// ポリゴンに対する点の包含判定と距離計算を行います。
 class PointInPolygon {
   const PointInPolygon();
 

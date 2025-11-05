@@ -48,7 +48,7 @@ void main() {
       expect(controller.snapshot.status, LocationStateStatus.waitStart);
 
       expect(controller.snapshot.status, LocationStateStatus.waitStart);
-      expect(controller.geoJsonLoaded, isTrue);
+      expect(controller.hasGeoJson, isTrue);
       expect(stateMachine.current, LocationStateStatus.waitStart);
       expect(alarm.stopCount, 1);
     });
@@ -192,20 +192,20 @@ class FakeLocationService implements LocationService {
   final StreamController<LocationFix> _controller =
       StreamController<LocationFix>.broadcast();
 
-  bool started = false;
-  bool stopped = false;
+  bool hasStarted = false;
+  bool hasStopped = false;
 
   @override
   Stream<LocationFix> get stream => _controller.stream;
 
   @override
   Future<void> start(AppConfig config) async {
-    started = true;
+    hasStarted = true;
   }
 
   @override
   Future<void> stop() async {
-    stopped = true;
+    hasStopped = true;
   }
 
   void add(LocationFix fix) {

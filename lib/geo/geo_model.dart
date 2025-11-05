@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:collection/collection.dart';
 
+/// 緯度・経度を保持する不変ポイント。
 class LatLng {
   const LatLng(this.latitude, this.longitude);
 
@@ -9,6 +10,7 @@ class LatLng {
   final double longitude;
 }
 
+/// GeoJSONポリゴンを表すモデル。
 class GeoPolygon {
   factory GeoPolygon({
     required List<LatLng> points,
@@ -98,6 +100,7 @@ class _Bounds {
   }
 }
 
+/// GeoJSON由来のポリゴン集合を保持し、解析に供します。
 class GeoModel {
   GeoModel(this.polygons);
 

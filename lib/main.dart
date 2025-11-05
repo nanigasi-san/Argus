@@ -10,6 +10,9 @@ Future<void> main() async {
   runApp(ArgusApp(controller: controller));
 }
 
+/// Argusアプリケーションのルートウィジェット。
+///
+/// [AppController] を [ChangeNotifierProvider] で公開し、ホーム画面を構築します。
 class ArgusApp extends StatelessWidget {
   const ArgusApp({super.key, required this.controller});
 

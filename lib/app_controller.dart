@@ -38,7 +38,7 @@ class AppController extends ChangeNotifier {
 
   AppConfig? _config;
   GeoModel _geoModel = GeoModel.empty();
-  bool _developerMode = false;
+  bool _isDeveloperModeEnabled = false;
   AreaIndex _areaIndex = AreaIndex.empty();
   StateSnapshot _snapshot = StateSnapshot(
     status: LocationStateStatus.waitGeoJson,
@@ -52,11 +52,13 @@ class AppController extends ChangeNotifier {
 
   StateSnapshot get snapshot => _snapshot;
   AppConfig? get config => _config;
-  bool get geoJsonLoaded => _geoModel.hasGeometry;
+  /// GeoJSONジオメトリがロード済みかどうかを示します。
+  bool get hasGeoJson => _geoModel.hasGeometry;
   String? get lastErrorMessage => _lastErrorMessage;
   String? get geoJsonFileName => _geoJsonFileName;
   List<AppLogEntry> get logs => List.unmodifiable(_logs);
-  bool get developerMode => _developerMode;
+  /// 開発者モードが有効かどうかを示します。
+  bool get isDeveloperModeEnabled => _isDeveloperModeEnabled;
 
   /// アプリケーションを初期化します。
   ///
@@ -67,18 +69,18 @@ class AppController extends ChangeNotifier {
     stateMachine.updateConfig(_config!);
 
     _snapshot = _snapshot.copyWith(
-      status: geoJsonLoaded
+      status: hasGeoJson
           ? LocationStateStatus.waitStart
           : LocationStateStatus.waitGeoJson,
       timestamp: DateTime.now(),
-      geoJsonLoaded: geoJsonLoaded,
-      notes: geoJsonLoaded
+      hasGeoJson: hasGeoJson,
+      notes: hasGeoJson
           ? 'Ready to monitor'
           : 'Load GeoJSON to start monitoring',
     );
     _logInfo(
       'APP',
-      geoJsonLoaded
+      hasGeoJson
           ? 'Initialized with bundled GeoJSON.'
           : 'Initialization completed. Waiting for GeoJSON.',
       timestamp: _snapshot.timestamp,
@@ -95,7 +97,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> startMonitoring() async {
-    if (_config == null || !geoJsonLoaded) {
+    if (_config == null || !hasGeoJson) {
       return;
     }
     await locationService.start(_config!);
@@ -117,11 +119,12 @@ class AppController extends ChangeNotifier {
   /// 開発者モードの有効/無効を切り替えます。
   ///
   /// 開発者モードが有効な場合、UIに詳細な状態情報が表示されます。
+  /// 開発者モードを有効または無効にします。
   void setDeveloperMode(bool enabled) {
-    if (_developerMode == enabled) {
+    if (_isDeveloperModeEnabled == enabled) {
       return;
     }
-    _developerMode = enabled;
+    _isDeveloperModeEnabled = enabled;
     _logInfo('APP', 'Developer mode ${enabled ? 'enabled' : 'disabled'}.');
     notifyListeners();
   }
@@ -134,10 +137,10 @@ class AppController extends ChangeNotifier {
       return;
     }
 
-    final wasMonitoring = _subscription != null;
+    final wasMonitoringActive = _subscription != null;
 
     // 監視中であれば一時停止
-    if (wasMonitoring) {
+    if (wasMonitoringActive) {
       await stopMonitoring();
     }
 
@@ -156,7 +159,7 @@ class AppController extends ChangeNotifier {
     );
 
     // 監視中だった場合は新しい設定で再開
-    if (wasMonitoring && geoJsonLoaded) {
+    if (wasMonitoringActive && hasGeoJson) {
       await startMonitoring();
     }
 
@@ -219,7 +222,7 @@ class AppController extends ChangeNotifier {
     _snapshot = StateSnapshot(
       status: LocationStateStatus.waitStart,
       timestamp: snapshotTimestamp,
-      geoJsonLoaded: true,
+      hasGeoJson: true,
       distanceToBoundaryM: null,
       bearingToBoundaryDeg: null,
       nearestBoundaryPoint: null,
@@ -263,7 +266,7 @@ class AppController extends ChangeNotifier {
     );
     final evaluation = stateMachine.evaluate(fix);
     _snapshot = evaluation.copyWith(
-      geoJsonLoaded: geoJsonLoaded,
+      hasGeoJson: hasGeoJson,
     );
     await logger.logStateChange(_snapshot);
     _logInfo(
@@ -398,18 +401,18 @@ class AppController extends ChangeNotifier {
 
   @visibleForTesting
   String describeSnapshot(StateSnapshot snapshot) {
-    final showNav =
-        _developerMode || snapshot.status == LocationStateStatus.outer;
-    final dist = showNav && snapshot.distanceToBoundaryM != null
+    final shouldShowNavigation =
+        _isDeveloperModeEnabled || snapshot.status == LocationStateStatus.outer;
+    final dist = shouldShowNavigation && snapshot.distanceToBoundaryM != null
         ? '${snapshot.distanceToBoundaryM!.toStringAsFixed(2)}m'
         : '-';
     final accuracy = snapshot.horizontalAccuracyM != null
         ? '${snapshot.horizontalAccuracyM!.toStringAsFixed(1)}m'
         : '-';
-    final bearing = showNav && snapshot.bearingToBoundaryDeg != null
+    final bearing = shouldShowNavigation && snapshot.bearingToBoundaryDeg != null
         ? '${snapshot.bearingToBoundaryDeg!.toStringAsFixed(0)}deg'
         : '-';
-    final nearest = showNav && snapshot.nearestBoundaryPoint != null
+    final nearest = shouldShowNavigation && snapshot.nearestBoundaryPoint != null
         ? ' (${snapshot.nearestBoundaryPoint!.latitude.toStringAsFixed(5)},'
             '${snapshot.nearestBoundaryPoint!.longitude.toStringAsFixed(5)})'
         : '';

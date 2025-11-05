@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../app_controller.dart';
 import '../io/config.dart';
 
+/// 監視設定を編集するフォーム画面。
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
 
@@ -25,11 +26,15 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void initState() {
     super.initState();
-    _initializeControllers().then((_) {
-      if (mounted) {
-        setState(() {});
-      }
-    });
+    _loadInitialValues();
+  }
+
+  Future<void> _loadInitialValues() async {
+    await _initializeControllers();
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
   }
 
   Future<void> _initializeControllers() async {
@@ -343,7 +348,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         subtitle: const Text(
                           'Show distance/bearing details even inside the geofence.',
                         ),
-                        value: controller.developerMode,
+                        value: controller.isDeveloperModeEnabled,
                         onChanged: controller.setDeveloperMode,
                       ),
                       const SizedBox(height: 16),
