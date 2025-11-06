@@ -14,17 +14,22 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   final _formKey = GlobalKey<FormState>();
-  late TextEditingController _innerBufferController;
-  late TextEditingController _pollingIntervalController;
-  late TextEditingController _gpsAccuracyThresholdController;
-  late TextEditingController _leaveConfirmSamplesController;
-  late TextEditingController _leaveConfirmSecondsController;
+  late final TextEditingController _innerBufferController;
+  late final TextEditingController _pollingIntervalController;
+  late final TextEditingController _gpsAccuracyThresholdController;
+  late final TextEditingController _leaveConfirmSamplesController;
+  late final TextEditingController _leaveConfirmSecondsController;
   bool _isSaving = false;
   AppConfig? _defaultConfig;
 
   @override
   void initState() {
     super.initState();
+    _innerBufferController = TextEditingController();
+    _pollingIntervalController = TextEditingController();
+    _gpsAccuracyThresholdController = TextEditingController();
+    _leaveConfirmSamplesController = TextEditingController();
+    _leaveConfirmSecondsController = TextEditingController();
     _initializeControllers().then((_) {
       if (mounted) {
         setState(() {});
@@ -34,51 +39,52 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _initializeControllers() async {
     // デフォルト値を読み込む
-    _defaultConfig = await AppConfig.loadDefault();
+    try {
+      _defaultConfig = await AppConfig.loadDefault();
+    } catch (_) {
+      _defaultConfig = AppConfig(
+        innerBufferM: 30.0,
+        leaveConfirmSamples: 3,
+        leaveConfirmSeconds: 10,
+        gpsAccuracyBadMeters: 40.0,
+        sampleIntervalS: const {'fast': 3},
+        sampleDistanceM: const {'fast': 15},
+        screenWakeOnLeave: false,
+      );
+    }
 
     if (!mounted) return;
     final controller = Provider.of<AppController>(context, listen: false);
     final config = controller.config;
     if (config != null) {
-      _innerBufferController = TextEditingController(
-        text: config.innerBufferM.toStringAsFixed(1),
-      );
-      _pollingIntervalController = TextEditingController(
-        text: (config.sampleIntervalS['fast'] ?? 3).toString(),
-      );
-      _gpsAccuracyThresholdController = TextEditingController(
-        text: config.gpsAccuracyBadMeters.toStringAsFixed(1),
-      );
-      _leaveConfirmSamplesController = TextEditingController(
-        text: config.leaveConfirmSamples.toString(),
-      );
-      _leaveConfirmSecondsController = TextEditingController(
-        text: config.leaveConfirmSeconds.toString(),
-      );
+      _innerBufferController.text = config.innerBufferM.toStringAsFixed(1);
+      _pollingIntervalController.text =
+          (config.sampleIntervalS['fast'] ?? 3).toString();
+      _gpsAccuracyThresholdController.text =
+          config.gpsAccuracyBadMeters.toStringAsFixed(1);
+      _leaveConfirmSamplesController.text =
+          config.leaveConfirmSamples.toString();
+      _leaveConfirmSecondsController.text =
+          config.leaveConfirmSeconds.toString();
     } else if (_defaultConfig != null) {
       // デフォルト値で初期化（configがnullの場合）
-      _innerBufferController = TextEditingController(
-        text: _defaultConfig!.innerBufferM.toStringAsFixed(1),
-      );
-      _pollingIntervalController = TextEditingController(
-        text: (_defaultConfig!.sampleIntervalS['fast'] ?? 3).toString(),
-      );
-      _gpsAccuracyThresholdController = TextEditingController(
-        text: _defaultConfig!.gpsAccuracyBadMeters.toStringAsFixed(1),
-      );
-      _leaveConfirmSamplesController = TextEditingController(
-        text: _defaultConfig!.leaveConfirmSamples.toString(),
-      );
-      _leaveConfirmSecondsController = TextEditingController(
-        text: _defaultConfig!.leaveConfirmSeconds.toString(),
-      );
+      _innerBufferController.text =
+          _defaultConfig!.innerBufferM.toStringAsFixed(1);
+      _pollingIntervalController.text =
+          (_defaultConfig!.sampleIntervalS['fast'] ?? 3).toString();
+      _gpsAccuracyThresholdController.text =
+          _defaultConfig!.gpsAccuracyBadMeters.toStringAsFixed(1);
+      _leaveConfirmSamplesController.text =
+          _defaultConfig!.leaveConfirmSamples.toString();
+      _leaveConfirmSecondsController.text =
+          _defaultConfig!.leaveConfirmSeconds.toString();
     } else {
       // フォールバック
-      _innerBufferController = TextEditingController(text: '30.0');
-      _pollingIntervalController = TextEditingController(text: '3');
-      _gpsAccuracyThresholdController = TextEditingController(text: '40.0');
-      _leaveConfirmSamplesController = TextEditingController(text: '3');
-      _leaveConfirmSecondsController = TextEditingController(text: '10');
+      _innerBufferController.text = '30.0';
+      _pollingIntervalController.text = '3';
+      _gpsAccuracyThresholdController.text = '40.0';
+      _leaveConfirmSamplesController.text = '3';
+      _leaveConfirmSecondsController.text = '10';
     }
   }
 
@@ -339,6 +345,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       const Divider(),
                       const SizedBox(height: 16),
                       SwitchListTile.adaptive(
+                        key: const Key('developerModeSwitch'),
                         title: const Text('Developer mode'),
                         subtitle: const Text(
                           'Show distance/bearing details even inside the geofence.',

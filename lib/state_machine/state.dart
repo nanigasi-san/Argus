@@ -36,6 +36,9 @@ class StateSnapshot {
   final LatLng? nearestBoundaryPoint;
   final double? bearingToBoundaryDeg;
 
+  /// Returns whether GeoJSON is loaded.
+  bool get hasGeoJson => geoJsonLoaded;
+
   StateSnapshot copyWith({
     LocationStateStatus? status,
     DateTime? timestamp,
@@ -50,14 +53,11 @@ class StateSnapshot {
       status: status ?? this.status,
       timestamp: timestamp ?? this.timestamp,
       distanceToBoundaryM: distanceToBoundaryM ?? this.distanceToBoundaryM,
-      horizontalAccuracyM:
-          horizontalAccuracyM ?? this.horizontalAccuracyM,
+      horizontalAccuracyM: horizontalAccuracyM ?? this.horizontalAccuracyM,
       geoJsonLoaded: geoJsonLoaded ?? this.geoJsonLoaded,
       notes: notes ?? this.notes,
-      nearestBoundaryPoint:
-          nearestBoundaryPoint ?? this.nearestBoundaryPoint,
-      bearingToBoundaryDeg:
-          bearingToBoundaryDeg ?? this.bearingToBoundaryDeg,
+      nearestBoundaryPoint: nearestBoundaryPoint ?? this.nearestBoundaryPoint,
+      bearingToBoundaryDeg: bearingToBoundaryDeg ?? this.bearingToBoundaryDeg,
     );
   }
 }

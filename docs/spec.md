@@ -200,6 +200,167 @@ lib/
 
 全モジュールは依存注入で連結され、`AppController.bootstrap()` が標準構成を生成する。
 
+### 3.5 クラス図
+
+```mermaid
+classDiagram
+    class AppController {
+        -StateMachine stateMachine
+        -LocationService locationService
+        -FileManager fileManager
+        -EventLogger logger
+        -Notifier notifier
+        -AppConfig? _config
+        -GeoModel _geoModel
+        -AreaIndex _areaIndex
+        -StateSnapshot _snapshot
+        +StateSnapshot get snapshot
+        +Future initialize()
+        +Future startMonitoring()
+        +Future stopMonitoring()
+        +Future reloadGeoJsonFromPicker()
+        +void setDeveloperMode(bool)
+    }
+    
+    class StateMachine {
+        -AppConfig _config
+        -GeoModel _geoModel
+        -AreaIndex _areaIndex
+        -PointInPolygon _pip
+        -HysteresisCounter _hysteresis
+        -LocationStateStatus _current
+        +StateSnapshot evaluate(LocationFix)
+        +void updateGeometry(GeoModel, AreaIndex)
+        +void updateConfig(AppConfig)
+    }
+    
+    class LocationService {
+        <<abstract>>
+        +Stream~LocationFix~ get stream
+        +Future start(AppConfig)
+        +Future stop()
+    }
+    
+    class GeolocatorLocationService {
+        +Stream~LocationFix~ get stream
+        +Future start(AppConfig)
+        +Future stop()
+    }
+    
+    class Notifier {
+        -LocalNotificationsClient _notifications
+        -AlarmPlayer _alarmPlayer
+        -VibrationPlayer _vibrationPlayer
+        +Future notifyOuter()
+        +Future notifyRecover()
+        +Future stopAlarm()
+    }
+    
+    class GeoModel {
+        +List~GeoPolygon~ polygons
+        +bool hasGeometry
+        +factory fromGeoJson(String)
+    }
+    
+    class GeoPolygon {
+        +List~LatLng~ points
+        +double minLat
+        +double maxLat
+        +double minLon
+        +double maxLon
+    }
+    
+    class AreaIndex {
+        +factory build(List~GeoPolygon~)
+        +Iterable~GeoPolygon~ lookup(double, double)
+    }
+    
+    class PointInPolygon {
+        +PointInPolygonEvaluation evaluatePoint(double, double, GeoPolygon)
+    }
+    
+    class HysteresisCounter {
+        -int _requiredSamples
+        -Duration _requiredDuration
+        +bool addSample(DateTime)
+        +bool isSatisfied(DateTime)
+        +void reset()
+    }
+    
+    class StateSnapshot {
+        +LocationStateStatus status
+        +DateTime timestamp
+        +double? distanceToBoundaryM
+        +double? horizontalAccuracyM
+        +bool geoJsonLoaded
+        +LatLng? nearestBoundaryPoint
+        +double? bearingToBoundaryDeg
+    }
+    
+    class FileManager {
+        +Future~XFile?~ pickGeoJsonFile()
+        +Future~AppConfig~ readConfig()
+        +Future saveConfig(AppConfig)
+    }
+    
+    class EventLogger {
+        +Future logLocationFix(LocationFix)
+        +Future logStateChange(StateSnapshot)
+        +Future~String~ exportJsonl()
+    }
+    
+    AppController --> StateMachine
+    AppController --> LocationService
+    AppController --> FileManager
+    AppController --> EventLogger
+    AppController --> Notifier
+    AppController --> StateSnapshot
+    StateMachine --> GeoModel
+    StateMachine --> AreaIndex
+    StateMachine --> PointInPolygon
+    StateMachine --> HysteresisCounter
+    StateMachine --> StateSnapshot
+    GeoModel --> GeoPolygon
+    AreaIndex --> GeoPolygon
+    PointInPolygon --> GeoPolygon
+    LocationService <|.. GeolocatorLocationService
+```
+
+### 3.6 依存関係図
+
+```mermaid
+graph TD
+    A[AppController] --> B[StateMachine]
+    A --> C[LocationService]
+    A --> D[FileManager]
+    A --> E[EventLogger]
+    A --> F[Notifier]
+    
+    B --> G[GeoModel]
+    B --> H[AreaIndex]
+    B --> I[PointInPolygon]
+    B --> J[HysteresisCounter]
+    B --> K[AppConfig]
+    
+    G --> L[GeoPolygon]
+    H --> L
+    I --> L
+    
+    C --> M[GeolocatorLocationService]
+    
+    F --> N[LocalNotificationsClient]
+    F --> O[AlarmPlayer]
+    F --> P[VibrationPlayer]
+    
+    D --> K
+    
+    style A fill:#e1f5ff
+    style B fill:#fff4e1
+    style G fill:#e8f5e9
+    style H fill:#e8f5e9
+    style I fill:#e8f5e9
+```
+
 ---
 
 ## 4. 位置ステートマシン詳細
