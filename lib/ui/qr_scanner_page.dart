@@ -82,7 +82,7 @@ class _QrScannerPageState extends State<QrScannerPage> {
           ),
           if (_isProcessing)
             Container(
-              color: Colors.black.withOpacity(0.7),
+              color: Colors.black.withValues(alpha: 0.7),
               child: const Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -104,7 +104,7 @@ class _QrScannerPageState extends State<QrScannerPage> {
               right: 0,
               child: Container(
                 padding: const EdgeInsets.all(16),
-                color: Colors.red.withOpacity(0.9),
+                color: Colors.red.withValues(alpha: 0.9),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
