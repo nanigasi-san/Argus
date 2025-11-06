@@ -6,6 +6,11 @@ import '../platform/location_service.dart';
 import 'hysteresis_counter.dart';
 import 'state.dart';
 
+/// 位置情報に基づいて状態を評価し、状態遷移を管理する状態機械。
+///
+/// GeoJSONで定義されたエリアと現在位置の関係を評価し、
+/// INNER、NEAR、OUTER_PENDING、OUTER、GPS_BADなどの状態を判定します。
+/// ヒステリシス機構により、OUTER状態への遷移は複数のサンプルと時間条件を満たす必要があります。
 class StateMachine {
   StateMachine({
     required AppConfig config,
@@ -28,8 +33,12 @@ class StateMachine {
   HysteresisCounter _hysteresis;
   LocationStateStatus _current = LocationStateStatus.waitGeoJson;
 
+  /// 現在の状態を取得します。
   LocationStateStatus get current => _current;
 
+  /// 設定を更新します。
+  ///
+  /// 設定が更新されると、ヒステリシスカウンタも新しい設定値で再初期化されます。
   void updateConfig(AppConfig config) {
     _config = config;
     _hysteresis = HysteresisCounter(
@@ -38,6 +47,10 @@ class StateMachine {
     );
   }
 
+  /// GeoJSONジオメトリとエリアインデックスを更新します。
+  ///
+  /// ジオメトリが更新されると、ヒステリシスカウンタがリセットされ、
+  /// 状態が`waitStart`（ジオメトリあり）または`waitGeoJson`（ジオメトリなし）に遷移します。
   void updateGeometry(GeoModel geoModel, AreaIndex index) {
     _geoModel = geoModel;
     _areaIndex = index;
@@ -47,6 +60,10 @@ class StateMachine {
         : LocationStateStatus.waitGeoJson;
   }
 
+  /// 位置情報を評価し、現在の状態を返します。
+  ///
+  /// 位置情報の精度、エリア内外の判定、ヒステリシス条件などを考慮して
+  /// 適切な状態を決定します。
   StateSnapshot evaluate(LocationFix fix) {
     final snapshot = _evaluateInternal(fix);
     _current = snapshot.status;

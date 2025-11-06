@@ -18,9 +18,10 @@
 ### 1.1 GeoJSON 読み込み
 
 - **初回起動**: `assets/geojson/sample_area.geojson` をバンドルロードを試行。失敗時はエラーログを記録し、`waitGeoJson` 状態を維持。
-- **ファイルピッカー**: ユーザは FloatingActionButton（「GeoJSON」ラベル）またはファイルピッカーで `.geojson` / `.json` を再ロード可能。
-- **ファイル名処理**: 読み込んだファイル名は `.geojson` 拡張子に正規化され、UI に表示される。
-- **エラー処理**: 読み込み失敗はエラーバナーとログ（レベル ERROR）で通知。`FormatException` とその他の例外を区別して表示。
+- **ファイルピッカー**: ユーザは FloatingActionButton（「Load GeoJSON」ラベル）またはファイルピッカーで `.geojson` / `.json` を再ロード可能。
+- **QRコード読み込み**: ユーザは FloatingActionButton（「Read QR code」ラベル）でQRコードをスキャンし、GeoJSONを読み込むことが可能。QRコードは `gjb1:` スキームで始まる必要がある。読み込んだGeoJSONは一時ファイルとして保存され、アプリ終了時に自動削除される。
+- **ファイル名処理**: 読み込んだファイル名は `.geojson` 拡張子に正規化され、UI に表示される。QRコードから読み込んだ場合は `temp_geojson_<timestamp>.geojson` という名前で一時ファイルとして保存される。
+- **エラー処理**: 読み込み失敗はエラーバナーとログ（レベル ERROR）で通知。`FormatException` とその他の例外を区別して表示。QRコードの形式が無効な場合やデコードに失敗した場合も適切にエラーを表示する。
 
 ### 1.2 位置情報ストリーム
 
@@ -158,6 +159,8 @@ lib/
 ├── platform/                    # プラットフォーム固有機能
 │   ├── location_service.dart  # 位置情報サービス（Geolocator抽象化）
 │   └── notifier.dart          # 通知・アラーム制御
+├── qr/                         # QRコード機能
+│   └── geojson_qr_codec.dart  # GeoJSONとQRコードの相互変換（Brotli圧縮、Base64URLエンコード）
 ├── io/                         # ファイルI/Oと設定管理
 │   ├── config.dart            # AppConfig定義とJSONシリアライゼーション
 │   ├── file_manager.dart      # 設定ファイル・GeoJSONファイルの読み書き
@@ -165,37 +168,43 @@ lib/
 │   └── log_entry.dart         # AppLogEntry/AppLogLevel定義
 └── ui/                         # ユーザーインターフェース
     ├── home_page.dart         # メイン画面（状態表示、ナビゲーション情報）
-    └── settings_page.dart     # 設定画面（パラメータ調整、開発者モード）
+    ├── settings_page.dart      # 設定画面（パラメータ調整、開発者モード）
+    └── qr_scanner_page.dart    # QRコードスキャン画面（カメラを使用したQRコード読み取り）
 ```
 
 ### 3.2 アーキテクチャ概要
 
 | 区分             | 主要クラス                                                                     | 役割                                                                                 |
 | ---------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
-| 中核ロジック     | `AppController`                                                                | アプリ全体の状態管理、位置ストリームの購読、ログ記録、通知制御。                     |
+| 中核ロジック     | `AppController`                                                                | アプリ全体の状態管理、位置ストリームの購読、ログ記録、通知制御、QRコードからのGeoJSON読み込み。 |
 | 状態機械         | `StateMachine`, `StateSnapshot`, `LocationStateStatus`                         | 位置評価と状態管理、ヒステリシス処理。                                               |
 | ジオメトリ       | `GeoModel`, `GeoPolygon`, `LatLng`                                             | GeoJSON パース、ポリゴンデータの保持。                                               |
 | 空間インデックス | `AreaIndex`                                                                    | ポリゴンの境界ボックスによる空間インデックス。位置に基づいて候補ポリゴンを絞り込み。 |
 | 点とポリゴン判定 | `PointInPolygon`, `PointInPolygonEvaluation`                                   | Ray Casting による包含判定、最近接点・距離・方位角の計算。                           |
+| QRコード         | `GeoJsonQrCodec`, `encodeGeoJson`, `decodeGeoJson`                            | GeoJSONのBrotli圧縮、Base64URLエンコード、QRコード生成・復元。                      |
 | 位置サービス     | `LocationService`, `GeolocatorLocationService`, `LocationFix`                  | 位置ストリームの開始・停止、権限確認、プラットフォーム固有設定。                     |
 | 通知             | `Notifier`, `AlarmPlayer`（`RingtoneAlarmPlayer`）, `LocalNotificationsClient` | 通知チャンネル作成、アラーム音制御、バッジ状態。                                     |
 | ログ             | `EventLogger`, `AppLogEntry`, `AppLogLevel`                                    | GPS・状態イベントのメモリ記録と UI 連携、JSON エクスポート。                         |
 | I/O              | `FileManager`, `AppConfig`                                                     | 設定・GeoJSON ファイルの読み書き、ファイルピッカー。                                 |
-| UI               | `HomePage`, `SettingsPage`, `ArgusApp`                                         | 画面構成とユーザ操作ルーティング。                                                   |
+| UI               | `HomePage`, `SettingsPage`, `QrScannerPage`, `ArgusApp`                       | 画面構成とユーザ操作ルーティング。                                                   |
 
 ### 3.3 データフロー
 
 1. **初期化**: `main()` → `AppController.bootstrap()` → 各サービス初期化
-2. **GeoJSON読み込み**: `FileManager.pickGeoJsonFile()` → `GeoModel.fromGeoJson()` → `AreaIndex.build()` → `StateMachine.updateGeometry()`
-3. **位置監視**: `LocationService.stream` → `AppController._handleFix()` → `StateMachine.evaluate()` → `Notifier`更新
-4. **状態表示**: `AppController.snapshot` → `HomePage`（リアクティブ更新）
+2. **GeoJSON読み込み（ファイルピッカー）**: `FileManager.pickGeoJsonFile()` → `GeoModel.fromGeoJson()` → `AreaIndex.build()` → `StateMachine.updateGeometry()`
+3. **GeoJSON読み込み（QRコード）**: `QrScannerPage` → `AppController.reloadGeoJsonFromQr()` → `decodeGeoJson()` → 一時ファイル保存 → `GeoModel.fromGeoJson()` → `AreaIndex.build()` → `StateMachine.updateGeometry()`
+4. **位置監視**: `LocationService.stream` → `AppController._handleFix()` → `StateMachine.evaluate()` → `Notifier`更新
+5. **状態表示**: `AppController.snapshot` → `HomePage`（リアクティブ更新）
+6. **アプリ終了時**: `WidgetsBindingObserver.didChangeAppLifecycleState()` → `AppController.cleanupTempGeoJsonFile()` → 一時ファイル削除
 
 ### 3.4 依存関係
 
-- **AppController** ← StateMachine, LocationService, FileManager, EventLogger, Notifier
+- **AppController** ← StateMachine, LocationService, FileManager, EventLogger, Notifier, GeoJsonQrCodec
 - **StateMachine** ← GeoModel, AreaIndex, PointInPolygon, AppConfig, HysteresisCounter
 - **GeoModel** ← GeoJSON（パース）
 - **PointInPolygon** ← 地理計算（Haversine公式など）
+- **GeoJsonQrCodec** ← Brotli（CLI）、Base64URL、SHA256、QR生成
+- **QrScannerPage** ← AppController（Provider経由）、MobileScanner
 - **UI** ← AppController（Provider経由）
 
 全モジュールは依存注入で連結され、`AppController.bootstrap()` が標準構成を生成する。
@@ -309,12 +318,23 @@ classDiagram
         +Future~String~ exportJsonl()
     }
     
+    class GeoJsonQrCodec {
+        +Future~GeoJsonQrBundle~ encodeGeoJson(GeoJsonQrEncodeInput)
+        +Future~String~ decodeGeoJson(GeoJsonQrDecodeInput)
+        +String minifyGeoJson(String)
+    }
+    
+    class QrScannerPage {
+        +Widget build(BuildContext)
+    }
+    
     AppController --> StateMachine
     AppController --> LocationService
     AppController --> FileManager
     AppController --> EventLogger
     AppController --> Notifier
     AppController --> StateSnapshot
+    AppController --> GeoJsonQrCodec
     StateMachine --> GeoModel
     StateMachine --> AreaIndex
     StateMachine --> PointInPolygon
@@ -324,6 +344,7 @@ classDiagram
     AreaIndex --> GeoPolygon
     PointInPolygon --> GeoPolygon
     LocationService <|.. GeolocatorLocationService
+    QrScannerPage --> AppController
 ```
 
 ### 3.6 依存関係図
@@ -352,6 +373,9 @@ graph TD
     F --> O[AlarmPlayer]
     F --> P[VibrationPlayer]
     
+    A --> Q[GeoJsonQrCodec]
+    A --> R[QrScannerPage]
+    
     D --> K
     
     style A fill:#e1f5ff
@@ -359,6 +383,8 @@ graph TD
     style G fill:#e8f5e9
     style H fill:#e8f5e9
     style I fill:#e8f5e9
+    style Q fill:#fff9c4
+    style R fill:#f3e5f5
 ```
 
 ---
@@ -478,6 +504,48 @@ stateDiagram-v2
 
 ---
 
+## 5.1 QRコード機能仕様
+
+### 5.1.1 エンコード処理
+
+- **最小化**: GeoJSON文字列から不要な空白（改行、スペース、タブ）を除去し、構造を保持。
+- **圧縮**: Brotli圧縮（品質11、最大圧縮）を使用。外部`brotli`CLIツールを呼び出し。
+- **エンコード**: Base64URLエンコード（パディングなし、URL-safe文字）。
+- **ハッシュ**: 最小化されたGeoJSONのSHA256ハッシュを計算（16進数文字列）。
+- **QRテキスト形式**: 
+  - 単一QR: `gjb1:<base64url_payload>#<hash>`
+  - 分割QR: `gjb1p:<chunk_index>/<total_chunks>:<base64url_chunk>#<hash>`（最後のチャンクのみハッシュを含む）
+- **分割条件**: QRテキスト長が`maxQrTextLength`（デフォルト2500文字）を超える場合、自動的に分割。
+- **QR画像生成**: PNG形式でQRコード画像を生成（オプション、デフォルト有効）。
+
+### 5.1.2 デコード処理
+
+- **スキーム検証**: QRテキストが`gjb1:`または`gjb1p:`で始まることを確認。
+- **分割QR処理**: `gjb1p:`スキームの場合、チャンクをマージしてからデコード。
+- **Base64URLデコード**: パディングを自動補完してデコード。
+- **Brotli展開**: `brotli`パッケージを使用して展開。
+- **ハッシュ検証**: 復元されたGeoJSONのハッシュを計算し、QRテキストに含まれるハッシュと比較（`verifyHash=true`の場合）。
+- **GeoJSON検証**: 復元された文字列が有効なGeoJSONであることを確認（`type`フィールドの存在）。
+
+### 5.1.3 エラーハンドリング
+
+- **GeoJsonValidationException**: GeoJSONの構造が無効な場合。
+- **CompressFailedException**: Brotli圧縮に失敗した場合。
+- **DecompressFailedException**: Brotli展開に失敗した場合。
+- **DecodeFailedException**: Base64URLデコードに失敗した場合。
+- **HashMismatchException**: ハッシュが一致しない場合。
+- **UnsupportedSchemeException**: サポートされていないスキームの場合。
+- **ChunkMismatchException**: 分割QRコードのチャンクが欠損または不一致の場合。
+- **PayloadTooLargeException**: QRコードの容量を超える場合。
+
+### 5.1.4 一時ファイル管理
+
+- **保存場所**: `getTemporaryDirectory()`で取得した一時ディレクトリ。
+- **ファイル名**: `temp_geojson_<timestamp>.geojson`（`timestamp`はミリ秒単位のエポック時刻）。
+- **クリーンアップ**: アプリが完全終了時（`AppLifecycleState.detached`）に自動削除。新しいQRコードを読み込む際も既存の一時ファイルを削除。
+
+---
+
 ## 6. ログ仕様
 
 ### 6.1 アプリ内ログ（AppController）
@@ -582,7 +650,9 @@ stateDiagram-v2
   - `geo_model_test.dart`: GeoJSON パーサの挙動。
   - `point_in_polygon_test.dart`: 点とポリゴンの関係判定。
   - `platform/notifier_test.dart`: OUTER→INNER→OUTER でアラーム切り替え。
-  - `app_controller_test.dart`: GeoJSON 再読込で waitStart 状態・アラーム停止を確認。
+  - `app_controller_test.dart`: GeoJSON 再読込で waitStart 状態・アラーム停止を確認、QRコードからの読み込み。
+  - `qr/geojson_qr_codec_test.dart`: QRコードエンコード・デコード、Brotli圧縮、ハッシュ検証。
+  - `ui/qr_scanner_page_test.dart`: QRスキャン画面の表示とナビゲーション。
 
 - `flutter analyze` を CI ベースラインとし、警告ゼロを維持。
 
