@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
+import 'package:vibration/vibration.dart';
 
 import '../state_machine/state.dart';
 
@@ -9,15 +12,17 @@ class Notifier {
     FlutterLocalNotificationsPlugin? plugin,
     LocalNotificationsClient? notificationsClient,
     AlarmPlayer? alarmPlayer,
-  })  : _notifications =
-            notificationsClient ??
-                FlutterLocalNotificationsClient(
-                  plugin ?? FlutterLocalNotificationsPlugin(),
-                ),
-        _alarmPlayer = alarmPlayer ?? const RingtoneAlarmPlayer();
+    VibrationPlayer? vibrationPlayer,
+  })  : _notifications = notificationsClient ??
+            FlutterLocalNotificationsClient(
+              plugin ?? FlutterLocalNotificationsPlugin(),
+            ),
+        _alarmPlayer = alarmPlayer ?? const RingtoneAlarmPlayer(),
+        _vibrationPlayer = vibrationPlayer ?? RepeatingVibrationPlayer();
 
   final LocalNotificationsClient _notifications;
   final AlarmPlayer _alarmPlayer;
+  final VibrationPlayer _vibrationPlayer;
 
   final ValueNotifier<LocationStateStatus> badgeState =
       ValueNotifier<LocationStateStatus>(
@@ -26,12 +31,11 @@ class Notifier {
 
   static const _channelId = 'argus_alerts';
   static const _channelName = 'Argus警告';
-  static const _channelDescription =
-      'ジオフェンスの安全エリアから離れたときに通知します。';
+  static const _channelDescription = 'ジオフェンスの安全エリアから離れたときに通知します。';
   static const int _outerNotificationId = 1001;
 
   bool _initialized = false;
-  bool _isRinging = false;
+  bool _isAlarming = false;
 
   Future<void> initialize() async {
     if (_initialized) {
@@ -92,9 +96,10 @@ class Notifier {
       '競技エリアから離れています。',
       notificationDetails,
     );
-    if (!_isRinging) {
+    if (!_isAlarming) {
       await _alarmPlayer.start();
-      _isRinging = true;
+      await _vibrationPlayer.start();
+      _isAlarming = true;
     }
   }
 
@@ -110,9 +115,10 @@ class Notifier {
   }
 
   Future<void> stopAlarm() async {
-    if (_isRinging) {
+    if (_isAlarming) {
       await _alarmPlayer.stop();
-      _isRinging = false;
+      await _vibrationPlayer.stop();
+      _isAlarming = false;
     }
   }
 }
@@ -152,9 +158,8 @@ class FlutterLocalNotificationsClient implements LocalNotificationsClient {
     bool sound = true,
     bool critical = true,
   }) async {
-    final androidPlugin =
-        _plugin.resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
+    final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
     if (androidPlugin != null) {
       try {
         await (androidPlugin as dynamic).requestPermission();
@@ -177,9 +182,8 @@ class FlutterLocalNotificationsClient implements LocalNotificationsClient {
   Future<void> ensureAndroidChannel(
     AndroidNotificationChannel channel,
   ) async {
-    final androidPlugin =
-        _plugin.resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
+    final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
     if (androidPlugin != null) {
       await androidPlugin.createNotificationChannel(channel);
     }
@@ -226,5 +230,63 @@ class RingtoneAlarmPlayer implements AlarmPlayer {
   @override
   Future<void> stop() {
     return FlutterRingtonePlayer().stop();
+  }
+}
+
+abstract class VibrationPlayer {
+  Future<void> start();
+  Future<void> stop();
+}
+
+/// 5秒振動→2秒休止を繰り返すバイブレーションパターンを提供します。
+class RepeatingVibrationPlayer implements VibrationPlayer {
+  RepeatingVibrationPlayer();
+
+  static const _vibrationDurationSeconds = 5;
+  static const _pauseDurationSeconds = 2;
+
+  bool _shouldContinue = false;
+  bool _isRunning = false;
+
+  @override
+  Future<void> start() async {
+    if (_isRunning) {
+      return;
+    }
+
+    final hasVibrator = await Vibration.hasVibrator();
+    if (hasVibrator == true) {
+      _shouldContinue = true;
+      _isRunning = true;
+      _vibrationLoop();
+    }
+  }
+
+  /// 5秒振動→2秒休止のパターンを繰り返すループを実行します。
+  Future<void> _vibrationLoop() async {
+    try {
+      while (_shouldContinue) {
+        // 5秒振動
+        await Vibration.vibrate(
+          duration: _vibrationDurationSeconds * 1000,
+        );
+
+        if (!_shouldContinue) break;
+
+        // 2秒休止
+        await Future.delayed(
+          const Duration(seconds: _pauseDurationSeconds),
+        );
+      }
+    } finally {
+      _isRunning = false;
+    }
+  }
+
+  @override
+  Future<void> stop() async {
+    _shouldContinue = false;
+    await Vibration.cancel();
+    // _isRunningは_vibrationLoop()のfinallyブロックでリセットされる
   }
 }

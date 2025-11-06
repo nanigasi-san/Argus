@@ -4,6 +4,9 @@ import 'dart:convert';
 import '../platform/location_service.dart';
 import '../state_machine/state.dart';
 
+/// アプリケーションイベントのログを記録するクラス。
+///
+/// 状態変更や位置情報の更新をログとして記録し、JSONL形式でエクスポートできます。
 class EventLogger {
   EventLogger();
 
@@ -13,6 +16,9 @@ class EventLogger {
 
   Stream<Map<String, dynamic>> get events => _events.stream;
 
+  /// 状態変更をログに記録します。
+  ///
+  /// ログメッセージとJSONレコードの両方を返します。
   Future<String> logStateChange(StateSnapshot snapshot) async {
     final message = '${snapshot.timestamp.toIso8601String()} '
         '[STATE] ${snapshot.status.name}'
@@ -37,6 +43,7 @@ class EventLogger {
     return message;
   }
 
+  /// 位置情報の更新をログに記録します。
   Future<String> logLocationFix(LocationFix fix) async {
     final message = '${fix.timestamp.toIso8601String()} '
         '[GPS] lat=${fix.latitude.toStringAsFixed(6)} '
@@ -56,6 +63,7 @@ class EventLogger {
     return message;
   }
 
+  /// 記録されたすべてのログをJSONL形式でエクスポートします。
   Future<String> exportJsonl() async {
     const encoder = JsonEncoder.withIndent('  ');
     return encoder.convert(_records);
