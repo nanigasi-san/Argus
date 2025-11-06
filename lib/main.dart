@@ -10,15 +10,41 @@ Future<void> main() async {
   runApp(ArgusApp(controller: controller));
 }
 
-class ArgusApp extends StatelessWidget {
+class ArgusApp extends StatefulWidget {
   const ArgusApp({super.key, required this.controller});
 
   final AppController controller;
 
   @override
+  State<ArgusApp> createState() => _ArgusAppState();
+}
+
+class _ArgusAppState extends State<ArgusApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.detached) {
+      // アプリが完全終了した時に一時ファイルを削除
+      widget.controller.cleanupTempGeoJsonFile();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider.value(
-      value: controller,
+      value: widget.controller,
       child: MaterialApp(
         title: 'Argus',
         theme: ThemeData(

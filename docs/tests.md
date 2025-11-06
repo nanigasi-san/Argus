@@ -14,14 +14,16 @@
 | `state_machine/state_snapshot_test.dart`            | `StateSnapshot`                         | 1        |
 | `geo/point_in_polygon_test.dart`                    | `PointInPolygon`, 内外判定              | 11       |
 | `geo/geo_model_test.dart`                           | `GeoModel`, `GeoPolygon`, GeoJSONパース | 13       |
-| `app_controller_test.dart`                          | `AppController`                         | 3        |
+| `qr/geojson_qr_codec_test.dart`                     | `GeoJsonQrCodec`, QRコードエンコード/デコード | 7        |
+| `app_controller_test.dart`                          | `AppController`                         | 7        |
 | `platform/notifier_test.dart`                       | `Notifier`                              | 1        |
 | `io/logger_test.dart`                               | `EventLogger`                           | 4        |
 | `ui/home_page_test.dart`                            | `HomePage`                              | 3        |
 | `ui/settings_page_test.dart`                        | `SettingsPage`                          | 3        |
+| `ui/qr_scanner_page_test.dart`                      | `QrScannerPage`                         | 2        |
 | `main_test.dart`                                    | `ArgusApp`                              | 1        |
 | `widget_test.dart`                                  | Widget統合テスト                        | 1        |
-| **合計**                                            |                                         | **88**   |
+| **合計**                                            |                                         | **102**  |
 
 ---
 
@@ -341,13 +343,67 @@ GeoJSONのパースとポリゴン生成を検証するテストです。
 
 ---
 
-## 7. app_controller_test.dart
+## 7. qr/geojson_qr_codec_test.dart
 
-AppController の動作とログ出力をカバーするテストセット。開発者モードの振る舞いを確認する。
+GeoJSONとQRコードの相互変換機能を検証するテストです。Brotli圧縮、Base64URLエンコード、ハッシュ検証などをテストします。
 
 ### テストケース
 
-#### 7.1 `loading new GeoJSON resets to init and stops alarm`
+#### 7.1 `minifyGeoJson removes whitespace and keeps structure`
+- **目的**: GeoJSONの最小化処理が空白を除去しつつ構造を保持することを確認
+- **テストデータ**: `assets/geojson/map.geojson`
+- **期待結果**: 最小化されたGeoJSONに改行が含まれず、`type`と`featureCount`が正しく抽出される
+
+#### 7.2 `encode and decode gjb1 round trip with hash succeeds`
+- **目的**: `gjb1:`スキームでのエンコード・デコードのラウンドトリップが成功することを確認
+- **手順**:
+  1. GeoJSONをエンコードしてQRテキストを生成
+  2. QRテキストをデコードしてGeoJSONを復元
+- **期待結果**: 
+  - `bundle.isSplit = false`（分割されていない）
+  - QRテキストが`gjb1:`で始まる
+  - ペイロードがBase64URL形式（`=`を含まない、URL-safe文字のみ）
+  - ハッシュが含まれる
+  - 復元されたGeoJSONが元の最小化GeoJSONと一致
+
+#### 7.3 `encode triggers gjb1p split when max length is low`
+- **目的**: 最大長が小さい場合に`gjb1p:`スキームで分割されることを確認
+- **設定**: `maxQrTextLength: 80`
+- **期待結果**: 
+  - `bundle.isSplit = true`
+  - 複数のQRテキストが生成される
+  - すべてのQRテキストが`gjb1p:`で始まる
+  - 復元されたGeoJSONが元の最小化GeoJSONと一致
+
+#### 7.4 `decode fails when a gjb1p chunk is missing`
+- **目的**: 分割QRコードのチャンクが欠損している場合にデコードが失敗することを確認
+- **手順**: 分割QRコードの最初のチャンクを削除してデコードを試行
+- **期待結果**: `ChunkMismatchException`がスローされる
+
+#### 7.5 `decode fails on hash mismatch`
+- **目的**: ハッシュが一致しない場合にデコードが失敗することを確認
+- **手順**: QRテキストのハッシュ部分を改ざんしてデコードを試行
+- **期待結果**: `HashMismatchException`がスローされる
+
+#### 7.6 `decode rejects unsupported scheme`
+- **目的**: サポートされていないスキームが拒否されることを確認
+- **テストデータ**: `abc1:payload`
+- **期待結果**: `UnsupportedSchemeException`がスローされる
+
+#### 7.7 `decode rejects invalid base64 payload`
+- **目的**: 無効なBase64URLペイロードが拒否されることを確認
+- **テストデータ**: `gjb1:@@@@`
+- **期待結果**: `DecodeFailedException`がスローされる
+
+---
+
+## 8. app_controller_test.dart
+
+AppController の動作とログ出力をカバーするテストセット。開発者モードの振る舞い、QRコードからのGeoJSON読み込みを確認する。
+
+### テストケース
+
+#### 8.1 `loading new GeoJSON resets to init and stops alarm`
 - **目的**: GeoJSON を再ロードした際に状態が `waitStart` に戻り、アラームが停止することを確認
 - **手順**:
   1. アラームを開始（`notifyOuter()`）
@@ -357,19 +413,79 @@ AppController の動作とログ出力をカバーするテストセット。開
   - `stateMachine.current = LocationStateStatus.waitStart`
   - アラームが停止（`alarm.stopCount = 1`）
 
-#### 7.2 `describeSnapshot hides navigation details before OUTER`
+#### 8.2 `describeSnapshot hides navigation details before OUTER`
 - **目的**: 開発者モード OFF では INNER/NEAR 中に距離・方角が伏せられることを検証
 - **テストデータ**: `inner` 状態、距離42.5m、方位123度
 - **期待結果**: ログ文字列に `dist=-` と `bearing=-` が含まれ、座標情報が含まれない
 
-#### 7.3 `describeSnapshot reveals navigation details in developer mode`
+#### 8.3 `describeSnapshot reveals navigation details in developer mode`
 - **目的**: 開発者モード ON で距離・方角・ターゲット座標が露出することを確認
 - **テストデータ**: `inner` 状態、距離42.5m、方位123度、開発者モード有効
 - **期待結果**: ログ文字列に距離（`42.50m`）、方角（`123deg`）、座標（`(1.00000,2.00000)`）が含まれる
 
+#### 8.4 `reloadGeoJsonFromQr loads GeoJSON from valid QR code`
+- **目的**: 有効なQRコードからGeoJSONが正常に読み込まれることを確認
+- **手順**:
+  1. GeoJSONをQRコードにエンコード
+  2. QRテキストからGeoJSONを読み込み
+- **期待結果**: 
+  - `geoJsonLoaded = true`
+  - `geoJsonFileName`が`temp_geojson_`で始まり`.geojson`で終わる
+  - `snapshot.notes = 'GeoJSON loaded from QR code'`
+  - 監視が停止されている（`locationService.stopped = true`）
+
+#### 8.5 `reloadGeoJsonFromQr rejects invalid QR code format`
+- **目的**: 無効なQRコード形式が拒否されることを確認
+- **テストデータ**: `invalid:qr:code`
+- **期待結果**: 
+  - `lastErrorMessage`が`Invalid QR code format`を含む
+  - `geoJsonLoaded = false`
+
+#### 8.6 `reloadGeoJsonFromQr handles decode errors gracefully`
+- **目的**: デコードエラーが適切に処理されることを確認
+- **テストデータ**: `gjb1:invalid_payload`
+- **期待結果**: 
+  - `lastErrorMessage`が`Failed to decode`を含む
+  - `geoJsonLoaded = false`
+
+#### 8.7 `cleanupTempGeoJsonFile deletes temporary file`
+- **目的**: 一時GeoJSONファイルが削除されることを確認
+- **手順**:
+  1. QRコードからGeoJSONを読み込み（一時ファイル作成）
+  2. `cleanupTempGeoJsonFile()`を呼び出し
+- **期待結果**: 一時ファイル名がクリアされる（テスト環境では実際のファイル削除は確認できない）
+
+#### 8.8 `reloadGeoJsonFromQr resets state and stops monitoring`
+- **目的**: QRコードからGeoJSONを読み込んだ際に状態がリセットされ、監視が停止されることを確認
+- **手順**:
+  1. QRコードからGeoJSONを読み込み
+- **期待結果**: 
+  - 監視が停止されている（`locationService.stopped = true`）
+  - `snapshot.status = LocationStateStatus.waitStart`
+  - 距離・方位角・最寄り境界点が`null`にリセットされる
+
 ---
 
-## 8. platform/notifier_test.dart
+## 9. ui/qr_scanner_page_test.dart
+
+QRコードスキャン画面のUI動作を検証するテストです。
+
+### テストケース
+
+#### 9.1 `displays scanner page with app bar`
+- **目的**: QRスキャン画面が正しく表示されることを確認
+- **期待結果**: AppBarのタイトル「Scan QR Code」が表示される
+
+#### 9.2 `can navigate back`
+- **目的**: スキャン画面から前の画面に戻れることを確認
+- **手順**:
+  1. スキャン画面を開く
+  2. 戻るボタンをタップ
+- **期待結果**: 前の画面に戻る
+
+---
+
+## 10. platform/notifier_test.dart
 
 通知とアラームの制御を検証するテストです。
 
@@ -388,7 +504,7 @@ AppController の動作とログ出力をカバーするテストセット。開
 
 ---
 
-## 9. io/logger_test.dart
+## 11. io/logger_test.dart
 
 イベントロガーの動作を検証するテストです。
 
@@ -415,7 +531,7 @@ AppController の動作とログ出力をカバーするテストセット。開
 
 ---
 
-## 10. ui/home_page_test.dart
+## 12. ui/home_page_test.dart
 
 HomePage のUI動作を検証するテストです。
 
@@ -438,7 +554,7 @@ HomePage のUI動作を検証するテストです。
 
 ---
 
-## 11. ui/settings_page_test.dart
+## 13. ui/settings_page_test.dart
 
 SettingsPage のUI動作を検証するテストです。
 
@@ -461,7 +577,7 @@ SettingsPage のUI動作を検証するテストです。
 
 ---
 
-## 12. main_test.dart
+## 14. main_test.dart
 
 アプリケーションのエントリーポイントとウィジェットツリーの基本動作を検証するテストです。
 
@@ -473,7 +589,7 @@ SettingsPage のUI動作を検証するテストです。
 
 ---
 
-## 13. widget_test.dart
+## 15. widget_test.dart
 
 ウィジェットの統合テストです。
 
@@ -506,7 +622,7 @@ flutter test test/state_machine/state_machine_test.dart --name "returns INNER"
 
 ## テストカバレッジ
 
-現在のテストスイート（全88件）は以下の機能をカバーしています:
+現在のテストスイート（全102件）は以下の機能をカバーしています:
 
 ✅ **状態管理** (39件)
 - すべての状態遷移（WAIT_GEOJSON, WAIT_START, GPS_BAD, INNER, NEAR, OUTER_PENDING, OUTER）
@@ -536,10 +652,20 @@ flutter test test/state_machine/state_machine_test.dart --name "returns INNER"
 - リセット機能
 - エッジケース（ゼロ要件）の処理
 
-✅ **アプリケーション制御** (3件)
+✅ **QRコード機能** (7件)
+- GeoJSONの最小化処理
+- `gjb1:`スキームでのエンコード・デコード
+- `gjb1p:`スキームでの分割QRコード
+- ハッシュ検証
+- エラーハンドリング（無効なスキーム、無効なペイロード、欠損チャンク）
+
+✅ **アプリケーション制御** (7件)
 - GeoJSON再ロード時の状態リセット
 - アラーム停止
 - 開発者モードの動作
+- QRコードからのGeoJSON読み込み
+- 一時ファイルのクリーンアップ
+- エラーハンドリング（無効なQRコード形式、デコードエラー）
 
 ✅ **通知とアラーム** (1件)
 - OUTER/INNER遷移時のアラーム制御
@@ -549,18 +675,19 @@ flutter test test/state_machine/state_machine_test.dart --name "returns INNER"
 - 位置情報ログ
 - JSONエクスポート
 
-✅ **UI** (6件)
+✅ **UI** (8件)
 - HomePageのナビゲーション情報表示制御
 - SettingsPageの設定表示と開発者モード切り替え
+- QrScannerPageの表示とナビゲーション
 
 ---
 
 ## テスト統計
 
-- **総テスト数**: 88件
-- **テストファイル数**: 13ファイル
+- **総テスト数**: 102件
+- **テストファイル数**: 16ファイル
 - **成功率**: 100% (すべてのテストが通過)
-- **主要カバレッジ**: 状態管理、地理空間計算、GeoJSON処理、ヒステリシス機構、UI、ログ記録
+- **主要カバレッジ**: 状態管理、地理空間計算、GeoJSON処理、ヒステリシス機構、QRコード機能、UI、ログ記録
 
 ---
 
@@ -574,6 +701,8 @@ flutter test test/state_machine/state_machine_test.dart --name "returns INNER"
 - [ ] エッジケースの追加（極端な座標値、ポリゴンの自己交差など）
 - [ ] パフォーマンステスト（大量のポリゴン、高頻度の評価）
 - [ ] 統合テスト（エンドツーエンドのシナリオ）
+- [ ] QRコード生成のPNG画像検証
+- [ ] 分割QRコードの順序検証
 
 ---
 

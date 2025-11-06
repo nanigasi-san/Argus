@@ -2,7 +2,7 @@
 以下のコマンドを走らせて
 
 $ flutter analyze
-$ flutter test -v
+$ flutter test -v --coverage
 
 # 2
 scripts\parse_coverage.py　を実行して、テストカバレッジを教えて

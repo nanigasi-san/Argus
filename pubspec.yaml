@@ -9,17 +9,23 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.6
+  brotli: ^0.6.0
+  crypto: ^3.0.3
   geolocator: ^14.0.2
+  path: ^1.9.0
   file_selector: ^1.0.1
+  image: ^4.5.4
   path_provider: ^2.1.1
   json_annotation: ^4.8.1
   collection: ^1.17.2
+  qr: ^3.0.1
   meta: ^1.10.0
   provider: ^6.0.5
   flutter_local_notifications: ^19.5.0
   flutter_ringtone_player: ^4.0.0
   permission_handler: ^12.0.1
   vibration: ^2.0.0
+  mobile_scanner: ^5.0.0
 
 dev_dependencies:
   flutter_test:
