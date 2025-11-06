@@ -1,8 +1,11 @@
+// ignore_for_file: avoid_print
+// このスクリプトはデモ/テスト用であり、実行時の進捗表示が重要なためprintを使用します。
+
 import 'dart:io';
 
 import 'package:path/path.dart' as path;
 
-import '../lib/qr/geojson_qr_codec.dart';
+import 'package:argus/qr/geojson_qr_codec.dart';
 
 /// map.geojsonをQRコードにエンコードして保存し、復元してGeoJSONを保存するデモスクリプト
 Future<void> main(List<String> args) async {
