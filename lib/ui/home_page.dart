@@ -5,6 +5,7 @@ import '../app_controller.dart';
 import '../geo/geo_model.dart';
 import '../io/log_entry.dart';
 import '../state_machine/state.dart';
+import 'qr_scanner_page.dart';
 import 'settings_page.dart';
 
 class HomePage extends StatelessWidget {
@@ -303,10 +304,27 @@ class HomePage extends StatelessWidget {
                     ],
                   ),
           ),
-          floatingActionButton: FloatingActionButton.extended(
-            onPressed: () => controller.reloadGeoJsonFromPicker(),
-            icon: const Icon(Icons.map),
-            label: const Text('GeoJSON'),
+          floatingActionButton: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              FloatingActionButton.extended(
+                onPressed: () => controller.reloadGeoJsonFromPicker(),
+                icon: const Icon(Icons.map),
+                label: const Text('Load GeoJSON'),
+              ),
+              const SizedBox(width: 16),
+              FloatingActionButton.extended(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const QrScannerPage(),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.qr_code_scanner),
+                label: const Text('Read QR code'),
+              ),
+            ],
           ),
         );
       },

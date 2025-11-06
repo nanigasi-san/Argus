@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'geo/area_index.dart';
@@ -12,6 +14,7 @@ import 'io/log_entry.dart';
 import 'io/logger.dart';
 import 'platform/location_service.dart';
 import 'platform/notifier.dart';
+import 'qr/geojson_qr_codec.dart';
 import 'state_machine/state.dart';
 import 'state_machine/state_machine.dart';
 
@@ -46,6 +49,7 @@ class AppController extends ChangeNotifier {
   StreamSubscription<LocationFix>? _subscription;
   String? _lastErrorMessage;
   String? _geoJsonFileName;
+  String? _tempGeoJsonFilePath;
   final List<AppLogEntry> _logs = <AppLogEntry>[];
 
   StateSnapshot get snapshot => _snapshot;
@@ -219,6 +223,99 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  /// QRコードからGeoJSONを読み込みます。
+  ///
+  /// QRテキストからGeoJSONを復元し、一時ファイルとして保存してから
+  /// 状態マシンとエリアインデックスを更新します。
+  /// エラーが発生した場合は、エラーメッセージを設定します。
+  Future<void> reloadGeoJsonFromQr(String qrText) async {
+    // 先に監視を停止（ファイル操作前に停止）
+    await stopMonitoring();
+
+    try {
+      // QRテキストがgjb1:で始まることを確認
+      if (!qrText.startsWith('gjb1:')) {
+        _lastErrorMessage = 'Invalid QR code format. Expected gjb1: scheme.';
+        _logError('APP', _lastErrorMessage!);
+        notifyListeners();
+        return;
+      }
+
+      // QRテキストからGeoJSONを復元
+      final restoredGeoJson = await decodeGeoJson(
+        GeoJsonQrDecodeInput(
+          qrTexts: [qrText],
+          verifyHash: true,
+        ),
+      );
+
+      // 一時ディレクトリに保存
+      final tempDir = await getTemporaryDirectory();
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final tempFile = File('${tempDir.path}/temp_geojson_$timestamp.geojson');
+      await tempFile.writeAsString(restoredGeoJson);
+
+      // 既存の一時ファイルがあれば削除
+      await cleanupTempGeoJsonFile();
+
+      // 新しい一時ファイルパスを保存
+      _tempGeoJsonFilePath = tempFile.path;
+
+      // GeoModelを生成
+      final model = GeoModel.fromGeoJson(restoredGeoJson);
+
+      _geoModel = model;
+      _geoJsonFileName = 'temp_geojson_$timestamp.geojson';
+      _areaIndex = AreaIndex.build(model.polygons);
+      stateMachine.updateGeometry(_geoModel, _areaIndex);
+
+      // waitStart状態に戻し、距離・方位角などの情報をクリア
+      _snapshot = StateSnapshot(
+        status: LocationStateStatus.waitStart,
+        timestamp: DateTime.now(),
+        geoJsonLoaded: true,
+        distanceToBoundaryM: null,
+        bearingToBoundaryDeg: null,
+        nearestBoundaryPoint: null,
+        notes: 'GeoJSON loaded from QR code',
+      );
+      await notifier.stopAlarm();
+      _lastErrorMessage = null;
+      _logInfo('APP', 'GeoJSON loaded from QR code.', timestamp: _snapshot.timestamp);
+      notifyListeners();
+    } on GeoJsonQrException catch (e) {
+      _lastErrorMessage = 'Failed to decode QR code: ${e.message}';
+      _logError('APP', _lastErrorMessage!);
+      notifyListeners();
+    } on FormatException catch (e) {
+      _lastErrorMessage = 'Failed to parse GeoJSON: ${e.message}';
+      _logError('APP', _lastErrorMessage!);
+      notifyListeners();
+    } catch (e) {
+      _lastErrorMessage = 'Unable to load GeoJSON from QR code: ${e.toString()}';
+      _logError('APP', _lastErrorMessage!);
+      notifyListeners();
+    }
+  }
+
+  /// 一時GeoJSONファイルを削除します。
+  ///
+  /// アプリ終了時や新しいQRコードを読み込む際に呼び出されます。
+  Future<void> cleanupTempGeoJsonFile() async {
+    if (_tempGeoJsonFilePath != null) {
+      try {
+        final file = File(_tempGeoJsonFilePath!);
+        if (await file.exists()) {
+          await file.delete();
+          _logInfo('APP', 'Temporary GeoJSON file deleted: $_tempGeoJsonFilePath');
+        }
+      } catch (e) {
+        _logError('APP', 'Failed to delete temporary GeoJSON file: $e');
+      }
+      _tempGeoJsonFilePath = null;
+    }
+  }
+
   /// パスからファイル名を抽出します。
   String? _extractFileName(String path) {
     if (path.isEmpty) return null;
@@ -328,6 +425,8 @@ class AppController extends ChangeNotifier {
   @override
   void dispose() {
     _subscription?.cancel();
+    // dispose()は同期メソッドなので、非同期処理は実行しない
+    // アプリ終了時のクリーンアップはmain.dartのWidgetsBindingObserverで処理
     super.dispose();
   }
 
