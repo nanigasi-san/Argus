@@ -279,6 +279,52 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  @visibleForTesting
+  void debugSeed({
+    AppConfig? config,
+    GeoModel? geoJson,
+    AreaIndex? areaIndex,
+    bool? developerMode,
+    StateSnapshot? snapshot,
+  }) {
+    if (config != null) {
+      _config = config;
+      stateMachine.updateConfig(config);
+    }
+
+    if (geoJson != null) {
+      _geoModel = geoJson;
+    }
+
+    if (areaIndex != null) {
+      _areaIndex = areaIndex;
+    } else if (geoJson != null) {
+      _areaIndex = AreaIndex.build(geoJson.polygons);
+    }
+
+    if (geoJson != null || areaIndex != null) {
+      stateMachine.updateGeometry(_geoModel, _areaIndex);
+      _snapshot = _snapshot.copyWith(
+        status: LocationStateStatus.waitStart,
+        timestamp: DateTime.now(),
+        geoJsonLoaded: geoJsonLoaded,
+      );
+    } else if (config != null) {
+      _snapshot = _snapshot.copyWith(
+        timestamp: DateTime.now(),
+        geoJsonLoaded: geoJsonLoaded,
+      );
+    }
+
+    if (developerMode != null) {
+      _developerMode = developerMode;
+    }
+
+    if (snapshot != null) {
+      _snapshot = snapshot;
+    }
+  }
+
   @override
   void dispose() {
     _subscription?.cancel();

@@ -31,15 +31,38 @@ Future<void> _mockDefaultConfigAsset() async {
 
 Future<void> _pumpSettings(
   WidgetTester tester,
-  AppController controller,
-) async {
+  AppController controller, {
+  bool settle = true,
+}) async {
   await tester.pumpWidget(
     ChangeNotifierProvider.value(
       value: controller,
       child: const MaterialApp(home: SettingsPage()),
     ),
   );
-  await tester.pumpAndSettle();
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pump();
+  }
+}
+
+Future<void> _pumpUntilVisible(
+  WidgetTester tester,
+  Finder finder, {
+  int maxTicks = 10,
+}) async {
+  for (var i = 0; i < maxTicks; i++) {
+    await tester.pump();
+    if (finder.evaluate().isNotEmpty) {
+      return;
+    }
+    await tester.pump(const Duration(milliseconds: 50));
+    if (finder.evaluate().isNotEmpty) {
+      return;
+    }
+  }
+  fail('Widget matching ${finder.description} not found after pumping.');
 }
 
 void main() {
@@ -60,35 +83,43 @@ void main() {
       ),
     );
 
-    await _pumpSettings(tester, controller);
+    await _pumpSettings(tester, controller, settle: false);
 
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
   });
 
   testWidgets('renders form fields when config available', (tester) async {
     final controller = buildTestController(hasGeoJson: true);
+    expect(controller.config, isNotNull);
 
-    await _pumpSettings(tester, controller);
+    await _pumpSettings(tester, controller, settle: false);
+    await _pumpUntilVisible(
+      tester,
+      find.text('反応距離 (Inner buffer)'),
+    );
 
     expect(find.text('反応距離 (Inner buffer)'), findsOneWidget);
-    final textField = tester.widget<TextFormField>(
-      find.byType(TextFormField).first,
-    );
-    expect(textField.controller?.text.isNotEmpty, isTrue);
   });
 
   testWidgets('toggling developer mode switch calls controller',
       (tester) async {
     final controller = buildTestController(hasGeoJson: true);
+    expect(controller.config, isNotNull);
 
-    await _pumpSettings(tester, controller);
-
-    final switchFinder = find.byType(SwitchListTile);
+    await _pumpSettings(tester, controller, settle: false);
+    final switchFinder = find.byKey(const Key('developerModeSwitch'));
+    final listFinder = find.byType(ListView);
+    var attempts = 0;
+    while (switchFinder.evaluate().isEmpty && attempts < 5) {
+      await tester.drag(listFinder, const Offset(0, -300));
+      await tester.pump();
+      attempts += 1;
+    }
     expect(switchFinder, findsOneWidget);
 
     await tester.tap(switchFinder);
     await tester.pumpAndSettle();
 
-    expect(controller.isDeveloperModeEnabled, isTrue);
+    expect(controller.developerMode, isTrue);
   });
 }

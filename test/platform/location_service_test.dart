@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:argus/io/config.dart';
 import 'package:argus/platform/location_service.dart';
 
 import '../support/test_doubles.dart' as test_doubles;
