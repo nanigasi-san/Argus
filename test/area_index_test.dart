@@ -1,6 +1,6 @@
 import 'package:argus/geo/area_index.dart';
 import 'package:argus/geo/geo_model.dart';
-import 'package:test/test.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('AreaIndex.lookup', () {
