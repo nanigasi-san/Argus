@@ -6,27 +6,46 @@ import 'package:path_provider/path_provider.dart';
 
 import 'config.dart';
 
+typedef GeoJsonFilePicker = Future<XFile?> Function({
+  List<XTypeGroup>? acceptedTypeGroups,
+});
+typedef DocumentsDirectoryProvider = Future<Directory> Function();
+typedef ConfigLoader = Future<AppConfig> Function();
+
 /// ファイル操作を管理するクラス。
 ///
 /// GeoJSONファイルの選択、設定ファイルの読み書き、ログファイルの取得を提供します。
 class FileManager {
+  FileManager({
+    GeoJsonFilePicker? filePicker,
+    DocumentsDirectoryProvider? documentsDirectoryProvider,
+    ConfigLoader? defaultConfigLoader,
+  })  : _pickFile = filePicker ?? openFile,
+        _documentsDirectoryProvider =
+            documentsDirectoryProvider ?? getApplicationDocumentsDirectory,
+        _loadDefaultConfig = defaultConfigLoader ?? AppConfig.loadDefault;
+
+  final GeoJsonFilePicker _pickFile;
+  final DocumentsDirectoryProvider _documentsDirectoryProvider;
+  final ConfigLoader _loadDefaultConfig;
+
   /// GeoJSONファイルを選択するファイルピッカーを開きます。
   Future<XFile?> pickGeoJsonFile() async {
     const XTypeGroup typeGroup = XTypeGroup(
       label: 'GeoJSON files',
       extensions: ['geojson', 'json', 'bin'],
     );
-    return await openFile(acceptedTypeGroups: [typeGroup]);
+    return await _pickFile(acceptedTypeGroups: [typeGroup]);
   }
 
   /// 設定ファイルのパスを取得します。
   ///
   /// ファイルが存在しない場合はデフォルト設定で作成します。
   Future<File> getConfigFile() async {
-    final dir = await getApplicationDocumentsDirectory();
+    final dir = await _documentsDirectoryProvider();
     final file = File('${dir.path}/config.json');
     if (!await file.exists()) {
-      final defaultConfig = await AppConfig.loadDefault();
+      final defaultConfig = await _loadDefaultConfig();
       await file.writeAsString(jsonEncode(defaultConfig.toJson()));
     }
     return file;
@@ -48,7 +67,7 @@ class FileManager {
       final decoded = jsonDecode(raw) as Map<String, dynamic>;
       return AppConfig.fromJson(decoded);
     } catch (_) {
-      return AppConfig.loadDefault();
+      return _loadDefaultConfig();
     }
   }
 
@@ -56,7 +75,7 @@ class FileManager {
   ///
   /// ファイルが存在しない場合は作成します。
   Future<File> openLogFile() async {
-    final dir = await getApplicationDocumentsDirectory();
+    final dir = await _documentsDirectoryProvider();
     final file = File('${dir.path}/argus.log');
     if (!await file.exists()) {
       await file.create(recursive: true);

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:meta/meta.dart';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -59,6 +60,34 @@ class AppController extends ChangeNotifier {
   List<AppLogEntry> get logs => List.unmodifiable(_logs);
   /// 開発者モードが有効かどうかを示します。
   bool get isDeveloperModeEnabled => _isDeveloperModeEnabled;
+
+  @visibleForTesting
+  void debugInitialize({
+    AppConfig? config,
+    GeoModel? geoModel,
+    StateSnapshot? snapshot,
+    bool? developerMode,
+    String? geoJsonFileName,
+  }) {
+    if (config != null) {
+      _config = config;
+      stateMachine.updateConfig(config);
+    }
+    if (geoJsonFileName != null) {
+      _geoJsonFileName = geoJsonFileName;
+    }
+    if (geoModel != null) {
+      _geoModel = geoModel;
+      _areaIndex = AreaIndex.build(geoModel.polygons);
+    }
+    if (snapshot != null) {
+      _snapshot = snapshot;
+    }
+    if (developerMode != null) {
+      _isDeveloperModeEnabled = developerMode;
+    }
+    notifyListeners();
+  }
 
   /// アプリケーションを初期化します。
   ///

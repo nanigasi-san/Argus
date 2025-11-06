@@ -1,27 +1,19 @@
-import 'dart:async';
-import 'dart:convert';
-
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:argus/app_controller.dart';
-import 'package:argus/geo/geo_model.dart';
-import 'package:argus/io/config.dart';
-import 'package:argus/io/file_manager.dart';
-import 'package:argus/io/logger.dart';
-import 'package:argus/platform/location_service.dart';
 import 'package:argus/platform/notifier.dart';
 import 'package:argus/state_machine/state.dart';
 import 'package:argus/state_machine/state_machine.dart';
-import 'package:file_selector/file_selector.dart';
 
 import 'support/notifier_fakes.dart';
+import 'support/test_doubles.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('AppController', () {
     test('loading new GeoJSON resets to init and stops alarm', () async {
-      final config = _testConfig();
+      final config = createTestConfig();
       final stateMachine = StateMachine(config: config);
       final locationService = FakeLocationService();
       final fileManager = FakeFileManager(config: config);
@@ -96,24 +88,8 @@ void main() {
   });
 }
 
-AppConfig _testConfig() {
-  return AppConfig(
-    innerBufferM: 5,
-    leaveConfirmSamples: 1,
-    leaveConfirmSeconds: 1,
-    gpsAccuracyBadMeters: 50,
-    sampleIntervalS: {'fast': 1},
-    sampleDistanceM: {'fast': 1},
-    screenWakeOnLeave: false,
-  );
-}
-
-GeoModel _squareModel() {
-  return GeoModel.fromGeoJson(_squareGeoJson);
-}
-
 AppController _buildController() {
-  final config = _testConfig();
+  final config = createTestConfig();
   final stateMachine = StateMachine(config: config);
   final fileManager = FakeFileManager(config: config);
   final notifier = Notifier(
@@ -127,88 +103,4 @@ AppController _buildController() {
     logger: FakeEventLogger(),
     notifier: notifier,
   );
-}
-
-const String _squareGeoJson = '''
-{
-  "type": "FeatureCollection",
-  "features": [
-    {
-      "type": "Feature",
-      "properties": {"name": "Test Area"},
-      "geometry": {
-        "type": "Polygon",
-        "coordinates": [[[0,0],[1,0],[1,1],[0,1],[0,0]]]
-      }
-    }
-  ]
-}
-''';
-
-class FakeFileManager extends FileManager {
-  FakeFileManager({
-    required this.config,
-  });
-
-  final AppConfig config;
-
-  GeoModel get _model => _squareModel();
-
-  @override
-  Future<AppConfig> readConfig() async => config;
-
-  Future<GeoModel?> pickAndLoadGeoJson() async => _model;
-
-  Future<GeoModel> loadBundledGeoJson(String assetPath) async => _model;
-
-  @override
-  Future<XFile?> pickGeoJsonFile() async {
-    return XFile.fromData(
-      utf8.encode(_squareGeoJson),
-      name: 'test_square.geojson',
-      mimeType: 'application/geo+json',
-    );
-  }
-}
-
-class FakeEventLogger extends EventLogger {
-  final List<StateSnapshot> stateChanges = <StateSnapshot>[];
-
-  @override
-  Future<String> logStateChange(StateSnapshot snapshot) async {
-    stateChanges.add(snapshot);
-    return snapshot.status.name;
-  }
-
-  @override
-  Future<String> logLocationFix(LocationFix fix) async {
-    return 'logged';
-  }
-}
-
-class FakeLocationService implements LocationService {
-  FakeLocationService();
-
-  final StreamController<LocationFix> _controller =
-      StreamController<LocationFix>.broadcast();
-
-  bool hasStarted = false;
-  bool hasStopped = false;
-
-  @override
-  Stream<LocationFix> get stream => _controller.stream;
-
-  @override
-  Future<void> start(AppConfig config) async {
-    hasStarted = true;
-  }
-
-  @override
-  Future<void> stop() async {
-    hasStopped = true;
-  }
-
-  void add(LocationFix fix) {
-    _controller.add(fix);
-  }
 }
