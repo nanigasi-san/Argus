@@ -97,7 +97,11 @@ class FakeLocationService implements LocationService {
   }
 }
 
-AppController buildTestController({bool hasGeoJson = false}) {
+AppController buildTestController({
+  bool hasGeoJson = false,
+  StateSnapshot? snapshot,
+  bool? developerMode,
+}) {
   final config = createTestConfig();
   final stateMachine = StateMachine(config: config);
   final fileManager = FakeFileManager(config: config);
@@ -123,6 +127,8 @@ AppController buildTestController({bool hasGeoJson = false}) {
     config: config,
     geoJson: geoModel,
     areaIndex: areaIndex,
+    snapshot: snapshot,
+    developerMode: developerMode,
   );
 
   return controller;
