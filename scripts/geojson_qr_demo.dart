@@ -1,6 +1,7 @@
 // ignore_for_file: avoid_print
 // このスクリプトはデモ/テスト用であり、実行時の進捗表示が重要なためprintを使用します。
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as path;
@@ -87,9 +88,12 @@ Future<void> main(List<String> args) async {
     print('復元完了:');
     print('  - 復元されたGeoJSONサイズ: ${restoredGeoJson.length} bytes');
 
-    // 復元したGeoJSONを保存
+    // 復元したGeoJSONを整形して保存
     final restoredPath = path.join(outputDir, 'restored_map.geojson');
-    await File(restoredPath).writeAsString(restoredGeoJson);
+    final restoredJson = jsonDecode(restoredGeoJson);
+    final formattedGeoJson =
+        const JsonEncoder.withIndent('    ').convert(restoredJson);
+    await File(restoredPath).writeAsString(formattedGeoJson);
     print('  保存: $restoredPath');
 
     // 検証: 元のGeoJSONと復元されたGeoJSONが一致するか確認
