@@ -62,7 +62,7 @@ Future<void> _pumpUntilVisible(
       return;
     }
   }
-  fail('Widget matching ${finder.description} not found after pumping.');
+  fail('Widget not found after pumping.');
 }
 
 void main() {
