@@ -1,4 +1,4 @@
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 
 import 'package:argus/geo/geo_model.dart';
 import 'package:argus/geo/point_in_polygon.dart';
