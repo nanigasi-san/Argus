@@ -8,10 +8,12 @@ class FakeLocalNotificationsClient implements LocalNotificationsClient {
   bool initialized = false;
   AndroidNotificationChannel? lastChannel;
   bool requestedPermissions = false;
+  InitializationSettings? lastInitSettings;
 
   @override
   Future<void> initialize(InitializationSettings settings) async {
     initialized = true;
+    lastInitSettings = settings;
   }
 
   @override

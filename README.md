@@ -4,6 +4,52 @@
 [![codecov](https://codecov.io/gh/nanigasi-san/Argus/branch/main/graph/badge.svg)](https://codecov.io/gh/YOUR_USERNAME/Argus)
 [![CI](https://github.com/nanigasi-san/Argus/workflows/CI/badge.svg)](https://github.com/YOUR_USERNAME/Argus/actions)
 
+## ビルド手順
+
+### Android
+
+```bash
+# 依存関係のインストール
+flutter pub get
+
+# APKのビルド
+flutter build apk
+
+# リリースAPKのビルド
+flutter build apk --release
+```
+
+### iOS
+
+**前提条件:**
+- macOS環境が必要です
+- Xcodeがインストールされている必要があります
+- CocoaPodsがインストールされている必要があります
+
+```bash
+# 依存関係のインストール
+flutter pub get
+
+# iOS依存関係のインストール
+cd ios
+pod install
+cd ..
+
+# iOSシミュレータで実行
+flutter run
+
+# リリースビルド
+flutter build ios --release
+```
+
+**iOSで必要な権限:**
+- **位置情報（常時）**: バックグラウンド実行中も安全エリアを監視するため
+- **位置情報（使用中）**: アプリを使用中に安全エリアを監視するため
+- **カメラ**: QRコードをスキャンしてGeoJSONを読み込むため
+- **通知**: 安全エリアからの離脱を通知するため
+
+これらの権限は`ios/Runner/Info.plist`に設定されており、初回起動時にユーザーに許可を求めます。
+
 ## テストカバレッジ
 
 ```bash
