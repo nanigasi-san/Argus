@@ -65,18 +65,19 @@ genhtml coverage/lcov.info -o coverage/html
 
 ### 現在のカバレッジ
 
-**全体カバレッジ: 42.5%** (457/1076 lines)
+**全体カバレッジ: 65.7%** (1006/1532 lines)
 
 #### テスト統計
-- **総テスト数**: 73件
-- **テストファイル数**: 7ファイル
+- **総テスト数**: 105件
+- **テストファイル数**: 複数ファイル
   - `state_machine_test.dart`: 11テスト
   - `state_machine_transitions_test.dart`: 28テスト（全状態遷移をカバー）
   - `hysteresis_counter_test.dart`: 7テスト
   - `point_in_polygon_test.dart`: 9テスト
   - `geo_model_test.dart`: 13テスト
   - `app_controller_test.dart`: 3テスト
-  - `platform/notifier_test.dart`: 2テスト
+  - `platform/notifier_test.dart`: 2テスト（iOS通知設定のテストを含む）
+  - `platform/location_service_test.dart`: iOS/Android設定のテストを含む
 
 #### ファイル別カバレッジ
 
@@ -90,7 +91,7 @@ genhtml coverage/lcov.info -o coverage/html
 | `lib/io/config.dart`                        | 72.4%      | 21/29  |
 | `lib/main.dart`                             | 63.6%      | 7/11   |
 | `lib/state_machine/state.dart`              | 63.6%      | 7/11   |
-| `lib/platform/notifier.dart`                | 57.4%      | 27/47  |
+| `lib/platform/notifier.dart`                | 55.9%      | 38/68  |
 | `lib/ui/home_page.dart`                     | 33.7%      | 82/243 |
 | `lib/app_controller.dart`                   | 28.3%      | 56/198 |
 | `lib/io/log_entry.dart`                     | 7.7%       | 1/13   |

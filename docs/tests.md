@@ -16,14 +16,15 @@
 | `geo/geo_model_test.dart`                           | `GeoModel`, `GeoPolygon`, GeoJSONパース | 13       |
 | `qr/geojson_qr_codec_test.dart`                     | `GeoJsonQrCodec`, QRコードエンコード/デコード | 7        |
 | `app_controller_test.dart`                          | `AppController`                         | 7        |
-| `platform/notifier_test.dart`                       | `Notifier`                              | 1        |
+| `platform/notifier_test.dart`                       | `Notifier`                              | 2        |
+| `platform/location_service_test.dart`                | `LocationService`                       | 3        |
 | `io/logger_test.dart`                               | `EventLogger`                           | 4        |
 | `ui/home_page_test.dart`                            | `HomePage`                              | 3        |
 | `ui/settings_page_test.dart`                        | `SettingsPage`                          | 3        |
 | `ui/qr_scanner_page_test.dart`                      | `QrScannerPage`                         | 2        |
 | `main_test.dart`                                    | `ArgusApp`                              | 1        |
 | `widget_test.dart`                                  | Widget統合テスト                        | 1        |
-| **合計**                                            |                                         | **102**  |
+| **合計**                                            |                                         | **105**  |
 
 ---
 
@@ -491,7 +492,7 @@ QRコードスキャン画面のUI動作を検証するテストです。
 
 ### テストケース
 
-#### 8.1 `outer -> inner -> outer toggles alarm playback`
+#### 10.1 `outer -> inner -> outer toggles alarm playback`
 - **目的**: OUTER → INNER → OUTER の遷移でアラームが適切に開始・停止・再開されることを確認
 - **手順**:
   1. `notifyOuter()` を呼び出す → アラーム開始
@@ -502,9 +503,45 @@ QRコードスキャン画面のUI動作を検証するテストです。
   - `notifyRecover()`: 通知キャンセル、アラーム停止、バイブレーション停止
   - 2回目の `notifyOuter()`: アラーム再開、バイブレーション再開
 
+#### 10.2 `Notifier initializes with iOS settings`
+- **目的**: iOS通知初期化設定（`DarwinInitializationSettings`）が正しく設定されることを確認
+- **手順**: `Notifier.initialize()` を呼び出す
+- **期待結果**:
+  - `InitializationSettings` に `iOS` 設定が含まれる
+  - `DarwinInitializationSettings` の各権限要求フラグが `true` に設定される
+  - `requestAlertPermission: true`, `requestBadgePermission: true`, `requestSoundPermission: true`, `requestCriticalPermission: true`
+
 ---
 
-## 11. io/logger_test.dart
+## 11. platform/location_service_test.dart
+
+位置情報サービスの設定構造を検証するテストです。
+
+### テストケース
+
+#### 11.1 `LocationFix stores provided values`
+- **目的**: `LocationFix` が提供された値を正しく保持することを確認
+- **テストデータ**: 緯度35.0、経度139.0、精度4.5m、バッテリー90%、タイムスタンプ
+- **期待結果**: すべての値が正しく設定される
+
+#### 11.2 `FakeLocationService emits updates and tracks lifecycle`
+- **目的**: `FakeLocationService` が位置情報の更新を発行し、ライフサイクルを追跡することを確認
+- **手順**:
+  1. `start()` を呼び出す
+  2. 位置情報を発行
+  3. `stop()` を呼び出す
+- **期待結果**: ストリームが正しく動作し、ライフサイクルが追跡される
+
+#### 11.3 `GeolocatorLocationService builds correct settings for iOS and Android`
+- **目的**: iOS/Android設定が正しく構築されることを確認
+- **手順**: `GeolocatorLocationService` の設定を検証
+- **期待結果**:
+  - iOS: `AppleSettings` が正しく設定される（`showBackgroundLocationIndicator: true` など）
+  - Android: `AndroidSettings` が正しく設定される（`ForegroundNotificationConfig` など）
+
+---
+
+## 12. io/logger_test.dart
 
 イベントロガーの動作を検証するテストです。
 
@@ -531,7 +568,7 @@ QRコードスキャン画面のUI動作を検証するテストです。
 
 ---
 
-## 12. ui/home_page_test.dart
+## 13. ui/home_page_test.dart
 
 HomePage のUI動作を検証するテストです。
 
@@ -554,7 +591,7 @@ HomePage のUI動作を検証するテストです。
 
 ---
 
-## 13. ui/settings_page_test.dart
+## 14. ui/settings_page_test.dart
 
 SettingsPage のUI動作を検証するテストです。
 
@@ -577,7 +614,7 @@ SettingsPage のUI動作を検証するテストです。
 
 ---
 
-## 14. main_test.dart
+## 15. main_test.dart
 
 アプリケーションのエントリーポイントとウィジェットツリーの基本動作を検証するテストです。
 
@@ -589,7 +626,7 @@ SettingsPage のUI動作を検証するテストです。
 
 ---
 
-## 15. widget_test.dart
+## 16. widget_test.dart
 
 ウィジェットの統合テストです。
 
@@ -684,10 +721,10 @@ flutter test test/state_machine/state_machine_test.dart --name "returns INNER"
 
 ## テスト統計
 
-- **総テスト数**: 102件
-- **テストファイル数**: 16ファイル
+- **総テスト数**: 105件
+- **テストファイル数**: 17ファイル
 - **成功率**: 100% (すべてのテストが通過)
-- **主要カバレッジ**: 状態管理、地理空間計算、GeoJSON処理、ヒステリシス機構、QRコード機能、UI、ログ記録
+- **主要カバレッジ**: 状態管理、地理空間計算、GeoJSON処理、ヒステリシス機構、QRコード機能、UI、ログ記録、プラットフォーム固有機能
 
 ---
 
