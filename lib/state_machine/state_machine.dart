@@ -70,96 +70,106 @@ class StateMachine {
     return snapshot;
   }
 
+  /// 位置情報を評価して状態スナップショットを生成します。
   StateSnapshot _evaluateInternal(LocationFix fix) {
     if (!_geoModel.hasGeometry) {
-      _current = LocationStateStatus.waitGeoJson;
-      return StateSnapshot(
-        status: LocationStateStatus.waitGeoJson,
-        timestamp: fix.timestamp,
-        horizontalAccuracyM: fix.accuracyMeters,
-        notes: 'GeoJSON not loaded',
-      );
+      return _createWaitGeoJsonSnapshot(fix);
     }
 
-    if (fix.accuracyMeters == null ||
-        fix.accuracyMeters! > _config.gpsAccuracyBadMeters) {
-      // outer になった場合は GPS_BAD の精度チェックでは取り消さない。
-      // ただし、実際に内側に戻ったかどうかはチェックする必要がある
-      if (_current == LocationStateStatus.outer) {
-        // OUTER状態の場合、精度が悪くても内側に戻ったかどうかをチェック
-        final candidatePolys = _areaIndex
-            .lookup(
-              fix.latitude,
-              fix.longitude,
-            )
-            .toList();
-        final searchPolys =
-            candidatePolys.isEmpty ? _geoModel.polygons : candidatePolys;
-
-        final polygonEval = _evaluatePolygons(
-          fix.latitude,
-          fix.longitude,
-          searchPolys,
-        );
-
-        // Check if the fix has re-entered the area
-        final insideEval = polygonEval.inside;
-
-        if (insideEval != null && insideEval.contains) {
-          // When accuracy is poor but we are inside, treat as INNER/NEAR
-          _hysteresis.reset();
-          final distance = insideEval.distanceToBoundaryM;
-          final isNear = distance < _config.innerBufferM;
-          return StateSnapshot(
-            status:
-                isNear ? LocationStateStatus.near : LocationStateStatus.inner,
-            timestamp: fix.timestamp,
-            horizontalAccuracyM: fix.accuracyMeters,
-            distanceToBoundaryM: distance,
-            geoJsonLoaded: true,
-            nearestBoundaryPoint: insideEval.nearestPoint,
-            bearingToBoundaryDeg: insideEval.bearingToBoundaryDeg,
-            notes:
-                'Low accuracy ${fix.accuracyMeters?.toStringAsFixed(1) ?? '-'}m, but inside area',
-          );
-        }
-
-        // Otherwise stay in OUTER with best-effort distance
-        final nearestEval = polygonEval.nearest;
-        final distance = nearestEval?.distanceToBoundaryM;
-        return StateSnapshot(
-          status: LocationStateStatus.outer,
-          timestamp: fix.timestamp,
-          horizontalAccuracyM: fix.accuracyMeters,
-          distanceToBoundaryM: distance,
-          geoJsonLoaded: true,
-          nearestBoundaryPoint: nearestEval?.nearestPoint,
-          bearingToBoundaryDeg: nearestEval?.bearingToBoundaryDeg,
-          notes:
-              'Low accuracy ${fix.accuracyMeters?.toStringAsFixed(1) ?? '-'}m, but maintaining OUTER state',
-        );
-      }
-      // OUTER状態でない場合のみ、GPS_BADに遷移
-      _hysteresis.reset();
-      return StateSnapshot(
-        status: LocationStateStatus.gpsBad,
-        timestamp: fix.timestamp,
-        horizontalAccuracyM: fix.accuracyMeters,
-        distanceToBoundaryM: null,
-        notes: 'Low accuracy ${fix.accuracyMeters?.toStringAsFixed(1) ?? '-'}m',
-        geoJsonLoaded: true,
-      );
+    if (_isAccuracyBad(fix)) {
+      return _evaluateWithBadAccuracy(fix);
     }
 
+    return _evaluateWithGoodAccuracy(fix);
+  }
+
+  /// GeoJSON未ロード時のスナップショットを生成します。
+  StateSnapshot _createWaitGeoJsonSnapshot(LocationFix fix) {
+    _current = LocationStateStatus.waitGeoJson;
+    return StateSnapshot(
+      status: LocationStateStatus.waitGeoJson,
+      timestamp: fix.timestamp,
+      horizontalAccuracyM: fix.accuracyMeters,
+      notes: 'GeoJSON not loaded',
+    );
+  }
+
+  /// 精度が不良な場合の評価を行います。
+  ///
+  /// OUTER状態の場合は内側に戻ったかどうかをチェックし、
+  /// それ以外の場合はGPS_BAD状態に遷移します。
+  StateSnapshot _evaluateWithBadAccuracy(LocationFix fix) {
+    if (_current == LocationStateStatus.outer) {
+      return _evaluateOuterWithBadAccuracy(fix);
+    }
+    _hysteresis.reset();
+    return StateSnapshot(
+      status: LocationStateStatus.gpsBad,
+      timestamp: fix.timestamp,
+      horizontalAccuracyM: fix.accuracyMeters,
+      distanceToBoundaryM: null,
+      notes: 'Low accuracy ${fix.accuracyMeters?.toStringAsFixed(1) ?? '-'}m',
+      geoJsonLoaded: true,
+    );
+  }
+
+  /// OUTER状態で精度が不良な場合の評価を行います。
+  ///
+  /// 内側に戻ったかどうかをチェックし、内側ならINNER/NEARに遷移、
+  /// 外側ならOUTERを維持します。
+  StateSnapshot _evaluateOuterWithBadAccuracy(LocationFix fix) {
     final candidatePolys = _areaIndex
-        .lookup(
-          fix.latitude,
-          fix.longitude,
-        )
+        .lookup(fix.latitude, fix.longitude)
         .toList();
     final searchPolys =
         candidatePolys.isEmpty ? _geoModel.polygons : candidatePolys;
+    final polygonEval = _evaluatePolygons(
+      fix.latitude,
+      fix.longitude,
+      searchPolys,
+    );
 
+    final insideEval = polygonEval.inside;
+    if (insideEval != null && insideEval.contains) {
+      _hysteresis.reset();
+      final distance = insideEval.distanceToBoundaryM;
+      final isNear = distance < _config.innerBufferM;
+      return StateSnapshot(
+        status:
+            isNear ? LocationStateStatus.near : LocationStateStatus.inner,
+        timestamp: fix.timestamp,
+        horizontalAccuracyM: fix.accuracyMeters,
+        distanceToBoundaryM: distance,
+        geoJsonLoaded: true,
+        nearestBoundaryPoint: insideEval.nearestPoint,
+        bearingToBoundaryDeg: insideEval.bearingToBoundaryDeg,
+        notes:
+            'Low accuracy ${fix.accuracyMeters?.toStringAsFixed(1) ?? '-'}m, but inside area',
+      );
+    }
+
+    final nearestEval = polygonEval.nearest;
+    final distance = nearestEval?.distanceToBoundaryM;
+    return StateSnapshot(
+      status: LocationStateStatus.outer,
+      timestamp: fix.timestamp,
+      horizontalAccuracyM: fix.accuracyMeters,
+      distanceToBoundaryM: distance,
+      geoJsonLoaded: true,
+      nearestBoundaryPoint: nearestEval?.nearestPoint,
+      bearingToBoundaryDeg: nearestEval?.bearingToBoundaryDeg,
+      notes:
+          'Low accuracy ${fix.accuracyMeters?.toStringAsFixed(1) ?? '-'}m, but maintaining OUTER state',
+    );
+  }
+
+  /// 精度が良好な場合の評価を行います。
+  StateSnapshot _evaluateWithGoodAccuracy(LocationFix fix) {
+    final candidatePolys = _areaIndex
+        .lookup(fix.latitude, fix.longitude)
+        .toList();
+    final searchPolys =
+        candidatePolys.isEmpty ? _geoModel.polygons : candidatePolys;
     final polygonEval = _evaluatePolygons(
       fix.latitude,
       fix.longitude,
@@ -167,24 +177,37 @@ class StateMachine {
     );
 
     final evaluation = polygonEval.inside;
-
     if (evaluation != null && evaluation.contains) {
-      _hysteresis.reset();
-      final distance = evaluation.distanceToBoundaryM;
-      final isNear = distance < _config.innerBufferM;
-      return StateSnapshot(
-        status: isNear ? LocationStateStatus.near : LocationStateStatus.inner,
-        timestamp: fix.timestamp,
-        horizontalAccuracyM: fix.accuracyMeters,
-        distanceToBoundaryM: distance,
-        geoJsonLoaded: true,
-        nearestBoundaryPoint: evaluation.nearestPoint,
-        bearingToBoundaryDeg: evaluation.bearingToBoundaryDeg,
-      );
+      return _createInsideSnapshot(fix, evaluation);
     }
 
-    final nearest = polygonEval.nearest;
+    return _createOutsideSnapshot(fix, polygonEval.nearest);
+  }
 
+  /// エリア内のスナップショットを生成します。
+  StateSnapshot _createInsideSnapshot(
+    LocationFix fix,
+    PointInPolygonEvaluation evaluation,
+  ) {
+    _hysteresis.reset();
+    final distance = evaluation.distanceToBoundaryM;
+    final isNear = distance < _config.innerBufferM;
+    return StateSnapshot(
+      status: isNear ? LocationStateStatus.near : LocationStateStatus.inner,
+      timestamp: fix.timestamp,
+      horizontalAccuracyM: fix.accuracyMeters,
+      distanceToBoundaryM: distance,
+      geoJsonLoaded: true,
+      nearestBoundaryPoint: evaluation.nearestPoint,
+      bearingToBoundaryDeg: evaluation.bearingToBoundaryDeg,
+    );
+  }
+
+  /// エリア外のスナップショットを生成します。
+  StateSnapshot _createOutsideSnapshot(
+    LocationFix fix,
+    PointInPolygonEvaluation? nearest,
+  ) {
     final distance = nearest?.distanceToBoundaryM;
     final reached = _hysteresis.addSample(fix.timestamp) && distance != null;
 
@@ -201,7 +224,7 @@ class StateMachine {
       );
     }
 
-    final outerSnapshot = StateSnapshot(
+    return StateSnapshot(
       status: LocationStateStatus.outer,
       timestamp: fix.timestamp,
       horizontalAccuracyM: fix.accuracyMeters,
@@ -211,11 +234,17 @@ class StateMachine {
       bearingToBoundaryDeg: nearest?.bearingToBoundaryDeg,
       notes: 'Confirmed exit',
     );
-
-    // outer になった場合は GPS_BAD の精度チェックでは取り消さない。
-    return outerSnapshot;
   }
 
+  /// 位置情報の精度が不良かどうかを判定します。
+  bool _isAccuracyBad(LocationFix fix) {
+    return fix.accuracyMeters == null ||
+        fix.accuracyMeters! > _config.gpsAccuracyBadMeters;
+  }
+
+  /// 複数のポリゴンに対して位置情報を評価します。
+  ///
+  /// エリア内のポリゴンと最寄りのポリゴンの両方を検出します。
   _PolygonEvaluationResult _evaluatePolygons(
     double latitude,
     double longitude,

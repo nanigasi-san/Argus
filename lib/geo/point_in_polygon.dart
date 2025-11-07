@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'geo_model.dart';
 
+/// 点とポリゴンの関係を評価した結果。
 class PointInPolygonEvaluation {
   const PointInPolygonEvaluation({
     required this.contains,
@@ -10,15 +11,29 @@ class PointInPolygonEvaluation {
     this.bearingToBoundaryDeg,
   });
 
+  /// 点がポリゴン内部に含まれているかどうか。
   final bool contains;
+
+  /// ポリゴンの境界までの距離（メートル）。
   final double distanceToBoundaryM;
+
+  /// 境界上の最寄り点。
   final LatLng? nearestPoint;
+
+  /// 最寄り境界点への方位角（0-360度、北が0度）。
   final double? bearingToBoundaryDeg;
 }
 
+/// 点とポリゴンの関係を判定するクラス。
+///
+/// Ray Castingアルゴリズムを使用して内外判定を行い、
+/// Haversine公式を使用して距離と方位角を計算します。
 class PointInPolygon {
   const PointInPolygon();
 
+  /// 点とポリゴンの関係を評価します。
+  ///
+  /// 内外判定、境界までの距離、最寄り境界点、方位角を計算します。
   PointInPolygonEvaluation evaluatePoint(
     double lat,
     double lon,
@@ -43,6 +58,7 @@ class PointInPolygon {
     );
   }
 
+  /// Ray Castingアルゴリズムを使用して内外判定を行います。
   bool _rayCast(double lat, double lon, List<LatLng> points) {
     var inside = false;
     for (var i = 0, j = points.length - 1; i < points.length; j = i++) {
@@ -62,6 +78,7 @@ class PointInPolygon {
     return inside;
   }
 
+  /// ポリゴン境界上の最寄り点を計算します。
   _NearestBoundary? _nearestPointOnPolygon(
     double lat,
     double lon,
@@ -91,6 +108,7 @@ class PointInPolygon {
     return _NearestBoundary(distanceM: minDistance, point: closestPoint);
   }
 
+  /// 線分上の最寄り点を計算します。
   _NearestBoundary _nearestPointOnSegment(
     double px,
     double py,
@@ -118,6 +136,7 @@ class PointInPolygon {
     );
   }
 
+  /// Haversine公式を使用して2点間の距離を計算します（メートル）。
   double _haversine(
     double lat1,
     double lon1,
@@ -136,6 +155,7 @@ class PointInPolygon {
     return earthRadius * c;
   }
 
+  /// 2点間の方位角を計算します（0-360度、北が0度）。
   double _bearingDegrees(
     double lat1,
     double lon1,

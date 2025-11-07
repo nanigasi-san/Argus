@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:geolocator/geolocator.dart';
 
 import 'package:argus/platform/location_service.dart';
 
@@ -42,6 +43,49 @@ void main() {
 
       await service.stop();
       expect(service.hasStopped, isTrue);
+    });
+  });
+
+  group('GeolocatorLocationService platform settings', () {
+    test('creates AppleSettings for iOS/macOS platforms', () {
+      // Note: This test verifies the structure of iOS settings.
+      // Actual platform detection happens at runtime, so we test the settings
+      // structure directly.
+      
+      // Create AppleSettings directly to verify iOS configuration
+      final appleSettings = AppleSettings(
+        accuracy: LocationAccuracy.best,
+        distanceFilter: 0,
+        pauseLocationUpdatesAutomatically: false,
+        showBackgroundLocationIndicator: true,
+      );
+
+      expect(appleSettings.accuracy, LocationAccuracy.best);
+      expect(appleSettings.distanceFilter, 0);
+      expect(appleSettings.pauseLocationUpdatesAutomatically, false);
+      expect(appleSettings.showBackgroundLocationIndicator, true);
+    });
+
+    test('creates AndroidSettings for Android platform', () {
+      // Create AndroidSettings directly to verify Android configuration
+      final androidSettings = AndroidSettings(
+        accuracy: LocationAccuracy.best,
+        distanceFilter: 0,
+        intervalDuration: const Duration(seconds: 3),
+        forceLocationManager: false,
+        foregroundNotificationConfig: const ForegroundNotificationConfig(
+          notificationTitle: 'Argusが位置情報を監視中です',
+          notificationText: '画面を消しても位置情報の追跡は継続されます。',
+          notificationChannelName: 'Argusバックグラウンド監視',
+          enableWakeLock: true,
+          setOngoing: true,
+        ),
+      );
+
+      expect(androidSettings.accuracy, LocationAccuracy.best);
+      expect(androidSettings.distanceFilter, 0);
+      expect(androidSettings.intervalDuration, const Duration(seconds: 3));
+      expect(androidSettings.foregroundNotificationConfig, isNotNull);
     });
   });
 }

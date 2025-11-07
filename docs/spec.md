@@ -78,15 +78,19 @@
 ### 1.6 通知とアラーム
 
 - **通知チャンネル**: `Argus警告`（ID: `argus_alerts`）。説明は「ジオフェンスの安全エリアから離れたときに通知します。」。
+- **通知初期化**:
+  - **Android**: `AndroidInitializationSettings` でアイコン（`@mipmap/ic_launcher`）を設定
+  - **iOS**: `DarwinInitializationSettings` で権限要求を設定（`requestAlertPermission: true`, `requestBadgePermission: true`, `requestSoundPermission: true`, `requestCriticalPermission: true`）
 - **通知内容**: OUTER 状態への遷移時に通知を表示
   - タイトル: `Argus警告`
   - 本文: `競技エリアから離れています。`（実装では「競技エリア」と記載）
-  - Android: `Importance.max`, `Priority.max`, `fullScreenIntent: true`, `category: AndroidNotificationCategory.alarm`
-  - iOS: `interruptionLevel: InterruptionLevel.critical`
-- **Foreground Service 通知**: Android 背景計測用に「Argusが位置情報を監視中です」「画面を消しても位置情報の追跡は継続されます。」を表示。
+  - **Android**: `Importance.max`, `Priority.max`, `fullScreenIntent: true`, `category: AndroidNotificationCategory.alarm`
+  - **iOS**: `presentAlert: true`, `presentSound: true`, `interruptionLevel: InterruptionLevel.critical`
+- **Foreground Service 通知（Android）**: 背景計測用に「Argusが位置情報を監視中です」「画面を消しても位置情報の追跡は継続されます。」を表示。
+- **バックグラウンド位置情報表示（iOS）**: `showBackgroundLocationIndicator: true` により、バックグラウンドで位置情報を取得中であることをステータスバーに表示。
 - **アラーム音**: `flutter_ringtone_player` によるループ再生（`looping: true`, `volume: 1.0`, `asAlarm: true`）。`Notifier.stopAlarm()` で停止。
 - **復帰通知**: INNER/NEAR 復帰時に通知をキャンセルし、アラームを停止。
-- **権限要求**: 初期化時に通知権限を要求（`alert`, `badge`, `sound`, `critical`）。
+- **権限要求**: 初期化時に通知権限を要求（`alert`, `badge`, `sound`, `critical`）。Android と iOS の両方で適切な権限要求メソッドを呼び出す。
 
 ### 1.7 退避ナビゲーション
 
@@ -140,9 +144,114 @@
 
 ---
 
-## 3. プロジェクト構造
+## 3. アーキテクチャと構造
 
-### 3.1 ディレクトリ構成
+### 3.1 アーキテクチャ概要
+
+Argusアプリケーションは、依存性注入パターンと抽象化を活用したクリーンアーキテクチャを採用しています。
+
+#### 主要な設計原則
+
+1. **依存性注入**: すべてのプラットフォーム固有の実装は、抽象クラスを通じてアクセスされます。これにより、テスト容易性と保守性が向上します。
+2. **単一責任の原則**: 各クラスは明確な責任を持ち、1つのことを行います。
+3. **不変性の推奨**: 可能な限り`final`を使用し、状態の変更を明示的にします。
+4. **非同期処理**: `async/await`を使用して、UIスレッドを阻害しない非同期処理を実装します。
+
+#### レイヤー構造
+
+```
+┌─────────────────────────────────────┐
+│         UI Layer (Flutter)          │
+│  HomePage, SettingsPage, etc.       │
+└──────────────┬──────────────────────┘
+               │
+┌──────────────▼──────────────────────┐
+│      Application Layer              │
+│      AppController                  │
+│  (ChangeNotifier, State Management) │
+└──────────────┬──────────────────────┘
+               │
+┌──────────────▼──────────────────────┐
+│      Domain Layer                   │
+│  StateMachine, GeoModel, etc.       │
+└──────────────┬──────────────────────┘
+               │
+┌──────────────▼──────────────────────┐
+│      Platform Layer                 │
+│  LocationService, Notifier, etc.    │
+│  (Abstract Interfaces)              │
+└─────────────────────────────────────┘
+```
+
+### 3.2 クラス図と依存関係
+
+#### 主要クラスの関係
+
+```
+AppController
+├── StateMachine (状態管理)
+│   ├── GeoModel (GeoJSONデータ)
+│   ├── AreaIndex (空間インデックス)
+│   ├── PointInPolygon (内外判定)
+│   └── HysteresisCounter (ヒステリシス)
+├── LocationService (位置情報取得)
+│   └── GeolocatorLocationService (実装)
+├── Notifier (通知・アラーム)
+│   ├── LocalNotificationsClient (抽象)
+│   ├── AlarmPlayer (抽象)
+│   └── VibrationPlayer (抽象)
+├── FileManager (ファイル操作)
+├── EventLogger (ログ記録)
+└── GeoJsonQrCodec (QRコード処理)
+```
+
+#### 依存関係の方向
+
+- **AppController** → すべての主要コンポーネント（依存性注入）
+- **StateMachine** → GeoModel, AreaIndex, PointInPolygon, HysteresisCounter
+- **Notifier** → LocalNotificationsClient, AlarmPlayer, VibrationPlayer（抽象クラス）
+- **LocationService** → プラットフォーム固有の実装（抽象クラス）
+
+### 3.3 状態遷移図
+
+```
+                    [waitGeoJson]
+                         │
+                         │ GeoJSON読み込み
+                         ▼
+                    [waitStart]
+                         │
+                         │ 監視開始
+                         ▼
+                    ┌────┴────┐
+                    │         │
+              [inner]    [near]
+                    │         │
+                    └────┬────┘
+                         │
+                         │ エリア外
+                         ▼
+                 [outerPending]
+                         │
+                         │ ヒステリシス条件満たす
+                         ▼
+                    [outer]
+                         │
+                         │ エリア内復帰
+                         ▼
+                    [inner/near]
+
+        精度不良時:
+        [任意の状態] → [gpsBad]
+                         │
+                         │ 精度改善
+                         ▼
+                    [inner/near/outerPending]
+```
+
+### 3.4 プロジェクト構造
+
+### 3.4.1 ディレクトリ構成
 
 ```
 lib/
@@ -174,19 +283,19 @@ lib/
 
 ### 3.2 アーキテクチャ概要
 
-| 区分             | 主要クラス                                                                     | 役割                                                                                 |
-| ---------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| 区分             | 主要クラス                                                                     | 役割                                                                                            |
+| ---------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
 | 中核ロジック     | `AppController`                                                                | アプリ全体の状態管理、位置ストリームの購読、ログ記録、通知制御、QRコードからのGeoJSON読み込み。 |
-| 状態機械         | `StateMachine`, `StateSnapshot`, `LocationStateStatus`                         | 位置評価と状態管理、ヒステリシス処理。                                               |
-| ジオメトリ       | `GeoModel`, `GeoPolygon`, `LatLng`                                             | GeoJSON パース、ポリゴンデータの保持。                                               |
-| 空間インデックス | `AreaIndex`                                                                    | ポリゴンの境界ボックスによる空間インデックス。位置に基づいて候補ポリゴンを絞り込み。 |
-| 点とポリゴン判定 | `PointInPolygon`, `PointInPolygonEvaluation`                                   | Ray Casting による包含判定、最近接点・距離・方位角の計算。                           |
-| QRコード         | `GeoJsonQrCodec`, `encodeGeoJson`, `decodeGeoJson`                            | GeoJSONのBrotli圧縮、Base64URLエンコード、QRコード生成・復元。                      |
-| 位置サービス     | `LocationService`, `GeolocatorLocationService`, `LocationFix`                  | 位置ストリームの開始・停止、権限確認、プラットフォーム固有設定。                     |
-| 通知             | `Notifier`, `AlarmPlayer`（`RingtoneAlarmPlayer`）, `LocalNotificationsClient` | 通知チャンネル作成、アラーム音制御、バッジ状態。                                     |
-| ログ             | `EventLogger`, `AppLogEntry`, `AppLogLevel`                                    | GPS・状態イベントのメモリ記録と UI 連携、JSON エクスポート。                         |
-| I/O              | `FileManager`, `AppConfig`                                                     | 設定・GeoJSON ファイルの読み書き、ファイルピッカー。                                 |
-| UI               | `HomePage`, `SettingsPage`, `QrScannerPage`, `ArgusApp`                       | 画面構成とユーザ操作ルーティング。                                                   |
+| 状態機械         | `StateMachine`, `StateSnapshot`, `LocationStateStatus`                         | 位置評価と状態管理、ヒステリシス処理。                                                          |
+| ジオメトリ       | `GeoModel`, `GeoPolygon`, `LatLng`                                             | GeoJSON パース、ポリゴンデータの保持。                                                          |
+| 空間インデックス | `AreaIndex`                                                                    | ポリゴンの境界ボックスによる空間インデックス。位置に基づいて候補ポリゴンを絞り込み。            |
+| 点とポリゴン判定 | `PointInPolygon`, `PointInPolygonEvaluation`                                   | Ray Casting による包含判定、最近接点・距離・方位角の計算。                                      |
+| QRコード         | `GeoJsonQrCodec`, `encodeGeoJson`, `decodeGeoJson`                             | GeoJSONのBrotli圧縮、Base64URLエンコード、QRコード生成・復元。                                  |
+| 位置サービス     | `LocationService`, `GeolocatorLocationService`, `LocationFix`                  | 位置ストリームの開始・停止、権限確認、プラットフォーム固有設定。                                |
+| 通知             | `Notifier`, `AlarmPlayer`（`RingtoneAlarmPlayer`）, `LocalNotificationsClient` | 通知チャンネル作成、アラーム音制御、バッジ状態。                                                |
+| ログ             | `EventLogger`, `AppLogEntry`, `AppLogLevel`                                    | GPS・状態イベントのメモリ記録と UI 連携、JSON エクスポート。                                    |
+| I/O              | `FileManager`, `AppConfig`                                                     | 設定・GeoJSON ファイルの読み書き、ファイルピッカー。                                            |
+| UI               | `HomePage`, `SettingsPage`, `QrScannerPage`, `ArgusApp`                        | 画面構成とユーザ操作ルーティング。                                                              |
 
 ### 3.3 データフロー
 
@@ -576,26 +685,42 @@ stateDiagram-v2
 - **名前**: `Argus警告`
 - **説明**: `ジオフェンスの安全エリアから離れたときに通知します。`
 - **Android 設定**: `Importance.max`, `playSound: true`, `enableVibration: true`, `audioAttributesUsage: AudioAttributesUsage.alarm`
+- **iOS 初期化設定**: `DarwinInitializationSettings` で通知権限を要求（`requestAlertPermission: true`, `requestBadgePermission: true`, `requestSoundPermission: true`, `requestCriticalPermission: true`）。iOS には通知チャンネルの概念はないが、初期化時に権限要求を行う。
 
 ### 7.2 OUTER 通知
 
 - **通知ID**: `1001`
 - **タイトル**: `Argus警告`
 - **本文**: `競技エリアから離れています。`（実装では「競技エリア」と記載）
-- **Android**: `fullScreenIntent: true`, `category: AndroidNotificationCategory.alarm`
-- **iOS**: `interruptionLevel: InterruptionLevel.critical`
-- **アラーム**: 通知と同時にアラーム音をループ再生開始。
+- **Android 設定**: 
+  - `fullScreenIntent: true`: 画面ロック時でも全画面表示
+  - `category: AndroidNotificationCategory.alarm`: アラームカテゴリとして分類
+  - `Importance.max`, `Priority.max`: 最高優先度で表示
+- **iOS 設定**: 
+  - `presentAlert: true`: アラート形式で表示
+  - `presentSound: true`: サウンドを再生
+  - `interruptionLevel: InterruptionLevel.critical`: クリティカルな中断レベル（サイレントモードでも通知を表示）
+- **アラーム**: 通知と同時にアラーム音をループ再生開始。Android と iOS の両方で動作。
 
 ### 7.3 復帰通知
 
 - INNER/NEAR 復帰時に通知ID `1001` をキャンセルし、アラームを停止。
 
-### 7.4 Foreground Service 通知（Android）
+### 7.4 バックグラウンド位置情報表示
+
+#### 7.4.1 Foreground Service 通知（Android）
 
 - **チャンネル名**: `Argusバックグラウンド監視`
 - **タイトル**: `Argusが位置情報を監視中です`
 - **本文**: `画面を消しても位置情報の追跡は継続されます。`
 - **設定**: `enableWakeLock: true`, `setOngoing: true`
+- **機能**: Android の Foreground Service として位置情報監視を継続し、通知バーに常時表示される。
+
+#### 7.4.2 バックグラウンド位置情報インジケータ（iOS）
+
+- **設定**: `showBackgroundLocationIndicator: true`（`AppleSettings` で設定）
+- **表示**: ステータスバーに青い位置情報アイコンが表示され、バックグラウンドで位置情報を取得中であることを示す
+- **機能**: iOS の標準的なバックグラウンド位置情報表示機能を使用。ユーザーがアプリが位置情報を取得していることを視覚的に確認できる。
 
 ---
 
@@ -649,7 +774,8 @@ stateDiagram-v2
   - `hysteresis_counter_test.dart`: カウンタのサンプル数／時間条件。
   - `geo_model_test.dart`: GeoJSON パーサの挙動。
   - `point_in_polygon_test.dart`: 点とポリゴンの関係判定。
-  - `platform/notifier_test.dart`: OUTER→INNER→OUTER でアラーム切り替え。
+  - `platform/notifier_test.dart`: OUTER→INNER→OUTER でアラーム切り替え、iOS通知初期化設定の検証。
+  - `platform/location_service_test.dart`: iOS/Android位置情報設定の構造検証（`AppleSettings`、`AndroidSettings`）。
   - `app_controller_test.dart`: GeoJSON 再読込で waitStart 状態・アラーム停止を確認、QRコードからの読み込み。
   - `qr/geojson_qr_codec_test.dart`: QRコードエンコード・デコード、Brotli圧縮、ハッシュ検証。
   - `ui/qr_scanner_page_test.dart`: QRスキャン画面の表示とナビゲーション。

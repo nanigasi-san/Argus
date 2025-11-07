@@ -170,57 +170,69 @@ class AppController extends ChangeNotifier {
   /// ファイルが正常に読み込まれた場合、状態マシンとエリアインデックスを更新します。
   /// エラーが発生した場合は、エラーメッセージを設定します。
   Future<void> reloadGeoJsonFromPicker() async {
-    // 先に監視を停止（ファイル操作前に停止）
     await stopMonitoring();
 
     try {
-      // ファイル名を取得するために、file_selectorを直接使用
       final file = await fileManager.pickGeoJsonFile();
       if (file == null) {
-        // キャンセル時は何もしない（ログも出さない）
         return;
       }
 
       final raw = await file.readAsString();
       final model = GeoModel.fromGeoJson(raw);
-
-      _geoModel = model;
-      // ファイル名をpathから抽出し、拡張子を.geojsonに統一
       final extractedName = _extractFileName(file.path) ?? file.name;
-      _geoJsonFileName = _normalizeToGeoJson(extractedName);
-      _areaIndex = AreaIndex.build(model.polygons);
-      stateMachine.updateGeometry(_geoModel, _areaIndex);
+      final normalizedFileName = _normalizeToGeoJson(extractedName);
 
-      // waitStart状態に戻し、距離・方位角などの情報をクリア
-      _snapshot = StateSnapshot(
-        status: LocationStateStatus.waitStart,
-        timestamp: DateTime.now(),
-        geoJsonLoaded: true,
-        distanceToBoundaryM: null,
-        bearingToBoundaryDeg: null,
-        nearestBoundaryPoint: null,
-        notes: 'GeoJSON loaded',
-      );
-      await notifier.stopAlarm();
-      _lastErrorMessage = null;
-      _logInfo('APP', 'GeoJSON loaded.', timestamp: _snapshot.timestamp);
-      notifyListeners();
+      await _loadGeoJsonModel(model, normalizedFileName, 'GeoJSON loaded');
     } on FormatException catch (e) {
-      _lastErrorMessage = 'Failed to parse GeoJSON: ${e.message}';
-      _logError('APP', _lastErrorMessage!);
-      notifyListeners();
+      _handleGeoJsonError('Failed to parse GeoJSON: ${e.message}');
     } catch (e) {
-      // ファイルピッカーをキャンセルした場合などはエラーログを出さない
-      final errorMessage = e.toString().toLowerCase();
-      if (errorMessage.contains('cancel') ||
-          errorMessage.contains('user') ||
-          errorMessage.contains('abort')) {
+      if (_isUserCancellationError(e)) {
         return;
       }
-      _lastErrorMessage = 'Unable to open file: ${e.toString()}';
-      _logError('APP', _lastErrorMessage!);
-      notifyListeners();
+      _handleGeoJsonError('Unable to open file: ${e.toString()}');
     }
+  }
+
+  /// GeoJSONモデルを読み込み、状態を更新します。
+  Future<void> _loadGeoJsonModel(
+    GeoModel model,
+    String fileName,
+    String notes,
+  ) async {
+    _geoModel = model;
+    _geoJsonFileName = fileName;
+    _areaIndex = AreaIndex.build(model.polygons);
+    stateMachine.updateGeometry(_geoModel, _areaIndex);
+
+    _snapshot = StateSnapshot(
+      status: LocationStateStatus.waitStart,
+      timestamp: DateTime.now(),
+      geoJsonLoaded: true,
+      distanceToBoundaryM: null,
+      bearingToBoundaryDeg: null,
+      nearestBoundaryPoint: null,
+      notes: notes,
+    );
+    await notifier.stopAlarm();
+    _lastErrorMessage = null;
+    _logInfo('APP', 'GeoJSON loaded.', timestamp: _snapshot.timestamp);
+    notifyListeners();
+  }
+
+  /// GeoJSON読み込みエラーを処理します。
+  void _handleGeoJsonError(String message) {
+    _lastErrorMessage = message;
+    _logError('APP', _lastErrorMessage!);
+    notifyListeners();
+  }
+
+  /// エラーがユーザーキャンセルによるものかどうかを判定します。
+  bool _isUserCancellationError(dynamic error) {
+    final errorMessage = error.toString().toLowerCase();
+    return errorMessage.contains('cancel') ||
+        errorMessage.contains('user') ||
+        errorMessage.contains('abort');
   }
 
   /// QRコードからGeoJSONを読み込みます。
@@ -229,73 +241,49 @@ class AppController extends ChangeNotifier {
   /// 状態マシンとエリアインデックスを更新します。
   /// エラーが発生した場合は、エラーメッセージを設定します。
   Future<void> reloadGeoJsonFromQr(String qrText) async {
-    // 先に監視を停止（ファイル操作前に停止）
     await stopMonitoring();
 
     try {
-      // QRテキストがgjb1:で始まることを確認
       if (!qrText.startsWith('gjb1:')) {
-        _lastErrorMessage = 'Invalid QR code format. Expected gjb1: scheme.';
-        _logError('APP', _lastErrorMessage!);
-        notifyListeners();
+        _handleGeoJsonError('Invalid QR code format. Expected gjb1: scheme.');
         return;
       }
 
-      // QRテキストからGeoJSONを復元
-      final restoredGeoJson = await decodeGeoJson(
-        GeoJsonQrDecodeInput(
-          qrTexts: [qrText],
-          verifyHash: true,
-        ),
-      );
-
-      // 一時ディレクトリに保存
-      final tempDir = await getTemporaryDirectory();
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final tempFile = File('${tempDir.path}/temp_geojson_$timestamp.geojson');
-      await tempFile.writeAsString(restoredGeoJson);
-
-      // 既存の一時ファイルがあれば削除
-      await cleanupTempGeoJsonFile();
-
-      // 新しい一時ファイルパスを保存
-      _tempGeoJsonFilePath = tempFile.path;
-
-      // GeoModelを生成
+      final restoredGeoJson = await _decodeQrText(qrText);
+      final tempFileName = await _saveTempGeoJson(restoredGeoJson);
       final model = GeoModel.fromGeoJson(restoredGeoJson);
 
-      _geoModel = model;
-      _geoJsonFileName = 'temp_geojson_$timestamp.geojson';
-      _areaIndex = AreaIndex.build(model.polygons);
-      stateMachine.updateGeometry(_geoModel, _areaIndex);
-
-      // waitStart状態に戻し、距離・方位角などの情報をクリア
-      _snapshot = StateSnapshot(
-        status: LocationStateStatus.waitStart,
-        timestamp: DateTime.now(),
-        geoJsonLoaded: true,
-        distanceToBoundaryM: null,
-        bearingToBoundaryDeg: null,
-        nearestBoundaryPoint: null,
-        notes: 'GeoJSON loaded from QR code',
-      );
-      await notifier.stopAlarm();
-      _lastErrorMessage = null;
-      _logInfo('APP', 'GeoJSON loaded from QR code.', timestamp: _snapshot.timestamp);
-      notifyListeners();
+      await _loadGeoJsonModel(model, tempFileName, 'GeoJSON loaded from QR code');
     } on GeoJsonQrException catch (e) {
-      _lastErrorMessage = 'Failed to decode QR code: ${e.message}';
-      _logError('APP', _lastErrorMessage!);
-      notifyListeners();
+      _handleGeoJsonError('Failed to decode QR code: ${e.message}');
     } on FormatException catch (e) {
-      _lastErrorMessage = 'Failed to parse GeoJSON: ${e.message}';
-      _logError('APP', _lastErrorMessage!);
-      notifyListeners();
+      _handleGeoJsonError('Failed to parse GeoJSON: ${e.message}');
     } catch (e) {
-      _lastErrorMessage = 'Unable to load GeoJSON from QR code: ${e.toString()}';
-      _logError('APP', _lastErrorMessage!);
-      notifyListeners();
+      _handleGeoJsonError('Unable to load GeoJSON from QR code: ${e.toString()}');
     }
+  }
+
+  /// QRテキストをデコードしてGeoJSON文字列を取得します。
+  Future<String> _decodeQrText(String qrText) async {
+    return await decodeGeoJson(
+      GeoJsonQrDecodeInput(
+        qrTexts: [qrText],
+        verifyHash: true,
+      ),
+    );
+  }
+
+  /// GeoJSONを一時ファイルとして保存し、ファイル名を返します。
+  Future<String> _saveTempGeoJson(String geoJson) async {
+    await cleanupTempGeoJsonFile();
+
+    final tempDir = await getTemporaryDirectory();
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final tempFile = File('${tempDir.path}/temp_geojson_$timestamp.geojson');
+    await tempFile.writeAsString(geoJson);
+
+    _tempGeoJsonFilePath = tempFile.path;
+    return 'temp_geojson_$timestamp.geojson';
   }
 
   /// 一時GeoJSONファイルを削除します。
@@ -335,8 +323,22 @@ class AppController extends ChangeNotifier {
     return '$nameWithoutExt.geojson';
   }
 
+  /// 位置情報の更新を処理します。
+  ///
+  /// 位置情報をログに記録し、状態マシンで評価して状態を更新します。
+  /// OUTER状態への遷移時には通知とアラームを発火し、
+  /// OUTER状態からの復帰時には通知をキャンセルしてアラームを停止します。
   Future<void> _handleFix(LocationFix fix) async {
     final previous = _snapshot.status;
+    await _logLocationFix(fix);
+    final evaluation = stateMachine.evaluate(fix);
+    _snapshot = evaluation.copyWith(geoJsonLoaded: geoJsonLoaded);
+    await _processStateChange(previous);
+    notifyListeners();
+  }
+
+  /// 位置情報をログに記録します。
+  Future<void> _logLocationFix(LocationFix fix) async {
     await logger.logLocationFix(fix);
     _logDebug(
       'GPS',
@@ -345,10 +347,12 @@ class AppController extends ChangeNotifier {
           'acc=${fix.accuracyMeters?.toStringAsFixed(1) ?? '-'}m',
       timestamp: fix.timestamp,
     );
-    final evaluation = stateMachine.evaluate(fix);
-    _snapshot = evaluation.copyWith(
-      geoJsonLoaded: geoJsonLoaded,
-    );
+  }
+
+  /// 状態変化を処理します。
+  ///
+  /// 状態をログに記録し、OUTER状態への遷移や復帰を検知して通知を制御します。
+  Future<void> _processStateChange(LocationStateStatus previous) async {
     await logger.logStateChange(_snapshot);
     _logInfo(
       'STATE',
@@ -356,24 +360,34 @@ class AppController extends ChangeNotifier {
       timestamp: _snapshot.timestamp,
     );
     await notifier.updateBadge(_snapshot.status);
+
     if (previous != LocationStateStatus.outer &&
         _snapshot.status == LocationStateStatus.outer) {
-      await notifier.notifyOuter();
-      _logWarning(
-        'ALERT',
-        'Safe zone exited.${_buildNavHint(_snapshot)}',
-        timestamp: _snapshot.timestamp,
-      );
+      await _handleOuterTransition();
     } else if (previous == LocationStateStatus.outer &&
         _snapshot.status != LocationStateStatus.outer) {
-      await notifier.notifyRecover();
-      _logInfo(
-        'ALERT',
-        'Returned to safe zone.',
-        timestamp: _snapshot.timestamp,
-      );
+      await _handleRecoveryFromOuter();
     }
-    notifyListeners();
+  }
+
+  /// OUTER状態への遷移を処理します。
+  Future<void> _handleOuterTransition() async {
+    await notifier.notifyOuter();
+    _logWarning(
+      'ALERT',
+      'Safe zone exited.${_buildNavHint(_snapshot)}',
+      timestamp: _snapshot.timestamp,
+    );
+  }
+
+  /// OUTER状態からの復帰を処理します。
+  Future<void> _handleRecoveryFromOuter() async {
+    await notifier.notifyRecover();
+    _logInfo(
+      'ALERT',
+      'Returned to safe zone.',
+      timestamp: _snapshot.timestamp,
+    );
   }
 
   @visibleForTesting

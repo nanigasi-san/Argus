@@ -42,5 +42,9 @@
   <array>
     <string>location</string>
   </array>
+  <key>NSCameraUsageDescription</key>
+  <string>QRコードをスキャンしてGeoJSONを読み込むため、カメラへのアクセスが必要です。</string>
+  <key>NSPhotoLibraryUsageDescription</key>
+  <string>GeoJSONファイルを選択するため、フォトライブラリへのアクセスが必要です。</string>
 </dict>
 </plist>

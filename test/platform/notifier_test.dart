@@ -32,5 +32,23 @@ void main() {
       expect(alarm.playCount, 2);
       expect(vibration.startCount, 2);
     });
+
+    test('initializes with iOS settings', () async {
+      final notifications = FakeLocalNotificationsClient();
+      final notifier = Notifier(
+        notificationsClient: notifications,
+      );
+
+      await notifier.initialize();
+
+      expect(notifications.initialized, isTrue);
+      expect(notifications.lastInitSettings, isNotNull);
+      expect(notifications.lastInitSettings!.iOS, isNotNull);
+      expect(notifications.lastInitSettings!.iOS!.requestAlertPermission, isTrue);
+      expect(notifications.lastInitSettings!.iOS!.requestBadgePermission, isTrue);
+      expect(notifications.lastInitSettings!.iOS!.requestSoundPermission, isTrue);
+      expect(notifications.lastInitSettings!.iOS!.requestCriticalPermission, isTrue);
+      expect(notifications.requestedPermissions, isTrue);
+    });
   });
 }
