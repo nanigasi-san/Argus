@@ -67,6 +67,6 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    expect(find.text('Argus'), findsWidgets);
+    expect(find.text('ARGUS'), findsWidgets);
   });
 }
