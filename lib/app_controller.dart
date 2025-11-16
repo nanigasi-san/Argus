@@ -70,6 +70,9 @@ class AppController extends ChangeNotifier {
     _config ??= await fileManager.readConfig();
     stateMachine.updateConfig(_config!);
 
+    // アラーム音量を設定
+    notifier.setAlarmVolume(_config!.alarmVolume);
+
     _snapshot = _snapshot.copyWith(
       status: geoJsonLoaded
           ? LocationStateStatus.waitStart
@@ -148,6 +151,9 @@ class AppController extends ChangeNotifier {
     // 設定を更新
     _config = newConfig;
     stateMachine.updateConfig(newConfig);
+
+    // アラーム音量を設定
+    notifier.setAlarmVolume(newConfig.alarmVolume);
 
     // 設定をファイルに保存
     await fileManager.saveConfig(newConfig);
@@ -543,9 +549,9 @@ class AppController extends ChangeNotifier {
 
   @visibleForTesting
   String describeSnapshot(StateSnapshot snapshot) {
-    final showNav = (_developerMode ||
-            snapshot.status == LocationStateStatus.outer) &&
-        _navigationEnabled;
+    final showNav =
+        (_developerMode || snapshot.status == LocationStateStatus.outer) &&
+            _navigationEnabled;
     final dist = showNav && snapshot.distanceToBoundaryM != null
         ? '${snapshot.distanceToBoundaryM!.toStringAsFixed(2)}m'
         : '-';

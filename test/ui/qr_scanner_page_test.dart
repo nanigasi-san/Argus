@@ -107,6 +107,7 @@ AppConfig _testConfig() {
     sampleIntervalS: {'fast': 1},
     sampleDistanceM: {'fast': 1},
     screenWakeOnLeave: false,
+    alarmVolume: 1.0,
   );
 }
 

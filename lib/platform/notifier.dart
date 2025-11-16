@@ -21,7 +21,7 @@ class Notifier {
         _vibrationPlayer = vibrationPlayer ?? RepeatingVibrationPlayer();
 
   final LocalNotificationsClient _notifications;
-  final AlarmPlayer _alarmPlayer;
+  AlarmPlayer _alarmPlayer;
   final VibrationPlayer _vibrationPlayer;
 
   final ValueNotifier<LocationStateStatus> badgeState =
@@ -36,6 +36,13 @@ class Notifier {
 
   bool _initialized = false;
   bool _isAlarming = false;
+
+  /// アラーム音量を設定します（0.0～1.0）。
+  void setAlarmVolume(double volume) {
+    if (_alarmPlayer is RingtoneAlarmPlayer) {
+      _alarmPlayer = RingtoneAlarmPlayer(volume: volume.clamp(0.0, 1.0));
+    }
+  }
 
   Future<void> initialize() async {
     if (_initialized) {
@@ -219,7 +226,9 @@ abstract class AlarmPlayer {
 }
 
 class RingtoneAlarmPlayer implements AlarmPlayer {
-  const RingtoneAlarmPlayer();
+  const RingtoneAlarmPlayer({this.volume = 1.0});
+
+  final double volume;
 
   @override
   Future<void> start() async {
@@ -227,7 +236,7 @@ class RingtoneAlarmPlayer implements AlarmPlayer {
     await FlutterRingtonePlayer().play(
       fromAsset: 'assets/sounds/alarm.mp3',
       looping: true,
-      volume: 1.0,
+      volume: volume.clamp(0.0, 1.0),
       asAlarm: true,
     );
   }
