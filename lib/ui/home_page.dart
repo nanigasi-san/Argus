@@ -60,6 +60,11 @@ class HomePage extends StatelessWidget {
                               const SizedBox(height: 16),
                               _GpsAccuracyInfo(
                                   accuracyM: snapshot.horizontalAccuracyM),
+                              const SizedBox(height: 6),
+                              _FileNameInfo(
+                                fileName: controller.geoJsonFileName,
+                                loaded: controller.geoJsonLoaded,
+                              ),
                               const SizedBox(height: 12),
                               _LargeStatusDisplay(
                                 status: snapshot.status,
@@ -68,16 +73,22 @@ class HomePage extends StatelessWidget {
                                     ? () => controller.startMonitoring()
                                     : null,
                               ),
-                              if (snapshot.status ==
-                                  LocationStateStatus.waitStart) ...[
-                                const SizedBox(height: 12),
-                                _TapHint(),
-                              ],
-                              // GeoJSONファイル状態を表示
-                              const SizedBox(height: 24),
-                              _GeoJsonStatusDisplay(
-                                geoJsonLoaded: controller.geoJsonLoaded,
-                                fileName: controller.geoJsonFileName,
+                              // ヒントは円内に描画するため外側には出さない
+                              // GeoJSONファイル状態は円の上へ移動済み
+                              const SizedBox(height: 12),
+                              _BottomActions(
+                                isWaitStart: snapshot.status ==
+                                    LocationStateStatus.waitStart,
+                                geoJsonReady: controller.geoJsonLoaded,
+                                onLoadGeoJson:
+                                    controller.reloadGeoJsonFromPicker,
+                                onOpenQr: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => const QrScannerPage(),
+                                    ),
+                                  );
+                                },
                               ),
                               // developerモードでは常に方角と距離を表示
                               if (showNav) ...[
@@ -208,6 +219,11 @@ class HomePage extends StatelessWidget {
                               children: [
                                 _GpsAccuracyInfo(
                                     accuracyM: snapshot.horizontalAccuracyM),
+                                const SizedBox(height: 6),
+                                _FileNameInfo(
+                                  fileName: controller.geoJsonFileName,
+                                  loaded: controller.geoJsonLoaded,
+                                ),
                                 const SizedBox(height: 12),
                                 _LargeStatusDisplay(
                                   status: snapshot.status,
@@ -216,16 +232,22 @@ class HomePage extends StatelessWidget {
                                       ? () => controller.startMonitoring()
                                       : null,
                                 ),
-                                if (snapshot.status ==
-                                    LocationStateStatus.waitStart) ...[
-                                  const SizedBox(height: 12),
-                                  _TapHint(),
-                                ],
-                                // GeoJSONファイル状態を表示
-                                const SizedBox(height: 24),
-                                _GeoJsonStatusDisplay(
-                                  geoJsonLoaded: controller.geoJsonLoaded,
-                                  fileName: controller.geoJsonFileName,
+                                // ヒントは円内に描画するため外側には出さない
+                                // GeoJSONファイル状態は円の上へ移動済み
+                                const SizedBox(height: 12),
+                                _BottomActions(
+                                  isWaitStart: snapshot.status ==
+                                      LocationStateStatus.waitStart,
+                                  geoJsonReady: controller.geoJsonLoaded,
+                                  onLoadGeoJson:
+                                      controller.reloadGeoJsonFromPicker,
+                                  onOpenQr: () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                          builder: (_) =>
+                                              const QrScannerPage()),
+                                    );
+                                  },
                                 ),
                                 // outerの時に方角と距離を表示
                                 if (showNav &&
@@ -259,20 +281,7 @@ class HomePage extends StatelessWidget {
                     ],
                   ),
           ),
-          // 主要操作は下部に常設
-          bottomNavigationBar: SafeArea(
-            minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: _BottomActions(
-              isWaitStart: snapshot.status == LocationStateStatus.waitStart,
-              geoJsonReady: controller.geoJsonLoaded,
-              onLoadGeoJson: controller.reloadGeoJsonFromPicker,
-              onOpenQr: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const QrScannerPage()),
-                );
-              },
-            ),
-          ),
+          // 下部ナビは使用せず、円直下にボタンを配置する構成へ
         );
       },
     );
@@ -331,6 +340,33 @@ class _GpsAccuracyInfo extends StatelessWidget {
   }
 }
 
+class _FileNameInfo extends StatelessWidget {
+  const _FileNameInfo({required this.fileName, required this.loaded});
+
+  final String? fileName;
+  final bool loaded;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.onSurfaceVariant;
+    final displayName = loaded ? (fileName ?? '-') : '-';
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.map, size: 14, color: color),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(
+            'ファイル名: $displayName',
+            style: TextStyle(fontSize: 13, color: color),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _BottomActions extends StatelessWidget {
   const _BottomActions({
     required this.isWaitStart,
@@ -374,28 +410,6 @@ class _BottomActions extends StatelessWidget {
   }
 }
 
-class _TapHint extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme.primary;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(Icons.touch_app_rounded, size: 16, color: color),
-        const SizedBox(width: 6),
-        Text(
-          'タップで開始',
-          style: TextStyle(
-            color: color,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.4,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class _OverflowMenu extends StatelessWidget {
   const _OverflowMenu();
 
@@ -412,50 +426,6 @@ class _OverflowMenu extends StatelessWidget {
           );
         }
       },
-    );
-  }
-}
-
-class _GeoJsonStatusDisplay extends StatelessWidget {
-  const _GeoJsonStatusDisplay({
-    required this.geoJsonLoaded,
-    this.fileName,
-  });
-
-  final bool geoJsonLoaded;
-  final String? fileName;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    if (!geoJsonLoaded) {
-      return Wrap(
-        alignment: WrapAlignment.center,
-        children: [
-          Chip(
-            avatar: Icon(
-              Icons.info_outline,
-              size: 16,
-              color: theme.colorScheme.onSurface,
-            ),
-            label: const Text('Please select GeoJSON file'),
-          ),
-        ],
-      );
-    }
-
-    return Wrap(
-      alignment: WrapAlignment.center,
-      children: [
-        Chip(
-          avatar: const Icon(Icons.map, size: 16),
-          label: Text(fileName ?? 'GeoJSON'),
-          labelStyle: theme.textTheme.bodyMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
     );
   }
 }
@@ -586,6 +556,37 @@ class _LargeStatusDisplay extends StatelessWidget {
                     status == LocationStateStatus.waitGeoJson ? 0.8 : 1.2,
               ),
             ),
+            if (onTap != null && status == LocationStateStatus.waitStart) ...[
+              SizedBox(height: circleSize * 0.04),
+              Container(
+                padding: EdgeInsets.symmetric(
+                  vertical: circleSize * 0.02,
+                  horizontal: circleSize * 0.05,
+                ),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(circleSize * 0.07),
+                  border: Border.all(color: color.withValues(alpha: 0.5)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.touch_app_rounded,
+                        size: circleSize * 0.07, color: color),
+                    SizedBox(width: circleSize * 0.015),
+                    Text(
+                      'タップで開始',
+                      style: TextStyle(
+                        fontSize: circleSize * 0.085,
+                        fontWeight: FontWeight.w800,
+                        color: color,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),

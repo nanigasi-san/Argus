@@ -75,21 +75,23 @@ void main() {
     expect(find.textContaining('方角'), findsOneWidget);
   });
 
-  testWidgets('shows GeoJSON chip with file name after loading via picker',
+  testWidgets('shows file name row above circle after loading via picker',
       (tester) async {
     final controller = buildTestController(hasGeoJson: false);
     await _pumpHome(tester, controller);
 
-    // 初期は未ロードでInfo系Chipが出る想定
-    expect(find.text('Please select GeoJSON file'), findsOneWidget);
+    // 初期は未ロードでファイル名は '-' 表示
+    expect(find.textContaining('ファイル名:'), findsOneWidget);
+    expect(find.textContaining('ファイル名: -'), findsOneWidget);
 
     // 画像のFakeFileManagerは test_square.geojson を返す
     await controller.reloadGeoJsonFromPicker();
     await tester.pumpAndSettle();
 
-    // ファイル未選択メッセージが消え、Chipが表示されることを確認
-    expect(find.text('Please select GeoJSON file'), findsNothing);
-    expect(find.byType(Chip), findsWidgets);
+    // ファイル名行が更新され、Chipは使わない
+    expect(find.textContaining('ファイル名:'), findsOneWidget);
+    expect(find.textContaining('ファイル名: -'), findsNothing);
+    expect(find.byType(Chip), findsNothing);
   });
 
   testWidgets('bottom actions show Load GeoJSON and Read QR code (no Start button)',
