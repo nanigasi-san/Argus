@@ -41,8 +41,7 @@ class HomePage extends StatelessWidget {
             child: controller.developerMode
                 ? Column(
                     children: [
-                      const _HeroBanner(),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 8),
                       // 開発者モードの時は上部を縮小
                       Flexible(
                         flex: 3,
@@ -200,8 +199,7 @@ class HomePage extends StatelessWidget {
                   )
                 : Column(
                     children: [
-                      const _HeroBanner(),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 8),
                       // 中央に大きなステータス表示
                       // waitStartの時はタップ可能でSTARTボタンとして機能
                       Expanded(
@@ -322,32 +320,6 @@ class HomePage extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-}
-
-class _HeroBanner extends StatelessWidget {
-  const _HeroBanner();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Image.asset('icon.png', width: 56, height: 56),
-          const SizedBox(width: 12),
-          Text(
-            'ARGUS',
-            style: theme.textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.w800,
-              letterSpacing: 2.0,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
