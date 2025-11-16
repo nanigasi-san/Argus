@@ -67,14 +67,7 @@ class HomePage extends StatelessWidget {
                                     ? () => controller.startMonitoring()
                                     : null,
                               ),
-                              if (snapshot.status ==
-                                  LocationStateStatus.waitStart) ...[
-                                const SizedBox(height: 16),
-                                _StartCallToAction(
-                                  onPressed: controller.startMonitoring,
-                                  geoJsonReady: controller.geoJsonLoaded,
-                                ),
-                              ],
+                              // Start CTAは下部アクションに統一
                               // GeoJSONファイル状態を表示
                               const SizedBox(height: 24),
                               _GeoJsonStatusDisplay(
@@ -217,14 +210,7 @@ class HomePage extends StatelessWidget {
                                       ? () => controller.startMonitoring()
                                       : null,
                                 ),
-                                if (snapshot.status ==
-                                    LocationStateStatus.waitStart) ...[
-                                  const SizedBox(height: 16),
-                                  _StartCallToAction(
-                                    onPressed: controller.startMonitoring,
-                                    geoJsonReady: controller.geoJsonLoaded,
-                                  ),
-                                ],
+                                // Start CTAは下部アクションに統一
                                 // GeoJSONファイル状態を表示
                                 const SizedBox(height: 24),
                                 _GeoJsonStatusDisplay(
