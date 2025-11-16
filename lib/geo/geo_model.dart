@@ -54,8 +54,7 @@ List<LatLng> _ensureClosed(List<LatLng> points) {
   }
   final first = points.first;
   final last = points.last;
-  if (first.latitude == last.latitude &&
-      first.longitude == last.longitude) {
+  if (first.latitude == last.latitude && first.longitude == last.longitude) {
     return List<LatLng>.unmodifiable(points);
   }
   return List<LatLng>.unmodifiable(
@@ -110,8 +109,7 @@ class GeoModel {
       final featureMap = feature as Map<String, dynamic>;
       final properties =
           (featureMap['properties'] as Map<String, dynamic>? ?? {});
-      final geometry =
-          featureMap['geometry'] as Map<String, dynamic>? ?? {};
+      final geometry = featureMap['geometry'] as Map<String, dynamic>? ?? {};
       final type = geometry['type'] as String? ?? '';
       final coordinates = geometry['coordinates'] as List<dynamic>? ?? [];
 

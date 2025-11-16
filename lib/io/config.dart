@@ -24,21 +24,16 @@ class AppConfig {
   factory AppConfig.fromJson(Map<String, dynamic> json) {
     return AppConfig(
       innerBufferM: (json['inner_buffer_m'] as num).toDouble(),
-      leaveConfirmSamples:
-          (json['leave_confirm_samples'] as num).toInt(),
-      leaveConfirmSeconds:
-          (json['leave_confirm_seconds'] as num).toInt(),
-      gpsAccuracyBadMeters:
-          (json['gps_accuracy_bad_m'] as num).toDouble(),
-      sampleIntervalS: (json['sample_interval_s'] as Map<String, dynamic>)
-          .map(
+      leaveConfirmSamples: (json['leave_confirm_samples'] as num).toInt(),
+      leaveConfirmSeconds: (json['leave_confirm_seconds'] as num).toInt(),
+      gpsAccuracyBadMeters: (json['gps_accuracy_bad_m'] as num).toDouble(),
+      sampleIntervalS: (json['sample_interval_s'] as Map<String, dynamic>).map(
         (key, value) => MapEntry(
           key,
           (value as num).toInt(),
         ),
       ),
-      sampleDistanceM: (json['sample_distance_m'] as Map<String, dynamic>)
-          .map(
+      sampleDistanceM: (json['sample_distance_m'] as Map<String, dynamic>).map(
         (key, value) => MapEntry(
           key,
           (value as num).toInt(),
@@ -59,8 +54,8 @@ class AppConfig {
       };
 
   static Future<AppConfig> loadDefault() async {
-    final text = await rootBundle
-        .loadString('assets/config/default_config.json');
+    final text =
+        await rootBundle.loadString('assets/config/default_config.json');
     final decoded = jsonDecode(text) as Map<String, dynamic>;
     return AppConfig.fromJson(decoded);
   }

@@ -94,7 +94,8 @@ void main() {
     expect(find.byType(Chip), findsNothing);
   });
 
-  testWidgets('bottom actions show Load GeoJSON and Read QR code (no Start button)',
+  testWidgets(
+      'bottom actions show Load GeoJSON and Read QR code (no Start button)',
       (tester) async {
     final controller = buildTestController(
       hasGeoJson: true,

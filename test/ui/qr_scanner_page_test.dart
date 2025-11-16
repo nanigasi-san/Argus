@@ -17,7 +17,8 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('QrScannerPage', () {
-    testWidgets('displays scanner page with app bar', (WidgetTester tester) async {
+    testWidgets('displays scanner page with app bar',
+        (WidgetTester tester) async {
       final config = _testConfig();
       final controller = AppController(
         stateMachine: StateMachine(config: config),
@@ -134,4 +135,3 @@ class _FakeLocationService implements LocationService {
   @override
   Stream<LocationFix> get stream => const Stream.empty();
 }
-

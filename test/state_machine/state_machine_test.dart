@@ -130,7 +130,8 @@ void main() {
     expect(snapshot.status, LocationStateStatus.gpsBad);
   });
 
-  test('resets hysteresis and transitions to INNER when recovering from OUTER', () {
+  test('resets hysteresis and transitions to INNER when recovering from OUTER',
+      () {
     // First, transition to OUTER
     final outsideFix = LocationFix(
       latitude: 35.02,
@@ -157,7 +158,7 @@ void main() {
       latitude: 35.005,
       longitude: 139.005,
       accuracyMeters: 5,
-          timestamp: outsideFix.timestamp.add(const Duration(seconds: 20)),
+      timestamp: outsideFix.timestamp.add(const Duration(seconds: 20)),
     );
 
     snapshot = machine.evaluate(insideFix);

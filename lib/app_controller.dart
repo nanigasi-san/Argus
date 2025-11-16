@@ -281,7 +281,8 @@ class AppController extends ChangeNotifier {
       );
       await notifier.stopAlarm();
       _lastErrorMessage = null;
-      _logInfo('APP', 'GeoJSON loaded from QR code.', timestamp: _snapshot.timestamp);
+      _logInfo('APP', 'GeoJSON loaded from QR code.',
+          timestamp: _snapshot.timestamp);
       notifyListeners();
     } on GeoJsonQrException catch (e) {
       _lastErrorMessage = 'Failed to decode QR code: ${e.message}';
@@ -292,7 +293,8 @@ class AppController extends ChangeNotifier {
       _logError('APP', _lastErrorMessage!);
       notifyListeners();
     } catch (e) {
-      _lastErrorMessage = 'Unable to load GeoJSON from QR code: ${e.toString()}';
+      _lastErrorMessage =
+          'Unable to load GeoJSON from QR code: ${e.toString()}';
       _logError('APP', _lastErrorMessage!);
       notifyListeners();
     }
@@ -307,7 +309,8 @@ class AppController extends ChangeNotifier {
         final file = File(_tempGeoJsonFilePath!);
         if (await file.exists()) {
           await file.delete();
-          _logInfo('APP', 'Temporary GeoJSON file deleted: $_tempGeoJsonFilePath');
+          _logInfo(
+              'APP', 'Temporary GeoJSON file deleted: $_tempGeoJsonFilePath');
         }
       } catch (e) {
         _logError('APP', 'Failed to delete temporary GeoJSON file: $e');

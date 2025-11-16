@@ -75,7 +75,7 @@ void main() {
 
     // Build our app and trigger a frame.
     await tester.pumpWidget(ArgusApp(controller: controller));
-    
+
     // Wait for the widget to build
     await tester.pumpAndSettle();
 

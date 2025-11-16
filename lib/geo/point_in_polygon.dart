@@ -52,9 +52,7 @@ class PointInPolygon {
       final yj = points[j].longitude;
 
       final intersect = ((yi > lon) != (yj > lon)) &&
-          (lat <
-              (xj - xi) * (lon - yi) / ((yj - yi) + 1e-12) +
-                  xi);
+          (lat < (xj - xi) * (lon - yi) / ((yj - yi) + 1e-12) + xi);
       if (intersect) {
         inside = !inside;
       }
@@ -147,8 +145,8 @@ class PointInPolygon {
     final dLon = _degToRad(lon2 - lon1);
 
     final y = sin(dLon) * cos(lat2Rad);
-    final x = cos(lat1Rad) * sin(lat2Rad) -
-        sin(lat1Rad) * cos(lat2Rad) * cos(dLon);
+    final x =
+        cos(lat1Rad) * sin(lat2Rad) - sin(lat1Rad) * cos(lat2Rad) * cos(dLon);
     final bearingRad = atan2(y, x);
     final bearingDeg = _radToDeg(bearingRad);
     return (bearingDeg + 360) % 360;
