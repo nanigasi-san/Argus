@@ -9,7 +9,7 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
-        android:label="Argus"
+        android:label="ARGUS"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
