@@ -16,8 +16,9 @@ class HomePage extends StatelessWidget {
     return Consumer<AppController>(
       builder: (context, controller, _) {
         final snapshot = controller.snapshot;
-        final showNav = controller.developerMode ||
-            snapshot.status == LocationStateStatus.outer;
+        final showNav = (controller.developerMode ||
+                snapshot.status == LocationStateStatus.outer) &&
+            controller.navigationEnabled;
         // エラーはSnackbarで出して自動フェード
         WidgetsBinding.instance.addPostFrameCallback((_) {
           final msg = controller.lastErrorMessage;

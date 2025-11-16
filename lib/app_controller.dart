@@ -40,6 +40,7 @@ class AppController extends ChangeNotifier {
   AppConfig? _config;
   GeoModel _geoModel = GeoModel.empty();
   bool _developerMode = false;
+  bool _navigationEnabled = true;
   AreaIndex _areaIndex = AreaIndex.empty();
   StateSnapshot _snapshot = StateSnapshot(
     status: LocationStateStatus.waitGeoJson,
@@ -59,6 +60,7 @@ class AppController extends ChangeNotifier {
   String? get geoJsonFileName => _geoJsonFileName;
   List<AppLogEntry> get logs => List.unmodifiable(_logs);
   bool get developerMode => _developerMode;
+  bool get navigationEnabled => _navigationEnabled;
 
   /// アプリケーションを初期化します。
   ///
@@ -201,6 +203,8 @@ class AppController extends ChangeNotifier {
         nearestBoundaryPoint: null,
         notes: 'GeoJSON loaded',
       );
+      // 新しいファイルをセットしたらナビゲーション表示を一旦オフ
+      _navigationEnabled = false;
       await notifier.stopAlarm();
       _lastErrorMessage = null;
       _logInfo('APP', 'GeoJSON loaded.', timestamp: _snapshot.timestamp);
@@ -279,6 +283,8 @@ class AppController extends ChangeNotifier {
         nearestBoundaryPoint: null,
         notes: 'GeoJSON loaded from QR code',
       );
+      // 新しいファイルをセットしたらナビゲーション表示を一旦オフ
+      _navigationEnabled = false;
       await notifier.stopAlarm();
       _lastErrorMessage = null;
       _logInfo('APP', 'GeoJSON loaded from QR code.',
@@ -352,6 +358,10 @@ class AppController extends ChangeNotifier {
     _snapshot = evaluation.copyWith(
       geoJsonLoaded: geoJsonLoaded,
     );
+    // OUTERに入ったらナビゲーション表示を再有効化
+    if (_snapshot.status == LocationStateStatus.outer) {
+      _navigationEnabled = true;
+    }
     await logger.logStateChange(_snapshot);
     _logInfo(
       'STATE',
@@ -533,8 +543,9 @@ class AppController extends ChangeNotifier {
 
   @visibleForTesting
   String describeSnapshot(StateSnapshot snapshot) {
-    final showNav =
-        _developerMode || snapshot.status == LocationStateStatus.outer;
+    final showNav = (_developerMode ||
+            snapshot.status == LocationStateStatus.outer) &&
+        _navigationEnabled;
     final dist = showNav && snapshot.distanceToBoundaryM != null
         ? '${snapshot.distanceToBoundaryM!.toStringAsFixed(2)}m'
         : '-';
