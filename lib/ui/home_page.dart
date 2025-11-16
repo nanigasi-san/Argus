@@ -58,30 +58,7 @@ class HomePage extends StatelessWidget {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               const SizedBox(height: 16),
-                              // GPS精度を常に表示（小さめ＋アイコン）
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.my_location,
-                                    size: 14,
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    'GPS精度: ${snapshot.horizontalAccuracyM?.toStringAsFixed(1) ?? '-'} m',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSurfaceVariant,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ],
-                              ),
+                              _GpsAccuracyInfo(accuracyM: snapshot.horizontalAccuracyM),
                               const SizedBox(height: 12),
                               _LargeStatusDisplay(
                                 status: snapshot.status,
@@ -231,30 +208,7 @@ class HomePage extends StatelessWidget {
                               mainAxisAlignment: MainAxisAlignment.center,
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                // GPS精度を常に表示（小さめ＋アイコン）
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.my_location,
-                                      size: 14,
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSurfaceVariant,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      'GPS精度: ${snapshot.horizontalAccuracyM?.toStringAsFixed(1) ?? '-'} m',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .onSurfaceVariant,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  ],
-                                ),
+                                _GpsAccuracyInfo(accuracyM: snapshot.horizontalAccuracyM),
                                 const SizedBox(height: 12),
                                 _LargeStatusDisplay(
                                   status: snapshot.status,
@@ -312,50 +266,16 @@ class HomePage extends StatelessWidget {
           // 主要操作は下部に常設
           bottomNavigationBar: SafeArea(
             minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (snapshot.status == LocationStateStatus.waitStart)
-                  _StartCallToAction(
-                    onPressed: controller.startMonitoring,
-                    geoJsonReady: controller.geoJsonLoaded,
-                  ),
-                if (snapshot.status != LocationStateStatus.waitStart)
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: controller.startMonitoring,
-                      icon: const Icon(Icons.play_arrow_rounded),
-                      label: const Text('Start monitoring'),
-                    ),
-                  ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => controller.reloadGeoJsonFromPicker(),
-                        icon: const Icon(Icons.map),
-                        label: const Text('Load GeoJSON'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const QrScannerPage(),
-                            ),
-                          );
-                        },
-                        icon: const Icon(Icons.qr_code_scanner),
-                        label: const Text('Read QR code'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+            child: _BottomActions(
+              isWaitStart: snapshot.status == LocationStateStatus.waitStart,
+              geoJsonReady: controller.geoJsonLoaded,
+              onStart: controller.startMonitoring,
+              onLoadGeoJson: controller.reloadGeoJsonFromPicker,
+              onOpenQr: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const QrScannerPage()),
+                );
+              },
             ),
           ),
         );
@@ -384,6 +304,85 @@ class _BrandHeader extends StatelessWidget {
               style: theme.textTheme.titleLarge?.copyWith(
                 letterSpacing: 2.0,
                 fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _GpsAccuracyInfo extends StatelessWidget {
+  const _GpsAccuracyInfo({required this.accuracyM});
+
+  final double? accuracyM;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.onSurfaceVariant;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.my_location, size: 14, color: color),
+        const SizedBox(width: 4),
+        Text(
+          'GPS精度: ${accuracyM?.toStringAsFixed(1) ?? '-'} m',
+          style: TextStyle(fontSize: 13, color: color),
+          textAlign: TextAlign.center,
+        ),
+      ],
+    );
+  }
+}
+
+class _BottomActions extends StatelessWidget {
+  const _BottomActions({
+    required this.isWaitStart,
+    required this.geoJsonReady,
+    required this.onStart,
+    required this.onLoadGeoJson,
+    required this.onOpenQr,
+  });
+
+  final bool isWaitStart;
+  final bool geoJsonReady;
+  final VoidCallback onStart;
+  final VoidCallback onLoadGeoJson;
+  final VoidCallback onOpenQr;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (isWaitStart)
+          _StartCallToAction(onPressed: onStart, geoJsonReady: geoJsonReady)
+        else
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: onStart,
+              icon: const Icon(Icons.play_arrow_rounded),
+              label: const Text('Start monitoring'),
+            ),
+          ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: onLoadGeoJson,
+                icon: const Icon(Icons.map),
+                label: const Text('Load GeoJSON'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: onOpenQr,
+                icon: const Icon(Icons.qr_code_scanner),
+                label: const Text('Read QR code'),
               ),
             ),
           ],
