@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter/services.dart';
 
 import '../app_controller.dart';
 import '../geo/geo_model.dart';
@@ -18,22 +19,29 @@ class HomePage extends StatelessWidget {
         final snapshot = controller.snapshot;
         final showNav = controller.developerMode ||
             snapshot.status == LocationStateStatus.outer;
+        // エラーはSnackbarで出して自動フェード
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final msg = controller.lastErrorMessage;
+          if (msg != null && context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(msg),
+                behavior: SnackBarBehavior.floating,
+                duration: const Duration(seconds: 4),
+              ),
+            );
+            controller.clearError();
+          }
+        });
+
         return Scaffold(
           appBar: AppBar(
+            centerTitle: true,
             toolbarHeight: 64,
             elevation: 0,
             title: const _BrandHeader(),
             actions: [
-              IconButton(
-                icon: const Icon(Icons.settings),
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const SettingsPage(),
-                    ),
-                  );
-                },
-              ),
+              const _OverflowMenu(),
             ],
           ),
           body: Padding(
@@ -50,16 +58,29 @@ class HomePage extends StatelessWidget {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               const SizedBox(height: 16),
-                              // GPS精度を常に表示
-                              Text(
-                                'GPS精度: ${snapshot.horizontalAccuracyM?.toStringAsFixed(1) ?? '-'} m',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant,
-                                ),
-                                textAlign: TextAlign.center,
+                              // GPS精度を常に表示（小さめ＋アイコン）
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.my_location,
+                                    size: 14,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'GPS精度: ${snapshot.horizontalAccuracyM?.toStringAsFixed(1) ?? '-'} m',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
                               ),
                               const SizedBox(height: 12),
                               _LargeStatusDisplay(
@@ -210,16 +231,29 @@ class HomePage extends StatelessWidget {
                               mainAxisAlignment: MainAxisAlignment.center,
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                // GPS精度を常に表示
-                                Text(
-                                  'GPS精度: ${snapshot.horizontalAccuracyM?.toStringAsFixed(1) ?? '-'} m',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
-                                  ),
-                                  textAlign: TextAlign.center,
+                                // GPS精度を常に表示（小さめ＋アイコン）
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.my_location,
+                                      size: 14,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'GPS精度: ${snapshot.horizontalAccuracyM?.toStringAsFixed(1) ?? '-'} m',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ],
                                 ),
                                 const SizedBox(height: 12),
                                 _LargeStatusDisplay(
@@ -271,52 +305,58 @@ class HomePage extends StatelessWidget {
                           ),
                         ),
                       ),
-                      // 開発者モードでない場合は、エラーメッセージのみ表示
-                      if (controller.lastErrorMessage != null) ...[
-                        const SizedBox(height: 16),
-                        Material(
-                          color: Colors.red.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(12),
-                          child: ListTile(
-                            leading: const Icon(
-                              Icons.error_outline,
-                              color: Colors.red,
-                            ),
-                            title: Text(
-                              controller.lastErrorMessage!,
-                              style: const TextStyle(color: Colors.red),
-                            ),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.close, color: Colors.red),
-                              onPressed: controller.clearError,
-                            ),
-                          ),
-                        ),
-                      ],
+                      // エラー表示はSnackbarに移行済み
                     ],
                   ),
           ),
-          floatingActionButton: Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              FloatingActionButton.extended(
-                onPressed: () => controller.reloadGeoJsonFromPicker(),
-                icon: const Icon(Icons.map),
-                label: const Text('Load GeoJSON'),
-              ),
-              const SizedBox(width: 16),
-              FloatingActionButton.extended(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const QrScannerPage(),
+          // 主要操作は下部に常設
+          bottomNavigationBar: SafeArea(
+            minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (snapshot.status == LocationStateStatus.waitStart)
+                  _StartCallToAction(
+                    onPressed: controller.startMonitoring,
+                    geoJsonReady: controller.geoJsonLoaded,
+                  ),
+                if (snapshot.status != LocationStateStatus.waitStart)
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: controller.startMonitoring,
+                      icon: const Icon(Icons.play_arrow_rounded),
+                      label: const Text('Start monitoring'),
                     ),
-                  );
-                },
-                icon: const Icon(Icons.qr_code_scanner),
-                label: const Text('Read QR code'),
-              ),
-            ],
+                  ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => controller.reloadGeoJsonFromPicker(),
+                        icon: const Icon(Icons.map),
+                        label: const Text('Load GeoJSON'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const QrScannerPage(),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.qr_code_scanner),
+                        label: const Text('Read QR code'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -353,6 +393,26 @@ class _BrandHeader extends StatelessWidget {
   }
 }
 
+class _OverflowMenu extends StatelessWidget {
+  const _OverflowMenu();
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<int>(
+      itemBuilder: (context) => const [
+        PopupMenuItem(value: 1, child: Text('Settings')),
+      ],
+      onSelected: (value) {
+        if (value == 1) {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const SettingsPage()),
+          );
+        }
+      },
+    );
+  }
+}
+
 class _StartCallToAction extends StatelessWidget {
   const _StartCallToAction({
     required this.onPressed,
@@ -375,7 +435,10 @@ class _StartCallToAction extends StatelessWidget {
         SizedBox(
           width: double.infinity,
           child: FilledButton.icon(
-            onPressed: onPressed,
+            onPressed: () {
+              HapticFeedback.mediumImpact();
+              onPressed();
+            },
             icon: const Icon(Icons.play_arrow_rounded, size: 32),
             label: const Text('Start monitoring'),
             style: FilledButton.styleFrom(
@@ -433,43 +496,29 @@ class _GeoJsonStatusDisplay extends StatelessWidget {
     final theme = Theme.of(context);
 
     if (!geoJsonLoaded) {
-      return Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+      return Wrap(
+        alignment: WrapAlignment.center,
         children: [
-          Icon(
-            Icons.info_outline,
-            size: 16,
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            'Please select GeoJSON file',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
+          Chip(
+            avatar: Icon(
+              Icons.info_outline,
+              size: 16,
+              color: theme.colorScheme.onSurface,
             ),
+            label: const Text('Please select GeoJSON file'),
           ),
         ],
       );
     }
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
+    return Wrap(
+      alignment: WrapAlignment.center,
       children: [
-        Icon(
-          Icons.map,
-          size: 16,
-          color: theme.colorScheme.primary,
-        ),
-        const SizedBox(width: 8),
-        Flexible(
-          child: Text(
-            fileName ?? 'GeoJSON',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.primary,
-              fontWeight: FontWeight.w500,
-            ),
-            textAlign: TextAlign.center,
-            overflow: TextOverflow.ellipsis,
+        Chip(
+          avatar: const Icon(Icons.map, size: 16),
+          label: Text(fileName ?? 'GeoJSON'),
+          labelStyle: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w600,
           ),
         ),
       ],
@@ -610,9 +659,13 @@ class _LargeStatusDisplay extends StatelessWidget {
 
     // waitStartの時はタップ可能にする
     if (onTap != null) {
-      return GestureDetector(
-        onTap: onTap,
-        child: circleWidget,
+      return Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onTap,
+          child: circleWidget,
+        ),
       );
     }
 
