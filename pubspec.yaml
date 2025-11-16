@@ -39,3 +39,4 @@ flutter:
   assets:
     - assets/config/default_config.json
     - assets/geojson/
+    - icon.png
