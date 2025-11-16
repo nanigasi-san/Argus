@@ -20,7 +20,21 @@ class HomePage extends StatelessWidget {
             snapshot.status == LocationStateStatus.outer;
         return Scaffold(
           appBar: AppBar(
-            title: const Text('Argus'),
+            toolbarHeight: 72,
+            elevation: 0,
+            title: const _BrandHeader(),
+            flexibleSpace: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Theme.of(context).colorScheme.surface,
+                    Theme.of(context).colorScheme.primary.withValues(alpha: 0.06),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+            ),
             actions: [
               IconButton(
                 icon: const Icon(Icons.settings),
@@ -39,6 +53,8 @@ class HomePage extends StatelessWidget {
             child: controller.developerMode
                 ? Column(
                     children: [
+                      const _HeroBanner(),
+                      const SizedBox(height: 16),
                       // 開発者モードの時は上部を縮小
                       Flexible(
                         flex: 3,
@@ -58,21 +74,7 @@ class HomePage extends StatelessWidget {
                                 ),
                                 textAlign: TextAlign.center,
                               ),
-                              const SizedBox(height: 8),
-                              if (snapshot.status ==
-                                  LocationStateStatus.waitStart) ...[
-                                Text(
-                                  '↓ Press this button to start',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                                const SizedBox(height: 8),
-                              ],
+                              const SizedBox(height: 12),
                               _LargeStatusDisplay(
                                 status: snapshot.status,
                                 onTap: snapshot.status ==
@@ -80,6 +82,14 @@ class HomePage extends StatelessWidget {
                                     ? () => controller.startMonitoring()
                                     : null,
                               ),
+                              if (snapshot.status ==
+                                  LocationStateStatus.waitStart) ...[
+                                const SizedBox(height: 16),
+                                _StartCallToAction(
+                                  onPressed: controller.startMonitoring,
+                                  geoJsonReady: controller.geoJsonLoaded,
+                                ),
+                              ],
                               // GeoJSONファイル状態を表示
                               const SizedBox(height: 24),
                               _GeoJsonStatusDisplay(
@@ -202,6 +212,8 @@ class HomePage extends StatelessWidget {
                   )
                 : Column(
                     children: [
+                      const _HeroBanner(),
+                      const SizedBox(height: 16),
                       // 中央に大きなステータス表示
                       // waitStartの時はタップ可能でSTARTボタンとして機能
                       Expanded(
@@ -212,22 +224,9 @@ class HomePage extends StatelessWidget {
                               mainAxisAlignment: MainAxisAlignment.center,
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                              // GPS精度を常に表示
-                              Text(
-                                'GPS精度: ${snapshot.horizontalAccuracyM?.toStringAsFixed(1) ?? '-'} m',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant,
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                              const SizedBox(height: 8),
-                              if (snapshot.status ==
-                                  LocationStateStatus.waitStart) ...[
+                                // GPS精度を常に表示
                                 Text(
-                                  '↓ Press this button to start',
+                                  'GPS精度: ${snapshot.horizontalAccuracyM?.toStringAsFixed(1) ?? '-'} m',
                                   style: TextStyle(
                                     fontSize: 14,
                                     color: Theme.of(context)
@@ -236,48 +235,55 @@ class HomePage extends StatelessWidget {
                                   ),
                                   textAlign: TextAlign.center,
                                 ),
-                                const SizedBox(height: 8),
-                              ],
-                              _LargeStatusDisplay(
-                                status: snapshot.status,
-                                onTap: snapshot.status ==
-                                        LocationStateStatus.waitStart
-                                    ? () => controller.startMonitoring()
-                                    : null,
-                              ),
-                              // GeoJSONファイル状態を表示
-                              const SizedBox(height: 24),
-                              _GeoJsonStatusDisplay(
-                                geoJsonLoaded: controller.geoJsonLoaded,
-                                fileName: controller.geoJsonFileName,
-                              ),
-                              // outerの時に方角と距離を表示
-                              if (showNav &&
-                                  snapshot.status ==
-                                      LocationStateStatus.outer) ...[
+                                const SizedBox(height: 12),
+                                _LargeStatusDisplay(
+                                  status: snapshot.status,
+                                  onTap: snapshot.status ==
+                                          LocationStateStatus.waitStart
+                                      ? () => controller.startMonitoring()
+                                      : null,
+                                ),
+                                if (snapshot.status ==
+                                    LocationStateStatus.waitStart) ...[
+                                  const SizedBox(height: 16),
+                                  _StartCallToAction(
+                                    onPressed: controller.startMonitoring,
+                                    geoJsonReady: controller.geoJsonLoaded,
+                                  ),
+                                ],
+                                // GeoJSONファイル状態を表示
                                 const SizedBox(height: 24),
-                                Text(
-                                  '境界までの距離: '
-                                  '${snapshot.distanceToBoundaryM?.toStringAsFixed(1) ?? '-'} m',
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w500,
-                                  ),
+                                _GeoJsonStatusDisplay(
+                                  geoJsonLoaded: controller.geoJsonLoaded,
+                                  fileName: controller.geoJsonFileName,
                                 ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  '方角: '
-                                  '${snapshot.bearingToBoundaryDeg != null ? _formatBearing(snapshot.bearingToBoundaryDeg!) : '-'}',
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w500,
+                                // outerの時に方角と距離を表示
+                                if (showNav &&
+                                    snapshot.status ==
+                                        LocationStateStatus.outer) ...[
+                                  const SizedBox(height: 24),
+                                  Text(
+                                    '境界までの距離: '
+                                    '${snapshot.distanceToBoundaryM?.toStringAsFixed(1) ?? '-'} m',
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w500,
+                                    ),
                                   ),
-                                ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    '方角: '
+                                    '${snapshot.bearingToBoundaryDeg != null ? _formatBearing(snapshot.bearingToBoundaryDeg!) : '-'}',
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
                               ],
-                            ],
+                            ),
                           ),
                         ),
-                      ),
                       ),
                       // 開発者モードでない場合は、エラーメッセージのみ表示
                       if (controller.lastErrorMessage != null) ...[
@@ -328,6 +334,243 @@ class HomePage extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _HeroBanner extends StatelessWidget {
+  const _HeroBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final baseGradient = LinearGradient(
+      colors: [
+        theme.colorScheme.primary,
+        theme.colorScheme.secondaryContainer,
+        theme.colorScheme.tertiary,
+      ],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+    );
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: baseGradient,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: theme.colorScheme.primary.withValues(alpha: 0.25),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(20),
+      child: Row(
+        children: [
+          Container(
+            height: 72,
+            width: 72,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.black.withValues(alpha: 0.2),
+              border: Border.all(
+                width: 2,
+                color: Colors.white.withValues(alpha: 0.5),
+              ),
+            ),
+            child: const Icon(
+              Icons.radar_rounded,
+              size: 42,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'ARGUS',
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    color: Colors.white,
+                    letterSpacing: 4,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Geo-fencing companion',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: Colors.white.withValues(alpha: 0.9),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Works fully offline once your GeoJSON is loaded.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: Colors.white.withValues(alpha: 0.85),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BrandHeader extends StatelessWidget {
+  const _BrandHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final gradientColors = [
+      theme.colorScheme.primary,
+      theme.colorScheme.secondary,
+    ];
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          height: 36,
+          width: 36,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              colors: gradientColors,
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: const Icon(
+            Icons.radar,
+            size: 20,
+            color: Colors.white,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _GradientText(
+              'ARGUS',
+              gradient: LinearGradient(
+                colors: [
+                  theme.colorScheme.primary,
+                  theme.colorScheme.tertiary,
+                ],
+              ),
+              style: theme.textTheme.titleLarge?.copyWith(
+                letterSpacing: 2.4,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            Text(
+              'Offline boundary monitor',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                letterSpacing: 0.4,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _GradientText extends StatelessWidget {
+  const _GradientText(
+    this.text, {
+    required this.gradient,
+    this.style,
+  });
+
+  final String text;
+  final Gradient gradient;
+  final TextStyle? style;
+
+  @override
+  Widget build(BuildContext context) {
+    return ShaderMask(
+      shaderCallback: (bounds) => gradient.createShader(
+        Rect.fromLTWH(0, 0, bounds.width, bounds.height),
+      ),
+      blendMode: BlendMode.srcIn,
+      child: Text(text, style: style),
+    );
+  }
+}
+
+class _StartCallToAction extends StatelessWidget {
+  const _StartCallToAction({
+    required this.onPressed,
+    required this.geoJsonReady,
+  });
+
+  final VoidCallback onPressed;
+  final bool geoJsonReady;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final hintText = geoJsonReady
+        ? 'GeoJSON ready. Argus can run without network.'
+        : 'Load a GeoJSON from file or QR to work offline.';
+    final hintColor = theme.colorScheme.onSurfaceVariant;
+
+    return Column(
+      children: [
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: onPressed,
+            icon: const Icon(Icons.play_arrow_rounded, size: 32),
+            label: const Text('Start monitoring'),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(64),
+              padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              elevation: 2,
+              textStyle: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.2,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              geoJsonReady ? Icons.offline_pin : Icons.map_outlined,
+              size: 16,
+              color: hintColor,
+            ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                hintText,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: hintColor,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -437,12 +680,48 @@ class _LargeStatusDisplay extends StatelessWidget {
     }
   }
 
+  String _statusCode(LocationStateStatus status) {
+    switch (status) {
+      case LocationStateStatus.inner:
+        return 'INNER';
+      case LocationStateStatus.near:
+        return 'NEAR';
+      case LocationStateStatus.outerPending:
+        return 'OUTER PENDING';
+      case LocationStateStatus.outer:
+        return 'OUTER';
+      case LocationStateStatus.gpsBad:
+        return 'GPS BAD';
+      case LocationStateStatus.waitGeoJson:
+        return 'WAIT GEOJSON';
+      case LocationStateStatus.waitStart:
+        return 'WAIT START';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final color = _color(status);
     final statusText = _statusText(status);
+    final statusCode = _statusCode(status);
     final screenSize = MediaQuery.of(context).size;
-    final circleSize = screenSize.width * 0.7;
+    final circleSize = (screenSize.shortestSide * 0.75)
+        .clamp(220.0, screenSize.shortestSide * 0.9)
+        .toDouble();
+
+    Widget buildLabel(String text, TextStyle style) {
+      return SizedBox(
+        width: circleSize * 0.78,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            text,
+            textAlign: TextAlign.center,
+            style: style,
+          ),
+        ),
+      );
+    }
 
     final circleWidget = Container(
       width: circleSize,
@@ -460,23 +739,24 @@ class _LargeStatusDisplay extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Text(
+            buildLabel(
               statusText,
-              textAlign: TextAlign.center,
-              style: TextStyle(
+              TextStyle(
                 fontSize: circleSize * 0.2,
                 fontWeight: FontWeight.bold,
                 color: color,
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              status.name.toUpperCase(),
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: circleSize * 0.08,
-                color: color.withValues(alpha: 0.7),
-                fontWeight: FontWeight.w500,
+            const SizedBox(height: 12),
+            buildLabel(
+              statusCode,
+              TextStyle(
+                fontSize: circleSize *
+                    (status == LocationStateStatus.waitGeoJson ? 0.08 : 0.09),
+                color: color.withValues(alpha: 0.75),
+                fontWeight: FontWeight.w700,
+                letterSpacing:
+                    status == LocationStateStatus.waitGeoJson ? 0.8 : 1.2,
               ),
             ),
           ],
