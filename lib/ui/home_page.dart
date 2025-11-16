@@ -58,7 +58,8 @@ class HomePage extends StatelessWidget {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               const SizedBox(height: 16),
-                              _GpsAccuracyInfo(accuracyM: snapshot.horizontalAccuracyM),
+                              _GpsAccuracyInfo(
+                                  accuracyM: snapshot.horizontalAccuracyM),
                               const SizedBox(height: 12),
                               _LargeStatusDisplay(
                                 status: snapshot.status,
@@ -67,7 +68,11 @@ class HomePage extends StatelessWidget {
                                     ? () => controller.startMonitoring()
                                     : null,
                               ),
-                              // Start CTAは下部アクションに統一
+                              if (snapshot.status ==
+                                  LocationStateStatus.waitStart) ...[
+                                const SizedBox(height: 12),
+                                _TapHint(),
+                              ],
                               // GeoJSONファイル状態を表示
                               const SizedBox(height: 24),
                               _GeoJsonStatusDisplay(
@@ -201,7 +206,8 @@ class HomePage extends StatelessWidget {
                               mainAxisAlignment: MainAxisAlignment.center,
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                _GpsAccuracyInfo(accuracyM: snapshot.horizontalAccuracyM),
+                                _GpsAccuracyInfo(
+                                    accuracyM: snapshot.horizontalAccuracyM),
                                 const SizedBox(height: 12),
                                 _LargeStatusDisplay(
                                   status: snapshot.status,
@@ -210,7 +216,11 @@ class HomePage extends StatelessWidget {
                                       ? () => controller.startMonitoring()
                                       : null,
                                 ),
-                                // Start CTAは下部アクションに統一
+                                if (snapshot.status ==
+                                    LocationStateStatus.waitStart) ...[
+                                  const SizedBox(height: 12),
+                                  _TapHint(),
+                                ],
                                 // GeoJSONファイル状態を表示
                                 const SizedBox(height: 24),
                                 _GeoJsonStatusDisplay(
@@ -255,7 +265,6 @@ class HomePage extends StatelessWidget {
             child: _BottomActions(
               isWaitStart: snapshot.status == LocationStateStatus.waitStart,
               geoJsonReady: controller.geoJsonLoaded,
-              onStart: controller.startMonitoring,
               onLoadGeoJson: controller.reloadGeoJsonFromPicker,
               onOpenQr: () {
                 Navigator.of(context).push(
@@ -326,14 +335,12 @@ class _BottomActions extends StatelessWidget {
   const _BottomActions({
     required this.isWaitStart,
     required this.geoJsonReady,
-    required this.onStart,
     required this.onLoadGeoJson,
     required this.onOpenQr,
   });
 
   final bool isWaitStart;
   final bool geoJsonReady;
-  final VoidCallback onStart;
   final VoidCallback onLoadGeoJson;
   final VoidCallback onOpenQr;
 
@@ -342,18 +349,7 @@ class _BottomActions extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (isWaitStart)
-          _StartCallToAction(onPressed: onStart, geoJsonReady: geoJsonReady)
-        else
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: onStart,
-              icon: const Icon(Icons.play_arrow_rounded),
-              label: const Text('Start monitoring'),
-            ),
-          ),
-        const SizedBox(height: 12),
+        // 中央円タップで開始に統一（ボタンは出さない）
         Row(
           children: [
             Expanded(
@@ -378,6 +374,28 @@ class _BottomActions extends StatelessWidget {
   }
 }
 
+class _TapHint extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.primary;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.touch_app_rounded, size: 16, color: color),
+        const SizedBox(width: 6),
+        Text(
+          'タップで開始',
+          style: TextStyle(
+            color: color,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.4,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _OverflowMenu extends StatelessWidget {
   const _OverflowMenu();
 
@@ -394,75 +412,6 @@ class _OverflowMenu extends StatelessWidget {
           );
         }
       },
-    );
-  }
-}
-
-class _StartCallToAction extends StatelessWidget {
-  const _StartCallToAction({
-    required this.onPressed,
-    required this.geoJsonReady,
-  });
-
-  final VoidCallback onPressed;
-  final bool geoJsonReady;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final hintText = geoJsonReady
-        ? 'GeoJSON ready. Argus can run without network.'
-        : 'Load a GeoJSON from file or QR to work offline.';
-    final hintColor = theme.colorScheme.onSurfaceVariant;
-
-    return Column(
-      children: [
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: () {
-              HapticFeedback.mediumImpact();
-              onPressed();
-            },
-            icon: const Icon(Icons.play_arrow_rounded, size: 32),
-            label: const Text('Start monitoring'),
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(64),
-              padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              elevation: 2,
-              textStyle: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.2,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              geoJsonReady ? Icons.offline_pin : Icons.map_outlined,
-              size: 16,
-              color: hintColor,
-            ),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                hintText,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: hintColor,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
     );
   }
 }

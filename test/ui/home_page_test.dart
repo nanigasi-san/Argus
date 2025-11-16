@@ -92,7 +92,7 @@ void main() {
     expect(find.byType(Chip), findsWidgets);
   });
 
-  testWidgets('bottom actions are visible: Start/Load GeoJSON/Read QR code',
+  testWidgets('bottom actions show Load GeoJSON and Read QR code (no Start button)',
       (tester) async {
     final controller = buildTestController(
       hasGeoJson: true,
@@ -105,8 +105,8 @@ void main() {
 
     await _pumpHome(tester, controller);
 
-    expect(find.text('Start monitoring'), findsWidgets);
     expect(find.text('Load GeoJSON'), findsOneWidget);
     expect(find.text('Read QR code'), findsOneWidget);
+    expect(find.text('Start monitoring'), findsNothing);
   });
 }
