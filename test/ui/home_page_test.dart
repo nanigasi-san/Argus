@@ -74,4 +74,39 @@ void main() {
     expect(find.textContaining('境界までの距離'), findsOneWidget);
     expect(find.textContaining('方角'), findsOneWidget);
   });
+
+  testWidgets('shows GeoJSON chip with file name after loading via picker',
+      (tester) async {
+    final controller = buildTestController(hasGeoJson: false);
+    await _pumpHome(tester, controller);
+
+    // 初期は未ロードでInfo系Chipが出る想定
+    expect(find.text('Please select GeoJSON file'), findsOneWidget);
+
+    // 画像のFakeFileManagerは test_square.geojson を返す
+    await controller.reloadGeoJsonFromPicker();
+    await tester.pumpAndSettle();
+
+    // ファイル未選択メッセージが消え、Chipが表示されることを確認
+    expect(find.text('Please select GeoJSON file'), findsNothing);
+    expect(find.byType(Chip), findsWidgets);
+  });
+
+  testWidgets('bottom actions are visible: Start/Load GeoJSON/Read QR code',
+      (tester) async {
+    final controller = buildTestController(
+      hasGeoJson: true,
+      snapshot: StateSnapshot(
+        status: LocationStateStatus.waitStart,
+        timestamp: DateTime.fromMillisecondsSinceEpoch(0),
+        geoJsonLoaded: true,
+      ),
+    );
+
+    await _pumpHome(tester, controller);
+
+    expect(find.text('Start monitoring'), findsWidgets);
+    expect(find.text('Load GeoJSON'), findsOneWidget);
+    expect(find.text('Read QR code'), findsOneWidget);
+  });
 }

@@ -18,12 +18,12 @@
 | `app_controller_test.dart`                          | `AppController`                         | 7        |
 | `platform/notifier_test.dart`                       | `Notifier`                              | 1        |
 | `io/logger_test.dart`                               | `EventLogger`                           | 4        |
-| `ui/home_page_test.dart`                            | `HomePage`                              | 3        |
+| `ui/home_page_test.dart`                            | `HomePage`                              | 5        |
 | `ui/settings_page_test.dart`                        | `SettingsPage`                          | 3        |
 | `ui/qr_scanner_page_test.dart`                      | `QrScannerPage`                         | 2        |
 | `main_test.dart`                                    | `ArgusApp`                              | 1        |
 | `widget_test.dart`                                  | Widget統合テスト                        | 1        |
-| **合計**                                            |                                         | **102**  |
+| **合計**                                            |                                         | **106**  |
 
 ---
 
@@ -492,6 +492,16 @@ QRコードスキャン画面のUI動作を検証するテストです。
 ### テストケース
 
 #### 8.1 `outer -> inner -> outer toggles alarm playback`
+- #### 8.2 `notifyOuter is idempotent and initialize requested once`
+  - **目的**: 外出通知の連続呼び出しで二重再生しないこと、初期化・権限要求が一度だけ行われることを確認
+  - **手順**:
+    1. `notifyOuter()` を2回連続で呼び出す
+    2. `notifyRecover()` 後に再度 `notifyOuter()` を呼ぶ
+  - **期待結果**:
+    - 1回目の `notifyOuter()`: 再生開始カウントが+1
+    - 2回目の `notifyOuter()`: 再生開始カウントは変化しない（冪等）
+    - `notifyRecover()` 後の `notifyOuter()`: 再生開始カウントが+1（合計2）
+    - 通知初期化・権限要求は最初の1回のみ
 - **目的**: OUTER → INNER → OUTER の遷移でアラームが適切に開始・停止・再開されることを確認
 - **手順**:
   1. `notifyOuter()` を呼び出す → アラーム開始
@@ -548,6 +558,15 @@ HomePage のUI動作を検証するテストです。
 - **期待結果**: 「境界までの距離」と「方角」のテキストが見つかる
 
 #### 10.3 `shows navigation details when state is OUTER`
+- #### 10.4 `shows GeoJSON chip with file name after loading via picker`
+  - **目的**: ファイルピッカーからのロード後にChip表示へ切り替わることを確認
+  - **手順**:
+    1. 初期状態で「Please select GeoJSON file」を確認
+    2. `reloadGeoJsonFromPicker()` を実行
+  - **期待結果**: 未選択メッセージが消え、Chipが表示される
+- #### 10.5 `bottom actions are visible: Start/Load GeoJSON/Read QR code`
+  - **目的**: 主要操作が画面下部に常設されることを確認
+  - **期待結果**: `Start monitoring` / `Load GeoJSON` / `Read QR code` が見える
 - **目的**: OUTER状態の場合、開発者モードOFFでもナビゲーション情報が表示されることを確認
 - **テストデータ**: `outer` 状態、開発者モードOFF、距離5m、方位180度
 - **期待結果**: 「境界までの距離」と「方角」のテキストが見つかる
