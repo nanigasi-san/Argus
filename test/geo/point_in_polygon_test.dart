@@ -40,7 +40,8 @@ void main() {
       // Point on the western edge
       final evaluation = pip.evaluatePoint(35.005, 139.0, squarePolygon);
       // Boundary behavior may vary - just check it doesn't crash and distance is small
-      expect(evaluation.distanceToBoundaryM, lessThan(100)); // Should be very close to 0
+      expect(evaluation.distanceToBoundaryM,
+          lessThan(100)); // Should be very close to 0
     });
 
     test('calculates distance to boundary for inside point', () {
@@ -53,7 +54,8 @@ void main() {
       // Point near edge
       final nearEdge = pip.evaluatePoint(35.0, 139.009, squarePolygon);
       expect(nearEdge.contains, true);
-      expect(nearEdge.distanceToBoundaryM, lessThan(center.distanceToBoundaryM));
+      expect(
+          nearEdge.distanceToBoundaryM, lessThan(center.distanceToBoundaryM));
     });
 
     test('calculates distance to boundary for outside point', () {

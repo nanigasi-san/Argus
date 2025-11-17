@@ -19,6 +19,7 @@ class _SettingsPageState extends State<SettingsPage> {
   late final TextEditingController _gpsAccuracyThresholdController;
   late final TextEditingController _leaveConfirmSamplesController;
   late final TextEditingController _leaveConfirmSecondsController;
+  double _alarmVolume = 1.0;
   bool _isSaving = false;
   AppConfig? _defaultConfig;
 
@@ -50,6 +51,7 @@ class _SettingsPageState extends State<SettingsPage> {
         sampleIntervalS: const {'fast': 3},
         sampleDistanceM: const {'fast': 15},
         screenWakeOnLeave: false,
+        alarmVolume: 1.0,
       );
     }
 
@@ -66,6 +68,7 @@ class _SettingsPageState extends State<SettingsPage> {
           config.leaveConfirmSamples.toString();
       _leaveConfirmSecondsController.text =
           config.leaveConfirmSeconds.toString();
+      _alarmVolume = config.alarmVolume;
     } else if (_defaultConfig != null) {
       // デフォルト値で初期化（configがnullの場合）
       _innerBufferController.text =
@@ -78,6 +81,7 @@ class _SettingsPageState extends State<SettingsPage> {
           _defaultConfig!.leaveConfirmSamples.toString();
       _leaveConfirmSecondsController.text =
           _defaultConfig!.leaveConfirmSeconds.toString();
+      _alarmVolume = _defaultConfig!.alarmVolume;
     } else {
       // フォールバック
       _innerBufferController.text = '30.0';
@@ -149,6 +153,7 @@ class _SettingsPageState extends State<SettingsPage> {
         },
         sampleDistanceM: currentConfig.sampleDistanceM,
         screenWakeOnLeave: currentConfig.screenWakeOnLeave,
+        alarmVolume: _alarmVolume,
       );
 
       await controller.updateConfig(newConfig);
@@ -324,6 +329,33 @@ class _SettingsPageState extends State<SettingsPage> {
                           }
                           return null;
                         },
+                      ),
+                      const SizedBox(height: 16),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'アラーム音量',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: 8),
+                          Slider(
+                            value: _alarmVolume,
+                            min: 0.0,
+                            max: 1.0,
+                            divisions: 20,
+                            label: '${(_alarmVolume * 100).round()}%',
+                            onChanged: (value) {
+                              setState(() {
+                                _alarmVolume = value;
+                              });
+                            },
+                          ),
+                          Text(
+                            '音量: ${(_alarmVolume * 100).round()}% (デフォルト: 100%)',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 24),
                       ElevatedButton(

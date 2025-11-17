@@ -40,6 +40,7 @@ class AppController extends ChangeNotifier {
   AppConfig? _config;
   GeoModel _geoModel = GeoModel.empty();
   bool _developerMode = false;
+  bool _navigationEnabled = true;
   AreaIndex _areaIndex = AreaIndex.empty();
   StateSnapshot _snapshot = StateSnapshot(
     status: LocationStateStatus.waitGeoJson,
@@ -59,6 +60,7 @@ class AppController extends ChangeNotifier {
   String? get geoJsonFileName => _geoJsonFileName;
   List<AppLogEntry> get logs => List.unmodifiable(_logs);
   bool get developerMode => _developerMode;
+  bool get navigationEnabled => _navigationEnabled;
 
   /// アプリケーションを初期化します。
   ///
@@ -67,6 +69,9 @@ class AppController extends ChangeNotifier {
     await _requestPermissions();
     _config ??= await fileManager.readConfig();
     stateMachine.updateConfig(_config!);
+
+    // アラーム音量を設定
+    notifier.setAlarmVolume(_config!.alarmVolume);
 
     _snapshot = _snapshot.copyWith(
       status: geoJsonLoaded
@@ -147,6 +152,9 @@ class AppController extends ChangeNotifier {
     _config = newConfig;
     stateMachine.updateConfig(newConfig);
 
+    // アラーム音量を設定
+    notifier.setAlarmVolume(newConfig.alarmVolume);
+
     // 設定をファイルに保存
     await fileManager.saveConfig(newConfig);
 
@@ -201,6 +209,8 @@ class AppController extends ChangeNotifier {
         nearestBoundaryPoint: null,
         notes: 'GeoJSON loaded',
       );
+      // 新しいファイルをセットしたらナビゲーション表示を一旦オフ
+      _navigationEnabled = false;
       await notifier.stopAlarm();
       _lastErrorMessage = null;
       _logInfo('APP', 'GeoJSON loaded.', timestamp: _snapshot.timestamp);
@@ -279,9 +289,12 @@ class AppController extends ChangeNotifier {
         nearestBoundaryPoint: null,
         notes: 'GeoJSON loaded from QR code',
       );
+      // 新しいファイルをセットしたらナビゲーション表示を一旦オフ
+      _navigationEnabled = false;
       await notifier.stopAlarm();
       _lastErrorMessage = null;
-      _logInfo('APP', 'GeoJSON loaded from QR code.', timestamp: _snapshot.timestamp);
+      _logInfo('APP', 'GeoJSON loaded from QR code.',
+          timestamp: _snapshot.timestamp);
       notifyListeners();
     } on GeoJsonQrException catch (e) {
       _lastErrorMessage = 'Failed to decode QR code: ${e.message}';
@@ -292,7 +305,8 @@ class AppController extends ChangeNotifier {
       _logError('APP', _lastErrorMessage!);
       notifyListeners();
     } catch (e) {
-      _lastErrorMessage = 'Unable to load GeoJSON from QR code: ${e.toString()}';
+      _lastErrorMessage =
+          'Unable to load GeoJSON from QR code: ${e.toString()}';
       _logError('APP', _lastErrorMessage!);
       notifyListeners();
     }
@@ -307,7 +321,8 @@ class AppController extends ChangeNotifier {
         final file = File(_tempGeoJsonFilePath!);
         if (await file.exists()) {
           await file.delete();
-          _logInfo('APP', 'Temporary GeoJSON file deleted: $_tempGeoJsonFilePath');
+          _logInfo(
+              'APP', 'Temporary GeoJSON file deleted: $_tempGeoJsonFilePath');
         }
       } catch (e) {
         _logError('APP', 'Failed to delete temporary GeoJSON file: $e');
@@ -349,6 +364,10 @@ class AppController extends ChangeNotifier {
     _snapshot = evaluation.copyWith(
       geoJsonLoaded: geoJsonLoaded,
     );
+    // OUTERに入ったらナビゲーション表示を再有効化
+    if (_snapshot.status == LocationStateStatus.outer) {
+      _navigationEnabled = true;
+    }
     await logger.logStateChange(_snapshot);
     _logInfo(
       'STATE',
@@ -531,7 +550,8 @@ class AppController extends ChangeNotifier {
   @visibleForTesting
   String describeSnapshot(StateSnapshot snapshot) {
     final showNav =
-        _developerMode || snapshot.status == LocationStateStatus.outer;
+        (_developerMode || snapshot.status == LocationStateStatus.outer) &&
+            _navigationEnabled;
     final dist = showNav && snapshot.distanceToBoundaryM != null
         ? '${snapshot.distanceToBoundaryM!.toStringAsFixed(2)}m'
         : '-';

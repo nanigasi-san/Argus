@@ -16,22 +16,32 @@ class HomePage extends StatelessWidget {
     return Consumer<AppController>(
       builder: (context, controller, _) {
         final snapshot = controller.snapshot;
-        final showNav = controller.developerMode ||
-            snapshot.status == LocationStateStatus.outer;
+        final showNav = (controller.developerMode ||
+                snapshot.status == LocationStateStatus.outer) &&
+            controller.navigationEnabled;
+        // エラーはSnackbarで出して自動フェード
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final msg = controller.lastErrorMessage;
+          if (msg != null && context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(msg),
+                behavior: SnackBarBehavior.floating,
+                duration: const Duration(seconds: 4),
+              ),
+            );
+            controller.clearError();
+          }
+        });
+
         return Scaffold(
           appBar: AppBar(
-            title: const Text('Argus'),
+            centerTitle: true,
+            toolbarHeight: 64,
+            elevation: 0,
+            title: const _BrandHeader(),
             actions: [
-              IconButton(
-                icon: const Icon(Icons.settings),
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const SettingsPage(),
-                    ),
-                  );
-                },
-              ),
+              const _OverflowMenu(),
             ],
           ),
           body: Padding(
@@ -39,6 +49,7 @@ class HomePage extends StatelessWidget {
             child: controller.developerMode
                 ? Column(
                     children: [
+                      const SizedBox(height: 8),
                       // 開発者モードの時は上部を縮小
                       Flexible(
                         flex: 3,
@@ -47,32 +58,14 @@ class HomePage extends StatelessWidget {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               const SizedBox(height: 16),
-                              // GPS精度を常に表示
-                              Text(
-                                'GPS精度: ${snapshot.horizontalAccuracyM?.toStringAsFixed(1) ?? '-'} m',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant,
-                                ),
-                                textAlign: TextAlign.center,
+                              _GpsAccuracyInfo(
+                                  accuracyM: snapshot.horizontalAccuracyM),
+                              const SizedBox(height: 6),
+                              _FileNameInfo(
+                                fileName: controller.geoJsonFileName,
+                                loaded: controller.geoJsonLoaded,
                               ),
-                              const SizedBox(height: 8),
-                              if (snapshot.status ==
-                                  LocationStateStatus.waitStart) ...[
-                                Text(
-                                  '↓ Press this button to start',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                                const SizedBox(height: 8),
-                              ],
+                              const SizedBox(height: 12),
                               _LargeStatusDisplay(
                                 status: snapshot.status,
                                 onTap: snapshot.status ==
@@ -80,11 +73,22 @@ class HomePage extends StatelessWidget {
                                     ? () => controller.startMonitoring()
                                     : null,
                               ),
-                              // GeoJSONファイル状態を表示
-                              const SizedBox(height: 24),
-                              _GeoJsonStatusDisplay(
-                                geoJsonLoaded: controller.geoJsonLoaded,
-                                fileName: controller.geoJsonFileName,
+                              // ヒントは円内に描画するため外側には出さない
+                              // GeoJSONファイル状態は円の上へ移動済み
+                              const SizedBox(height: 12),
+                              _BottomActions(
+                                isWaitStart: snapshot.status ==
+                                    LocationStateStatus.waitStart,
+                                geoJsonReady: controller.geoJsonLoaded,
+                                onLoadGeoJson:
+                                    controller.reloadGeoJsonFromPicker,
+                                onOpenQr: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => const QrScannerPage(),
+                                    ),
+                                  );
+                                },
                               ),
                               // developerモードでは常に方角と距離を表示
                               if (showNav) ...[
@@ -202,6 +206,7 @@ class HomePage extends StatelessWidget {
                   )
                 : Column(
                     children: [
+                      const SizedBox(height: 8),
                       // 中央に大きなステータス表示
                       // waitStartの時はタップ可能でSTARTボタンとして機能
                       Expanded(
@@ -212,180 +217,215 @@ class HomePage extends StatelessWidget {
                               mainAxisAlignment: MainAxisAlignment.center,
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                              // GPS精度を常に表示
-                              Text(
-                                'GPS精度: ${snapshot.horizontalAccuracyM?.toStringAsFixed(1) ?? '-'} m',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant,
+                                _GpsAccuracyInfo(
+                                    accuracyM: snapshot.horizontalAccuracyM),
+                                const SizedBox(height: 6),
+                                _FileNameInfo(
+                                  fileName: controller.geoJsonFileName,
+                                  loaded: controller.geoJsonLoaded,
                                 ),
-                                textAlign: TextAlign.center,
-                              ),
-                              const SizedBox(height: 8),
-                              if (snapshot.status ==
-                                  LocationStateStatus.waitStart) ...[
-                                Text(
-                                  '↓ Press this button to start',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
+                                const SizedBox(height: 12),
+                                _LargeStatusDisplay(
+                                  status: snapshot.status,
+                                  onTap: snapshot.status ==
+                                          LocationStateStatus.waitStart
+                                      ? () => controller.startMonitoring()
+                                      : null,
+                                ),
+                                // ヒントは円内に描画するため外側には出さない
+                                // GeoJSONファイル状態は円の上へ移動済み
+                                const SizedBox(height: 12),
+                                _BottomActions(
+                                  isWaitStart: snapshot.status ==
+                                      LocationStateStatus.waitStart,
+                                  geoJsonReady: controller.geoJsonLoaded,
+                                  onLoadGeoJson:
+                                      controller.reloadGeoJsonFromPicker,
+                                  onOpenQr: () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                          builder: (_) =>
+                                              const QrScannerPage()),
+                                    );
+                                  },
+                                ),
+                                // outerの時に方角と距離を表示
+                                if (showNav &&
+                                    snapshot.status ==
+                                        LocationStateStatus.outer) ...[
+                                  const SizedBox(height: 24),
+                                  Text(
+                                    '境界までの距離: '
+                                    '${snapshot.distanceToBoundaryM?.toStringAsFixed(1) ?? '-'} m',
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w500,
+                                    ),
                                   ),
-                                  textAlign: TextAlign.center,
-                                ),
-                                const SizedBox(height: 8),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    '方角: '
+                                    '${snapshot.bearingToBoundaryDeg != null ? _formatBearing(snapshot.bearingToBoundaryDeg!) : '-'}',
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
                               ],
-                              _LargeStatusDisplay(
-                                status: snapshot.status,
-                                onTap: snapshot.status ==
-                                        LocationStateStatus.waitStart
-                                    ? () => controller.startMonitoring()
-                                    : null,
-                              ),
-                              // GeoJSONファイル状態を表示
-                              const SizedBox(height: 24),
-                              _GeoJsonStatusDisplay(
-                                geoJsonLoaded: controller.geoJsonLoaded,
-                                fileName: controller.geoJsonFileName,
-                              ),
-                              // outerの時に方角と距離を表示
-                              if (showNav &&
-                                  snapshot.status ==
-                                      LocationStateStatus.outer) ...[
-                                const SizedBox(height: 24),
-                                Text(
-                                  '境界までの距離: '
-                                  '${snapshot.distanceToBoundaryM?.toStringAsFixed(1) ?? '-'} m',
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  '方角: '
-                                  '${snapshot.bearingToBoundaryDeg != null ? _formatBearing(snapshot.bearingToBoundaryDeg!) : '-'}',
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ],
+                            ),
                           ),
                         ),
                       ),
-                      ),
-                      // 開発者モードでない場合は、エラーメッセージのみ表示
-                      if (controller.lastErrorMessage != null) ...[
-                        const SizedBox(height: 16),
-                        Material(
-                          color: Colors.red.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(12),
-                          child: ListTile(
-                            leading: const Icon(
-                              Icons.error_outline,
-                              color: Colors.red,
-                            ),
-                            title: Text(
-                              controller.lastErrorMessage!,
-                              style: const TextStyle(color: Colors.red),
-                            ),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.close, color: Colors.red),
-                              onPressed: controller.clearError,
-                            ),
-                          ),
-                        ),
-                      ],
+                      // エラー表示はSnackbarに移行済み
                     ],
                   ),
           ),
-          floatingActionButton: Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              FloatingActionButton.extended(
-                onPressed: () => controller.reloadGeoJsonFromPicker(),
-                icon: const Icon(Icons.map),
-                label: const Text('Load GeoJSON'),
-              ),
-              const SizedBox(width: 16),
-              FloatingActionButton.extended(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const QrScannerPage(),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.qr_code_scanner),
-                label: const Text('Read QR code'),
-              ),
-            ],
-          ),
+          // 下部ナビは使用せず、円直下にボタンを配置する構成へ
         );
       },
     );
   }
 }
 
-class _GeoJsonStatusDisplay extends StatelessWidget {
-  const _GeoJsonStatusDisplay({
-    required this.geoJsonLoaded,
-    this.fileName,
-  });
-
-  final bool geoJsonLoaded;
-  final String? fileName;
+class _BrandHeader extends StatelessWidget {
+  const _BrandHeader();
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
-    if (!geoJsonLoaded) {
-      return Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.info_outline,
-            size: 16,
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            'Please select GeoJSON file',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Image.asset('icon.png', width: 32, height: 32),
+        const SizedBox(width: 12),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'ARGUS',
+              style: theme.textTheme.titleLarge?.copyWith(
+                letterSpacing: 2.0,
+                fontWeight: FontWeight.w800,
+              ),
             ),
-          ),
-        ],
-      );
-    }
+          ],
+        ),
+      ],
+    );
+  }
+}
 
+class _GpsAccuracyInfo extends StatelessWidget {
+  const _GpsAccuracyInfo({required this.accuracyM});
+
+  final double? accuracyM;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.onSurfaceVariant;
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(
-          Icons.map,
-          size: 16,
-          color: theme.colorScheme.primary,
+        Icon(Icons.my_location, size: 14, color: color),
+        const SizedBox(width: 4),
+        Text(
+          'GPS精度: ${accuracyM?.toStringAsFixed(1) ?? '-'} m',
+          style: TextStyle(fontSize: 13, color: color),
+          textAlign: TextAlign.center,
         ),
-        const SizedBox(width: 8),
+      ],
+    );
+  }
+}
+
+class _FileNameInfo extends StatelessWidget {
+  const _FileNameInfo({required this.fileName, required this.loaded});
+
+  final String? fileName;
+  final bool loaded;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.onSurfaceVariant;
+    final displayName = loaded ? (fileName ?? '-') : '-';
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.map, size: 14, color: color),
+        const SizedBox(width: 4),
         Flexible(
           child: Text(
-            fileName ?? 'GeoJSON',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.primary,
-              fontWeight: FontWeight.w500,
-            ),
-            textAlign: TextAlign.center,
+            'ファイル名: $displayName',
+            style: TextStyle(fontSize: 13, color: color),
             overflow: TextOverflow.ellipsis,
           ),
         ),
       ],
+    );
+  }
+}
+
+class _BottomActions extends StatelessWidget {
+  const _BottomActions({
+    required this.isWaitStart,
+    required this.geoJsonReady,
+    required this.onLoadGeoJson,
+    required this.onOpenQr,
+  });
+
+  final bool isWaitStart;
+  final bool geoJsonReady;
+  final VoidCallback onLoadGeoJson;
+  final VoidCallback onOpenQr;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 中央円タップで開始に統一（ボタンは出さない）
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: onLoadGeoJson,
+                icon: const Icon(Icons.map),
+                label: const Text('Load GeoJSON'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: onOpenQr,
+                icon: const Icon(Icons.qr_code_scanner),
+                label: const Text('Read QR code'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _OverflowMenu extends StatelessWidget {
+  const _OverflowMenu();
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<int>(
+      itemBuilder: (context) => const [
+        PopupMenuItem(value: 1, child: Text('Settings')),
+      ],
+      onSelected: (value) {
+        if (value == 1) {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const SettingsPage()),
+          );
+        }
+      },
     );
   }
 }
@@ -437,12 +477,48 @@ class _LargeStatusDisplay extends StatelessWidget {
     }
   }
 
+  String _statusCode(LocationStateStatus status) {
+    switch (status) {
+      case LocationStateStatus.inner:
+        return 'INNER';
+      case LocationStateStatus.near:
+        return 'NEAR';
+      case LocationStateStatus.outerPending:
+        return 'OUTER PENDING';
+      case LocationStateStatus.outer:
+        return 'OUTER';
+      case LocationStateStatus.gpsBad:
+        return 'GPS BAD';
+      case LocationStateStatus.waitGeoJson:
+        return 'WAIT GEOJSON';
+      case LocationStateStatus.waitStart:
+        return 'WAIT START';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final color = _color(status);
     final statusText = _statusText(status);
+    final statusCode = _statusCode(status);
     final screenSize = MediaQuery.of(context).size;
-    final circleSize = screenSize.width * 0.7;
+    final circleSize = (screenSize.shortestSide * 0.75)
+        .clamp(220.0, screenSize.shortestSide * 0.9)
+        .toDouble();
+
+    Widget buildLabel(String text, TextStyle style) {
+      return SizedBox(
+        width: circleSize * 0.78,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            text,
+            textAlign: TextAlign.center,
+            style: style,
+          ),
+        ),
+      );
+    }
 
     final circleWidget = Container(
       width: circleSize,
@@ -460,25 +536,57 @@ class _LargeStatusDisplay extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Text(
+            buildLabel(
               statusText,
-              textAlign: TextAlign.center,
-              style: TextStyle(
+              TextStyle(
                 fontSize: circleSize * 0.2,
                 fontWeight: FontWeight.bold,
                 color: color,
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              status.name.toUpperCase(),
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: circleSize * 0.08,
-                color: color.withValues(alpha: 0.7),
-                fontWeight: FontWeight.w500,
+            const SizedBox(height: 12),
+            buildLabel(
+              statusCode,
+              TextStyle(
+                fontSize: circleSize *
+                    (status == LocationStateStatus.waitGeoJson ? 0.08 : 0.09),
+                color: color.withValues(alpha: 0.75),
+                fontWeight: FontWeight.w700,
+                letterSpacing:
+                    status == LocationStateStatus.waitGeoJson ? 0.8 : 1.2,
               ),
             ),
+            if (onTap != null && status == LocationStateStatus.waitStart) ...[
+              SizedBox(height: circleSize * 0.04),
+              Container(
+                padding: EdgeInsets.symmetric(
+                  vertical: circleSize * 0.02,
+                  horizontal: circleSize * 0.05,
+                ),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(circleSize * 0.07),
+                  border: Border.all(color: color.withValues(alpha: 0.5)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.touch_app_rounded,
+                        size: circleSize * 0.07, color: color),
+                    SizedBox(width: circleSize * 0.015),
+                    Text(
+                      'タップで開始',
+                      style: TextStyle(
+                        fontSize: circleSize * 0.085,
+                        fontWeight: FontWeight.w800,
+                        color: color,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -486,9 +594,13 @@ class _LargeStatusDisplay extends StatelessWidget {
 
     // waitStartの時はタップ可能にする
     if (onTap != null) {
-      return GestureDetector(
-        onTap: onTap,
-        child: circleWidget,
+      return Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onTap,
+          child: circleWidget,
+        ),
       );
     }
 

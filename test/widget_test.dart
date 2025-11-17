@@ -75,12 +75,12 @@ void main() {
 
     // Build our app and trigger a frame.
     await tester.pumpWidget(ArgusApp(controller: controller));
-    
+
     // Wait for the widget to build
     await tester.pumpAndSettle();
 
-    // Verify that the app title 'Argus' is displayed
-    expect(find.text('Argus'), findsWidgets);
+    // Verify that the app title 'ARGUS' is displayed
+    expect(find.text('ARGUS'), findsWidgets);
 
     // Enable developer mode to show detailed status
     controller.setDeveloperMode(true);

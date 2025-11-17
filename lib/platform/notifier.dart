@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 import 'package:vibration/vibration.dart';
+import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 
 import '../state_machine/state.dart';
 
@@ -21,7 +21,7 @@ class Notifier {
         _vibrationPlayer = vibrationPlayer ?? RepeatingVibrationPlayer();
 
   final LocalNotificationsClient _notifications;
-  final AlarmPlayer _alarmPlayer;
+  AlarmPlayer _alarmPlayer;
   final VibrationPlayer _vibrationPlayer;
 
   final ValueNotifier<LocationStateStatus> badgeState =
@@ -36,6 +36,13 @@ class Notifier {
 
   bool _initialized = false;
   bool _isAlarming = false;
+
+  /// アラーム音量を設定します（0.0～1.0）。
+  void setAlarmVolume(double volume) {
+    if (_alarmPlayer is RingtoneAlarmPlayer) {
+      _alarmPlayer = RingtoneAlarmPlayer(volume: volume.clamp(0.0, 1.0));
+    }
+  }
 
   Future<void> initialize() async {
     if (_initialized) {
@@ -68,13 +75,14 @@ class Notifier {
 
   Future<void> notifyOuter() async {
     await initialize();
-    final androidDetails = const AndroidNotificationDetails(
+    const androidDetails = AndroidNotificationDetails(
       _channelId,
       _channelName,
       channelDescription: _channelDescription,
       importance: Importance.max,
       priority: Priority.max,
       playSound: true,
+      sound: RawResourceAndroidNotificationSound('alarm'),
       enableVibration: true,
       category: AndroidNotificationCategory.alarm,
       fullScreenIntent: true,
@@ -84,9 +92,10 @@ class Notifier {
     const iosDetails = DarwinNotificationDetails(
       presentAlert: true,
       presentSound: true,
+      sound: 'alarm.mp3',
       interruptionLevel: InterruptionLevel.critical,
     );
-    final notificationDetails = NotificationDetails(
+    const notificationDetails = NotificationDetails(
       android: androidDetails,
       iOS: iosDetails,
     );
@@ -97,6 +106,7 @@ class Notifier {
       notificationDetails,
     );
     if (!_isAlarming) {
+      // アセット音＋バイブの開始
       await _alarmPlayer.start();
       await _vibrationPlayer.start();
       _isAlarming = true;
@@ -216,13 +226,17 @@ abstract class AlarmPlayer {
 }
 
 class RingtoneAlarmPlayer implements AlarmPlayer {
-  const RingtoneAlarmPlayer();
+  const RingtoneAlarmPlayer({this.volume = 1.0});
+
+  final double volume;
 
   @override
-  Future<void> start() {
-    return FlutterRingtonePlayer().playAlarm(
+  Future<void> start() async {
+    // アセット音をループ再生（assets/sounds/alarm.mp3 を追加すること）
+    await FlutterRingtonePlayer().play(
+      fromAsset: 'assets/sounds/alarm.mp3',
       looping: true,
-      volume: 1.0,
+      volume: volume.clamp(0.0, 1.0),
       asAlarm: true,
     );
   }
