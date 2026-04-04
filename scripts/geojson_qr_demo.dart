@@ -15,13 +15,10 @@ Future<void> main(List<String> args) async {
     final scriptDir = path.dirname(Platform.script.toFilePath());
     final projectRoot = path.dirname(scriptDir);
 
-    // 入力ファイルのパス
-    final inputGeoJsonPath = path.join(
-      projectRoot,
-      'assets',
-      'geojson',
-      'map.geojson',
-    );
+    // 入力ファイルのパス（引数で指定可能、未指定時は scripts/map_(2).geojson）
+    final inputGeoJsonPath = args.isNotEmpty
+        ? path.normalize(args[0])
+        : path.join(scriptDir, 'map_(2).geojson');
 
     // 出力ディレクトリ
     final outputDir = path.join(scriptDir, 'output');
