@@ -35,7 +35,9 @@ class _ArgusAppState extends State<ArgusApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    if (state == AppLifecycleState.detached) {
+    if (state == AppLifecycleState.resumed) {
+      widget.controller.refreshMonitoringPermissionState();
+    } else if (state == AppLifecycleState.detached) {
       // アプリが完全終了した時に一時ファイルを削除
       widget.controller.cleanupTempGeoJsonFile();
     }

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../app_controller.dart';
 import '../io/config.dart';
+import 'monitoring_permission_card.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -187,6 +188,7 @@ class _SettingsPageState extends State<SettingsPage> {
     return Consumer<AppController>(
       builder: (context, controller, _) {
         final config = controller.config;
+        final viewPadding = MediaQuery.viewPaddingOf(context);
         return Scaffold(
           appBar: AppBar(
             title: const Text('Settings'),
@@ -196,8 +198,18 @@ class _SettingsPageState extends State<SettingsPage> {
               : Form(
                   key: _formKey,
                   child: ListView(
-                    padding: const EdgeInsets.all(16),
+                    padding:
+                        EdgeInsets.fromLTRB(16, 16, 16, 16 + viewPadding.bottom),
                     children: [
+                      MonitoringPermissionCard(
+                        permissionState: controller.monitoringPermissionState,
+                        onCompleteMonitoringSetup:
+                            controller.completeMonitoringPermissionSetup,
+                        onRequestNotifications:
+                            controller.requestNotificationPermission,
+                        onRefresh: controller.refreshMonitoringPermissionState,
+                      ),
+                      const SizedBox(height: 16),
                       TextFormField(
                         controller: _innerBufferController,
                         decoration: InputDecoration(

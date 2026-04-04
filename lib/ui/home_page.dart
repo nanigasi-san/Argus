@@ -5,6 +5,7 @@ import '../app_controller.dart';
 import '../geo/geo_model.dart';
 import '../io/log_entry.dart';
 import '../state_machine/state.dart';
+import 'monitoring_permission_card.dart';
 import 'qr_scanner_page.dart';
 import 'settings_page.dart';
 
@@ -34,6 +35,17 @@ class HomePage extends StatelessWidget {
           }
         });
 
+        final viewPadding = MediaQuery.viewPaddingOf(context);
+        final permissionCard = controller.shouldShowPermissionSetupCard
+            ? MonitoringPermissionCard(
+                permissionState: controller.monitoringPermissionState,
+                onCompleteMonitoringSetup:
+                    controller.completeMonitoringPermissionSetup,
+                onRequestNotifications: controller.requestNotificationPermission,
+                onRefresh: controller.refreshMonitoringPermissionState,
+              )
+            : null;
+
         return Scaffold(
           appBar: AppBar(
             centerTitle: true,
@@ -44,12 +56,18 @@ class HomePage extends StatelessWidget {
               const _OverflowMenu(),
             ],
           ),
-          body: Padding(
-            padding: const EdgeInsets.all(16),
+          body: SafeArea(
+            top: false,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + viewPadding.bottom),
             child: controller.developerMode
                 ? Column(
                     children: [
                       const SizedBox(height: 8),
+                      if (permissionCard != null) ...[
+                        permissionCard,
+                        const SizedBox(height: 16),
+                      ],
                       // 開発者モードの時は上部を縮小
                       Flexible(
                         flex: 3,
@@ -207,6 +225,10 @@ class HomePage extends StatelessWidget {
                 : Column(
                     children: [
                       const SizedBox(height: 8),
+                      if (permissionCard != null) ...[
+                        permissionCard,
+                        const SizedBox(height: 16),
+                      ],
                       // 中央に大きなステータス表示
                       // waitStartの時はタップ可能でSTARTボタンとして機能
                       Expanded(
@@ -280,6 +302,7 @@ class HomePage extends StatelessWidget {
                       // エラー表示はSnackbarに移行済み
                     ],
                   ),
+            ),
           ),
           // 下部ナビは使用せず、円直下にボタンを配置する構成へ
         );

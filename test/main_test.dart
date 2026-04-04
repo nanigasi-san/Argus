@@ -13,7 +13,9 @@ import 'dart:io';
 
 class MockLocationService extends LocationService {
   @override
-  Future<void> start(AppConfig config) async {}
+  Future<LocationServiceStartResult> start(AppConfig config) async {
+    return const LocationServiceStartResult.started();
+  }
 
   @override
   Future<void> stop() async {}

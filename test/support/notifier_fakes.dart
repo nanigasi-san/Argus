@@ -14,7 +14,6 @@ class FakeLocalNotificationsClient implements LocalNotificationsClient {
     initialized = true;
   }
 
-  @override
   Future<void> requestPermissions({
     bool alert = true,
     bool badge = true,

@@ -53,9 +53,9 @@ void main() {
       expect(alarm.playCount, 1);
       expect(vibration.startCount, 1);
 
-      // 権限要求と初期化は最初の呼び出しで1回だけ行われる想定
+      // 通知権限は PermissionCoordinator 側の責務に移したため、Notifier は要求しない
       expect(notifications.initialized, true);
-      expect(notifications.requestedPermissions, true);
+      expect(notifications.requestedPermissions, false);
 
       // 復帰→再度外出で再開する
       await notifier.notifyRecover();

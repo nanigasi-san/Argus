@@ -171,8 +171,9 @@ void main() {
       );
 
       // 無効なQRコード形式
-      await controller.reloadGeoJsonFromQr('invalid:qr:code');
+      final loaded = await controller.reloadGeoJsonFromQr('invalid:qr:code');
 
+      expect(loaded, isFalse);
       expect(controller.lastErrorMessage, isNotNull);
       expect(controller.lastErrorMessage, contains('Invalid QR code format'));
       expect(controller.geoJsonLoaded, isFalse);
@@ -200,8 +201,9 @@ void main() {
       );
 
       // 無効なペイロードを含むQRコード
-      await controller.reloadGeoJsonFromQr('gjb1:invalid_payload');
+      final loaded = await controller.reloadGeoJsonFromQr('gjb1:invalid_payload');
 
+      expect(loaded, isFalse);
       expect(controller.lastErrorMessage, isNotNull);
       expect(controller.lastErrorMessage, contains('Failed to decode'));
       expect(controller.geoJsonLoaded, isFalse);
@@ -424,8 +426,9 @@ class FakeLocationService implements LocationService {
   Stream<LocationFix> get stream => _controller.stream;
 
   @override
-  Future<void> start(AppConfig config) async {
+  Future<LocationServiceStartResult> start(AppConfig config) async {
     started = true;
+    return const LocationServiceStartResult.started();
   }
 
   @override

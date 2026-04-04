@@ -8,8 +8,10 @@ import 'package:argus/io/file_manager.dart';
 import 'package:argus/io/logger.dart';
 import 'package:argus/platform/location_service.dart';
 import 'package:argus/platform/notifier.dart';
+import 'package:argus/platform/permission_coordinator.dart';
 import 'package:argus/state_machine/state_machine.dart';
 import 'package:argus/ui/qr_scanner_page.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../support/notifier_fakes.dart';
 
@@ -34,8 +36,11 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: ChangeNotifierProvider<AppController>.value(
-            value: controller,
-            child: const QrScannerPage(),
+              value: controller,
+            child: QrScannerPage(
+              permissionCoordinator: _FakePermissionCoordinator(),
+              scannerOverride: const ColoredBox(color: Colors.black),
+            ),
           ),
         ),
       );
@@ -69,7 +74,10 @@ void main() {
                   onPressed: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (_) => const QrScannerPage(),
+                        builder: (_) => QrScannerPage(
+                          permissionCoordinator: _FakePermissionCoordinator(),
+                          scannerOverride: const ColoredBox(color: Colors.black),
+                        ),
                       ),
                     );
                   },
@@ -94,6 +102,38 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Open Scanner'), findsOneWidget);
+    });
+
+    testWidgets('shows permission error when camera is denied',
+        (WidgetTester tester) async {
+      final config = _testConfig();
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: _FakeLocationService(),
+        fileManager: _FakeFileManager(config: config),
+        logger: _FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppController>.value(
+            value: controller,
+            child: QrScannerPage(
+              permissionCoordinator: _DeniedCameraPermissionCoordinator(),
+              scannerOverride: const ColoredBox(color: Colors.black),
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('カメラ権限'), findsOneWidget);
+      expect(find.text('再試行'), findsOneWidget);
     });
   });
 }
@@ -128,11 +168,71 @@ class _FakeLocationService implements LocationService {
   _FakeLocationService();
 
   @override
-  Future<void> start(AppConfig config) async {}
+  Future<LocationServiceStartResult> start(AppConfig config) async {
+    return const LocationServiceStartResult.started();
+  }
 
   @override
   Future<void> stop() async {}
 
   @override
   Stream<LocationFix> get stream => const Stream.empty();
+}
+
+class _FakePermissionGateway implements PermissionGateway {
+  @override
+  Future<PermissionStatus> cameraStatus() async => PermissionStatus.granted;
+
+  @override
+  Future<PermissionStatus> locationAlwaysStatus() async =>
+      PermissionStatus.granted;
+
+  @override
+  Future<PermissionStatus> locationWhenInUseStatus() async =>
+      PermissionStatus.granted;
+
+  @override
+  Future<PermissionStatus> notificationStatus() async => PermissionStatus.granted;
+
+  @override
+  Future<PermissionStatus> requestCamera() async => PermissionStatus.granted;
+
+  @override
+  Future<PermissionStatus> requestLocationAlways() async =>
+      PermissionStatus.granted;
+
+  @override
+  Future<PermissionStatus> requestLocationWhenInUse() async =>
+      PermissionStatus.granted;
+
+  @override
+  Future<PermissionStatus> requestNotification() async => PermissionStatus.granted;
+}
+
+class _FakePermissionCoordinator extends PermissionCoordinator {
+  _FakePermissionCoordinator()
+      : super(
+          gateway: _FakePermissionGateway(),
+          openSettings: () async => true,
+          openLocationSettings: () async => true,
+          locationServicesEnabled: () async => true,
+        );
+}
+
+class _DeniedCameraPermissionGateway extends _FakePermissionGateway {
+  @override
+  Future<PermissionStatus> cameraStatus() async => PermissionStatus.denied;
+
+  @override
+  Future<PermissionStatus> requestCamera() async => PermissionStatus.denied;
+}
+
+class _DeniedCameraPermissionCoordinator extends PermissionCoordinator {
+  _DeniedCameraPermissionCoordinator()
+      : super(
+          gateway: _DeniedCameraPermissionGateway(),
+          openSettings: () async => true,
+          openLocationSettings: () async => true,
+          locationServicesEnabled: () async => true,
+        );
 }
