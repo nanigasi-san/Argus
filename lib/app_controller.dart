@@ -57,6 +57,7 @@ class AppController extends ChangeNotifier {
   final List<AppLogEntry> _logs = <AppLogEntry>[];
   MonitoringPermissionState _monitoringPermissionState =
       const MonitoringPermissionState.unknown();
+  bool _pendingBackgroundDisclosurePrompt = false;
 
   StateSnapshot get snapshot => _snapshot;
   AppConfig? get config => _config;
@@ -73,6 +74,8 @@ class AppController extends ChangeNotifier {
   bool get shouldShowPermissionSetupCard =>
       !_monitoringPermissionState.canStartMonitoring ||
       !_monitoringPermissionState.notificationGranted;
+  bool get shouldPromptBackgroundDisclosure =>
+      _pendingBackgroundDisclosurePrompt;
 
   /// アプリケーションを初期化します。
   ///
@@ -81,6 +84,9 @@ class AppController extends ChangeNotifier {
     await notifier.initialize();
     _monitoringPermissionState =
         await permissionCoordinator.requestInitialMonitoringPermissions();
+    _pendingBackgroundDisclosurePrompt =
+        _monitoringPermissionState.locationWhenInUseGranted &&
+            !_monitoringPermissionState.locationAlwaysGranted;
     _config ??= await fileManager.readConfig();
     stateMachine.updateConfig(_config!);
 
@@ -130,8 +136,7 @@ class AppController extends ChangeNotifier {
 
     final result = await locationService.start(_config!);
     if (result.status != LocationServiceStartStatus.started) {
-      _lastErrorMessage =
-          result.message ?? '位置情報の監視を開始できませんでした。';
+      _lastErrorMessage = result.message ?? '位置情報の監視を開始できませんでした。';
       _logError('APP', _lastErrorMessage!);
       notifyListeners();
       return;
@@ -439,6 +444,7 @@ class AppController extends ChangeNotifier {
     bool? developerMode,
     StateSnapshot? snapshot,
     MonitoringPermissionState? permissionState,
+    bool? pendingBackgroundDisclosurePrompt,
   }) {
     if (config != null) {
       _config = config;
@@ -479,6 +485,10 @@ class AppController extends ChangeNotifier {
 
     if (permissionState != null) {
       _monitoringPermissionState = permissionState;
+    }
+
+    if (pendingBackgroundDisclosurePrompt != null) {
+      _pendingBackgroundDisclosurePrompt = pendingBackgroundDisclosurePrompt;
     }
   }
 
@@ -523,6 +533,9 @@ class AppController extends ChangeNotifier {
   Future<void> refreshMonitoringPermissionState() async {
     _monitoringPermissionState =
         await permissionCoordinator.refreshMonitoringPermissionState();
+    if (_monitoringPermissionState.locationAlwaysGranted) {
+      _pendingBackgroundDisclosurePrompt = false;
+    }
     notifyListeners();
   }
 
@@ -535,6 +548,7 @@ class AppController extends ChangeNotifier {
   Future<void> completeMonitoringPermissionSetup() async {
     _monitoringPermissionState =
         await permissionCoordinator.completeMonitoringSetup();
+    _pendingBackgroundDisclosurePrompt = false;
     if (_monitoringPermissionState.canStartMonitoring) {
       _lastErrorMessage = null;
       _logInfo('APP', 'Monitoring permission setup completed.');
@@ -543,6 +557,14 @@ class AppController extends ChangeNotifier {
       _logWarning('APP', _lastErrorMessage!);
     }
     notifyListeners();
+  }
+
+  bool consumeBackgroundDisclosurePrompt() {
+    if (!_pendingBackgroundDisclosurePrompt) {
+      return false;
+    }
+    _pendingBackgroundDisclosurePrompt = false;
+    return true;
   }
 
   void _log(

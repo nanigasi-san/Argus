@@ -20,10 +20,12 @@ class PermissionHandlerGateway implements PermissionGateway {
   const PermissionHandlerGateway();
 
   @override
-  Future<PermissionStatus> notificationStatus() => Permission.notification.status;
+  Future<PermissionStatus> notificationStatus() =>
+      Permission.notification.status;
 
   @override
-  Future<PermissionStatus> requestNotification() => Permission.notification.request();
+  Future<PermissionStatus> requestNotification() =>
+      Permission.notification.request();
 
   @override
   Future<PermissionStatus> locationWhenInUseStatus() =>
@@ -34,10 +36,12 @@ class PermissionHandlerGateway implements PermissionGateway {
       Permission.locationWhenInUse.request();
 
   @override
-  Future<PermissionStatus> locationAlwaysStatus() => Permission.locationAlways.status;
+  Future<PermissionStatus> locationAlwaysStatus() =>
+      Permission.locationAlways.status;
 
   @override
-  Future<PermissionStatus> requestLocationAlways() => Permission.locationAlways.request();
+  Future<PermissionStatus> requestLocationAlways() =>
+      Permission.locationAlways.request();
 
   @override
   Future<PermissionStatus> cameraStatus() => Permission.camera.status;
@@ -73,7 +77,8 @@ class MonitoringPermissionState {
 
   bool get locationAlwaysGranted => _isGranted(locationAlwaysStatus);
 
-  bool get canStartMonitoring => locationServicesEnabled && locationAlwaysGranted;
+  bool get canStartMonitoring =>
+      locationServicesEnabled && locationAlwaysGranted;
 
   String get monitoringBlockedMessage {
     if (!locationServicesEnabled) {
@@ -83,7 +88,7 @@ class MonitoringPermissionState {
       return '監視を開始するには位置情報の使用中許可が必要です。';
     }
     if (!locationAlwaysGranted) {
-      return '監視を開始するには位置情報を「常に許可」にしてください。';
+      return '監視を開始するには、バックグラウンド位置情報の開示を確認し、位置情報を「常に許可」にしてください。';
     }
     return '';
   }
@@ -96,7 +101,7 @@ class MonitoringPermissionState {
       return '初回セットアップでは、まず位置情報の使用中許可が必要です。';
     }
     if (!locationAlwaysGranted) {
-      return 'バックグラウンド監視を続けるには、位置情報を「常に許可」にしてください。';
+      return '監視を開始する前に、バックグラウンド位置情報の開示を確認し、「常に許可」を設定してください。';
     }
     if (!notificationGranted) {
       return '通知を許可すると、警告を見逃しにくくなります。';
@@ -157,8 +162,8 @@ class PermissionCoordinator {
         _openAppSettings = openSettings ?? openAppSettings,
         _openLocationSettings =
             openLocationSettings ?? geolocator.Geolocator.openLocationSettings,
-        _locationServicesEnabled =
-            locationServicesEnabled ?? geolocator.Geolocator.isLocationServiceEnabled;
+        _locationServicesEnabled = locationServicesEnabled ??
+            geolocator.Geolocator.isLocationServiceEnabled;
 
   final PermissionGateway _gateway;
   final OpenAppSettingsCallback _openAppSettings;
@@ -167,9 +172,9 @@ class PermissionCoordinator {
 
   bool _requestedNotificationThisSession = false;
   bool _requestedForegroundLocationThisSession = false;
-  bool _requestedBackgroundLocationThisSession = false;
 
-  Future<MonitoringPermissionState> requestInitialMonitoringPermissions() async {
+  Future<MonitoringPermissionState>
+      requestInitialMonitoringPermissions() async {
     if (!_requestedNotificationThisSession) {
       final status = await _gateway.notificationStatus();
       if (!_isGranted(status)) {
@@ -179,17 +184,10 @@ class PermissionCoordinator {
     }
 
     var foregroundStatus = await _gateway.locationWhenInUseStatus();
-    if (!_requestedForegroundLocationThisSession && !_isGranted(foregroundStatus)) {
+    if (!_requestedForegroundLocationThisSession &&
+        !_isGranted(foregroundStatus)) {
       foregroundStatus = await _gateway.requestLocationWhenInUse();
       _requestedForegroundLocationThisSession = true;
-    }
-
-    if (_isGranted(foregroundStatus) && !_requestedBackgroundLocationThisSession) {
-      final backgroundStatus = await _gateway.locationAlwaysStatus();
-      if (!_isGranted(backgroundStatus)) {
-        await _gateway.requestLocationAlways();
-      }
-      _requestedBackgroundLocationThisSession = true;
     }
 
     return refreshMonitoringPermissionState();
@@ -219,7 +217,7 @@ class PermissionCoordinator {
     var state = await refreshMonitoringPermissionState();
     if (!state.locationServicesEnabled) {
       await _openLocationSettings();
-      return refreshMonitoringPermissionState();
+      return state;
     }
 
     if (!state.locationWhenInUseGranted) {
@@ -229,17 +227,16 @@ class PermissionCoordinator {
       if (!state.locationWhenInUseGranted &&
           _needsManualSettings(state.locationWhenInUseStatus)) {
         await _openAppSettings();
-        return refreshMonitoringPermissionState();
+        return state;
       }
     }
 
     if (!state.locationAlwaysGranted) {
       await _gateway.requestLocationAlways();
-      _requestedBackgroundLocationThisSession = true;
       state = await refreshMonitoringPermissionState();
       if (!state.locationAlwaysGranted) {
         await _openAppSettings();
-        return refreshMonitoringPermissionState();
+        return state;
       }
     }
 

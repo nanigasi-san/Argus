@@ -7,13 +7,13 @@ class MonitoringPermissionCard extends StatelessWidget {
   const MonitoringPermissionCard({
     super.key,
     required this.permissionState,
-    required this.onCompleteMonitoringSetup,
+    required this.onOpenMonitoringSetup,
     required this.onRequestNotifications,
     required this.onRefresh,
   });
 
   final MonitoringPermissionState permissionState;
-  final AsyncCallback onCompleteMonitoringSetup;
+  final AsyncCallback onOpenMonitoringSetup;
   final AsyncCallback onRequestNotifications;
   final AsyncCallback onRefresh;
 
@@ -36,8 +36,12 @@ class MonitoringPermissionCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Icon(
-                  needsMonitoringSetup ? Icons.shield_outlined : Icons.notifications_none,
-                  color: needsMonitoringSetup ? colorScheme.primary : colorScheme.secondary,
+                  needsMonitoringSetup
+                      ? Icons.shield_outlined
+                      : Icons.notifications_none,
+                  color: needsMonitoringSetup
+                      ? colorScheme.primary
+                      : colorScheme.secondary,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -46,7 +50,7 @@ class MonitoringPermissionCard extends StatelessWidget {
                     children: [
                       Text(
                         needsMonitoringSetup
-                            ? 'バックグラウンド監視の設定が必要です'
+                            ? 'バックグラウンド位置情報の設定が必要です'
                             : '通知権限を許可すると警告を見逃しにくくなります',
                         style: theme.textTheme.titleMedium,
                       ),
@@ -90,9 +94,9 @@ class MonitoringPermissionCard extends StatelessWidget {
               children: [
                 if (needsMonitoringSetup)
                   FilledButton.icon(
-                    onPressed: onCompleteMonitoringSetup,
+                    onPressed: onOpenMonitoringSetup,
                     icon: const Icon(Icons.gps_fixed),
-                    label: const Text('位置情報の設定を完了'),
+                    label: const Text('開示を確認して設定へ進む'),
                   ),
                 if (needsNotifications)
                   OutlinedButton.icon(
@@ -128,8 +132,9 @@ class _StatusChip extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final foregroundColor =
         granted ? colorScheme.primary : colorScheme.onSurfaceVariant;
-    final backgroundColor =
-        granted ? colorScheme.primaryContainer : colorScheme.surfaceContainerHigh;
+    final backgroundColor = granted
+        ? colorScheme.primaryContainer
+        : colorScheme.surfaceContainerHigh;
 
     return Chip(
       avatar: Icon(

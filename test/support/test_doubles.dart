@@ -105,6 +105,9 @@ AppController buildTestController({
   bool hasGeoJson = false,
   StateSnapshot? snapshot,
   bool? developerMode,
+  MonitoringPermissionState? permissionState,
+  bool pendingBackgroundDisclosurePrompt = false,
+  PermissionCoordinator? permissionCoordinator,
 }) {
   final config = createTestConfig();
   final stateMachine = StateMachine(config: config);
@@ -118,6 +121,7 @@ AppController buildTestController({
       notificationsClient: FakeLocalNotificationsClient(),
       alarmPlayer: FakeAlarmPlayer(),
     ),
+    permissionCoordinator: permissionCoordinator,
   );
 
   GeoModel? geoModel;
@@ -133,12 +137,14 @@ AppController buildTestController({
     areaIndex: areaIndex,
     snapshot: snapshot,
     developerMode: developerMode,
-    permissionState: const MonitoringPermissionState(
-      notificationStatus: PermissionStatus.granted,
-      locationWhenInUseStatus: PermissionStatus.granted,
-      locationAlwaysStatus: PermissionStatus.granted,
-      locationServicesEnabled: true,
-    ),
+    permissionState: permissionState ??
+        const MonitoringPermissionState(
+          notificationStatus: PermissionStatus.granted,
+          locationWhenInUseStatus: PermissionStatus.granted,
+          locationAlwaysStatus: PermissionStatus.granted,
+          locationServicesEnabled: true,
+        ),
+    pendingBackgroundDisclosurePrompt: pendingBackgroundDisclosurePrompt,
   );
 
   return controller;

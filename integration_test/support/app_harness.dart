@@ -43,6 +43,8 @@ class HarnessBuilder {
     bool? developerMode,
     StateSnapshot? snapshot,
     MonitoringPermissionState? permissionState,
+    bool pendingBackgroundDisclosurePrompt = false,
+    PermissionCoordinator? permissionCoordinator,
   }) {
     final config = createConfig();
     final stateMachine = StateMachine(config: config);
@@ -57,6 +59,7 @@ class HarnessBuilder {
         alarmPlayer: HarnessAlarmPlayer(),
         vibrationPlayer: HarnessVibrationPlayer(),
       ),
+      permissionCoordinator: permissionCoordinator,
     );
 
     GeoModel? geoModel;
@@ -79,6 +82,7 @@ class HarnessBuilder {
             locationAlwaysStatus: PermissionStatus.granted,
             locationServicesEnabled: true,
           ),
+      pendingBackgroundDisclosurePrompt: pendingBackgroundDisclosurePrompt,
     );
 
     return controller;
@@ -192,7 +196,8 @@ class HarnessPermissionGateway implements PermissionGateway {
       locationWhenInUseStatusValue;
 
   @override
-  Future<PermissionStatus> notificationStatus() async => notificationStatusValue;
+  Future<PermissionStatus> notificationStatus() async =>
+      notificationStatusValue;
 
   @override
   Future<PermissionStatus> requestCamera() async => cameraStatusValue;

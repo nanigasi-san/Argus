@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../app_controller.dart';
+import '../app_links.dart';
 import '../io/config.dart';
+import 'background_location_disclosure_page.dart';
 import 'monitoring_permission_card.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -37,6 +39,18 @@ class _SettingsPageState extends State<SettingsPage> {
         setState(() {});
       }
     });
+  }
+
+  Future<void> _openPrivacyPolicy() async {
+    final launched = await openPrivacyPolicy();
+    if (!mounted || launched) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('プライバシーポリシーを開けませんでした。'),
+      ),
+    );
   }
 
   Future<void> _initializeControllers() async {
@@ -198,16 +212,28 @@ class _SettingsPageState extends State<SettingsPage> {
               : Form(
                   key: _formKey,
                   child: ListView(
-                    padding:
-                        EdgeInsets.fromLTRB(16, 16, 16, 16 + viewPadding.bottom),
+                    padding: EdgeInsets.fromLTRB(
+                        16, 16, 16, 16 + viewPadding.bottom),
                     children: [
                       MonitoringPermissionCard(
                         permissionState: controller.monitoringPermissionState,
-                        onCompleteMonitoringSetup:
-                            controller.completeMonitoringPermissionSetup,
+                        onOpenMonitoringSetup: () async {
+                          await showBackgroundLocationDisclosure(context);
+                        },
                         onRequestNotifications:
                             controller.requestNotificationPermission,
                         onRefresh: controller.refreshMonitoringPermissionState,
+                      ),
+                      const SizedBox(height: 16),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.privacy_tip_outlined),
+                        title: const Text('Privacy Policy'),
+                        subtitle: const Text(
+                          '位置情報とカメラの取り扱いを確認できます',
+                        ),
+                        trailing: const Icon(Icons.open_in_new),
+                        onTap: _openPrivacyPolicy,
                       ),
                       const SizedBox(height: 16),
                       TextFormField(

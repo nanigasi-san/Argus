@@ -18,7 +18,8 @@ void main() {
       await binding.convertFlutterSurfaceToImage();
     });
 
-    testWidgets('home shows setup card when monitoring permissions are incomplete',
+    testWidgets(
+        'home shows setup card when monitoring permissions are incomplete',
         (tester) async {
       final controller = HarnessBuilder.buildController(
         hasGeoJson: true,
@@ -38,11 +39,34 @@ void main() {
       await tester.pumpWidget(HarnessBuilder.buildApp(controller));
       await tester.pumpAndSettle();
 
-      expect(find.text('バックグラウンド監視の設定が必要です'), findsOneWidget);
-      expect(find.text('位置情報の設定を完了'), findsOneWidget);
+      expect(find.text('バックグラウンド位置情報の設定が必要です'), findsOneWidget);
+      expect(find.text('開示を確認して設定へ進む'), findsOneWidget);
       expect(find.text('通知を許可'), findsOneWidget);
 
       await _tryTakeScreenshot(binding, 'home-permission-card');
+    });
+
+    testWidgets('home can open background location disclosure', (tester) async {
+      final controller = HarnessBuilder.buildController(
+        hasGeoJson: true,
+        permissionState: const MonitoringPermissionState(
+          notificationStatus: PermissionStatus.granted,
+          locationWhenInUseStatus: PermissionStatus.granted,
+          locationAlwaysStatus: PermissionStatus.denied,
+          locationServicesEnabled: true,
+        ),
+      );
+
+      await tester.pumpWidget(HarnessBuilder.buildApp(controller));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('開示を確認して設定へ進む'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('バックグラウンド位置情報の開示'), findsOneWidget);
+      expect(find.text('同意して位置情報の設定へ進む'), findsOneWidget);
+
+      await _tryTakeScreenshot(binding, 'background-location-disclosure');
     });
 
     testWidgets('settings page renders the monitoring card and form',

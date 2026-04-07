@@ -3,8 +3,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'package:argus/app_controller.dart';
+import 'package:argus/platform/permission_coordinator.dart';
 import 'package:argus/state_machine/state.dart';
 import 'package:argus/ui/home_page.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../support/test_doubles.dart';
 
@@ -111,5 +113,50 @@ void main() {
     expect(find.text('Load GeoJSON'), findsOneWidget);
     expect(find.text('Read QR code'), findsOneWidget);
     expect(find.text('Start monitoring'), findsNothing);
+  });
+
+  testWidgets(
+      'tapping start opens background disclosure when always permission is missing',
+      (tester) async {
+    final controller = buildTestController(
+      hasGeoJson: true,
+      snapshot: StateSnapshot(
+        status: LocationStateStatus.waitStart,
+        timestamp: DateTime.fromMillisecondsSinceEpoch(0),
+        geoJsonLoaded: true,
+      ),
+      permissionState: const MonitoringPermissionState(
+        notificationStatus: PermissionStatus.granted,
+        locationWhenInUseStatus: PermissionStatus.granted,
+        locationAlwaysStatus: PermissionStatus.denied,
+        locationServicesEnabled: true,
+      ),
+    );
+
+    await _pumpHome(tester, controller);
+
+    await tester.tap(find.text('スタート待機'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('バックグラウンド位置情報の開示'), findsOneWidget);
+    expect(find.text('同意して位置情報の設定へ進む'), findsOneWidget);
+  });
+
+  testWidgets('shows disclosure automatically when pending on launch',
+      (tester) async {
+    final controller = buildTestController(
+      hasGeoJson: true,
+      permissionState: const MonitoringPermissionState(
+        notificationStatus: PermissionStatus.granted,
+        locationWhenInUseStatus: PermissionStatus.granted,
+        locationAlwaysStatus: PermissionStatus.denied,
+        locationServicesEnabled: true,
+      ),
+      pendingBackgroundDisclosurePrompt: true,
+    );
+
+    await _pumpHome(tester, controller);
+
+    expect(find.text('バックグラウンド位置情報の開示'), findsOneWidget);
   });
 }
