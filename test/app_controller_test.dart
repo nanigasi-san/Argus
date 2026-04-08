@@ -11,10 +11,12 @@ import 'package:argus/io/file_manager.dart';
 import 'package:argus/io/logger.dart';
 import 'package:argus/platform/location_service.dart';
 import 'package:argus/platform/notifier.dart';
+import 'package:argus/platform/permission_coordinator.dart';
 import 'package:argus/qr/geojson_qr_codec.dart';
 import 'package:argus/state_machine/state.dart';
 import 'package:argus/state_machine/state_machine.dart';
 import 'package:file_selector/file_selector.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import 'support/notifier_fakes.dart';
 
@@ -94,6 +96,179 @@ void main() {
       expect(description, contains('42.50m'));
       expect(description, contains('123deg'));
       expect(description, contains('(1.00000,2.00000)'));
+    });
+
+    testWidgets(
+        'snoozeAlarmForOneMinute stops alert and resumes after 1 minute when still outer',
+        (tester) async {
+      final config = _testConfig();
+      final stateMachine = StateMachine(config: config);
+      final locationService = FakeLocationService();
+      final fileManager = FakeFileManager(config: config);
+      final logger = FakeEventLogger();
+      final notifications = FakeLocalNotificationsClient();
+      final alarm = FakeAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: notifications,
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+      final controller = AppController(
+        stateMachine: stateMachine,
+        locationService: locationService,
+        fileManager: fileManager,
+        logger: logger,
+        notifier: notifier,
+      );
+
+      controller.debugSeed(
+        snapshot: StateSnapshot(
+          status: LocationStateStatus.outer,
+          timestamp: DateTime.utc(2024, 1, 1),
+          geoJsonLoaded: true,
+          distanceToBoundaryM: 10,
+          bearingToBoundaryDeg: 180,
+          nearestBoundaryPoint: const LatLng(1, 1),
+        ),
+      );
+
+      await notifier.notifyOuter();
+      expect(alarm.playCount, 1);
+      expect(vibration.startCount, 1);
+
+      await controller.snoozeAlarmForOneMinute();
+      expect(controller.isAlarmSnoozed, isTrue);
+      expect(alarm.stopCount, 1);
+      expect(vibration.stopCount, 1);
+
+      await tester.pump(const Duration(minutes: 1));
+      await tester.pump();
+
+      expect(controller.isAlarmSnoozed, isFalse);
+      expect(alarm.playCount, 2);
+      expect(vibration.startCount, 2);
+    });
+
+    testWidgets('snooze does not resume after returning to safe zone',
+        (tester) async {
+      final config = _testConfig();
+      final stateMachine = StateMachine(config: config);
+      final locationService = FakeLocationService();
+      final fileManager = FakeFileManager(config: config);
+      final logger = FakeEventLogger();
+      final notifications = FakeLocalNotificationsClient();
+      final alarm = FakeAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: notifications,
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+      final controller = AppController(
+        stateMachine: stateMachine,
+        locationService: locationService,
+        fileManager: fileManager,
+        logger: logger,
+        notifier: notifier,
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+      );
+
+      controller.debugSeed(
+        config: config,
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+
+      await controller.startMonitoring();
+      locationService.add(
+        LocationFix(
+          latitude: 2,
+          longitude: 2,
+          accuracyMeters: 5,
+          timestamp: DateTime.utc(2024, 1, 1, 0, 0, 0),
+        ),
+      );
+      await tester.pump();
+      locationService.add(
+        LocationFix(
+          latitude: 2,
+          longitude: 2,
+          accuracyMeters: 5,
+          timestamp: DateTime.utc(2024, 1, 1, 0, 0, 2),
+        ),
+      );
+      await tester.pump();
+
+      expect(controller.snapshot.status, LocationStateStatus.outer);
+      expect(alarm.playCount, 1);
+
+      await controller.snoozeAlarmForOneMinute();
+      expect(controller.isAlarmSnoozed, isTrue);
+      expect(alarm.stopCount, 1);
+
+      locationService.add(
+        LocationFix(
+          latitude: 0.5,
+          longitude: 0.5,
+          accuracyMeters: 5,
+          timestamp: DateTime.utc(2024, 1, 1, 0, 0, 2),
+        ),
+      );
+      await tester.pump();
+
+      expect(controller.snapshot.status, isNot(LocationStateStatus.outer));
+      expect(controller.isAlarmSnoozed, isFalse);
+
+      await tester.pump(const Duration(minutes: 1));
+      await tester.pump();
+
+      expect(alarm.playCount, 1);
+      expect(vibration.startCount, 1);
+    });
+
+    testWidgets('stopMonitoring clears pending alarm snooze', (tester) async {
+      final config = _testConfig();
+      final stateMachine = StateMachine(config: config);
+      final locationService = FakeLocationService();
+      final fileManager = FakeFileManager(config: config);
+      final logger = FakeEventLogger();
+      final notifications = FakeLocalNotificationsClient();
+      final alarm = FakeAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: notifications,
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+      final controller = AppController(
+        stateMachine: stateMachine,
+        locationService: locationService,
+        fileManager: fileManager,
+        logger: logger,
+        notifier: notifier,
+      );
+
+      controller.debugSeed(
+        snapshot: StateSnapshot(
+          status: LocationStateStatus.outer,
+          timestamp: DateTime.utc(2024, 1, 1),
+          geoJsonLoaded: true,
+        ),
+      );
+
+      await notifier.notifyOuter();
+      await controller.snoozeAlarmForOneMinute();
+      expect(controller.isAlarmSnoozed, isTrue);
+
+      await controller.stopMonitoring();
+      expect(controller.isAlarmSnoozed, isFalse);
+
+      await tester.pump(const Duration(minutes: 1));
+      await tester.pump();
+
+      expect(alarm.playCount, 1);
+      expect(vibration.startCount, 1);
     });
 
     test('reloadGeoJsonFromQr loads GeoJSON from valid QR code', () async {
@@ -201,7 +376,8 @@ void main() {
       );
 
       // 無効なペイロードを含むQRコード
-      final loaded = await controller.reloadGeoJsonFromQr('gjb1:invalid_payload');
+      final loaded =
+          await controller.reloadGeoJsonFromQr('gjb1:invalid_payload');
 
       expect(loaded, isFalse);
       expect(controller.lastErrorMessage, isNotNull);
@@ -339,6 +515,15 @@ GeoModel _squareModel() {
   return GeoModel.fromGeoJson(_squareGeoJson);
 }
 
+MonitoringPermissionState _grantedMonitoringPermissionState() {
+  return const MonitoringPermissionState(
+    notificationStatus: PermissionStatus.granted,
+    locationWhenInUseStatus: PermissionStatus.granted,
+    locationAlwaysStatus: PermissionStatus.granted,
+    locationServicesEnabled: true,
+  );
+}
+
 AppController _buildController() {
   final config = _testConfig();
   final stateMachine = StateMachine(config: config);
@@ -371,6 +556,13 @@ const String _squareGeoJson = '''
   ]
 }
 ''';
+
+class _GrantedPermissionCoordinator extends PermissionCoordinator {
+  @override
+  Future<MonitoringPermissionState> refreshMonitoringPermissionState() async {
+    return _grantedMonitoringPermissionState();
+  }
+}
 
 class FakeFileManager extends FileManager {
   FakeFileManager({

@@ -98,12 +98,7 @@ class Notifier {
       '競技エリアから離れています。',
       notificationDetails,
     );
-    if (!_isAlarming) {
-      // アセット音＋バイブの開始
-      await _alarmPlayer.start();
-      await _vibrationPlayer.start();
-      _isAlarming = true;
-    }
+    await resumeAlarm();
   }
 
   Future<void> notifyRecover() async {
@@ -122,6 +117,15 @@ class Notifier {
       await _alarmPlayer.stop();
       await _vibrationPlayer.stop();
       _isAlarming = false;
+    }
+  }
+
+  Future<void> resumeAlarm() async {
+    if (!_isAlarming) {
+      // アセット音＋バイブの開始
+      await _alarmPlayer.start();
+      await _vibrationPlayer.start();
+      _isAlarming = true;
     }
   }
 }

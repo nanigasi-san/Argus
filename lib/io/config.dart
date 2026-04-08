@@ -42,7 +42,7 @@ class AppConfig {
         ),
       ),
       screenWakeOnLeave: json['screen_wake_on_leave'] as bool? ?? false,
-      alarmVolume: (json['alarm_volume'] as num?)?.toDouble() ?? 1.0,
+      alarmVolume: (json['alarm_volume'] as num?)?.toDouble() ?? 0.5,
     );
   }
 

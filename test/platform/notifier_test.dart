@@ -63,5 +63,49 @@ void main() {
       expect(alarm.playCount, 2);
       expect(vibration.startCount, 2);
     });
+
+    test('resumeAlarm restarts playback without showing another notification',
+        () async {
+      final notifications = FakeLocalNotificationsClient();
+      final alarm = FakeAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: notifications,
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+
+      await notifier.notifyOuter();
+      expect(notifications.shownIds, [1001]);
+      expect(alarm.playCount, 1);
+      expect(vibration.startCount, 1);
+
+      await notifier.stopAlarm();
+      expect(alarm.stopCount, 1);
+      expect(vibration.stopCount, 1);
+
+      await notifier.resumeAlarm();
+      expect(notifications.shownIds, [1001]);
+      expect(alarm.playCount, 2);
+      expect(vibration.startCount, 2);
+    });
+
+    test('resumeAlarm is idempotent while already alarming', () async {
+      final notifications = FakeLocalNotificationsClient();
+      final alarm = FakeAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: notifications,
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+
+      await notifier.resumeAlarm();
+      await notifier.resumeAlarm();
+
+      expect(notifications.shownIds, isEmpty);
+      expect(alarm.playCount, 1);
+      expect(vibration.startCount, 1);
+    });
   });
 }

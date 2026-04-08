@@ -77,6 +77,68 @@ void main() {
     expect(find.textContaining('方角'), findsOneWidget);
   });
 
+  testWidgets('shows snooze button only while OUTER', (tester) async {
+    final outerController = buildTestController(
+      hasGeoJson: true,
+      snapshot: StateSnapshot(
+        status: LocationStateStatus.outer,
+        timestamp: DateTime.utc(2024, 1, 1),
+        distanceToBoundaryM: 5,
+        bearingToBoundaryDeg: 180,
+        geoJsonLoaded: true,
+      ),
+    );
+
+    await _pumpHome(tester, outerController);
+    expect(find.text('1分間音を停止する'), findsOneWidget);
+
+    final innerController = buildTestController(
+      hasGeoJson: true,
+      snapshot: StateSnapshot(
+        status: LocationStateStatus.inner,
+        timestamp: DateTime.utc(2024, 1, 1),
+        distanceToBoundaryM: 5,
+        bearingToBoundaryDeg: 180,
+        geoJsonLoaded: true,
+      ),
+    );
+
+    await _pumpHome(tester, innerController);
+    expect(find.text('1分間音を停止する'), findsNothing);
+  });
+
+  testWidgets('snooze button disables while keeping navigation visible',
+      (tester) async {
+    final controller = buildTestController(
+      hasGeoJson: true,
+      snapshot: StateSnapshot(
+        status: LocationStateStatus.outer,
+        timestamp: DateTime.utc(2024, 1, 1),
+        distanceToBoundaryM: 5,
+        bearingToBoundaryDeg: 180,
+        geoJsonLoaded: true,
+      ),
+    );
+
+    await _pumpHome(tester, controller);
+
+    await tester.ensureVisible(find.text('1分間音を停止する'));
+    await tester.tap(find.text('1分間音を停止する'));
+    await tester.pump();
+
+    expect(find.text('1分間ミュート中'), findsOneWidget);
+    expect(find.textContaining('境界までの距離'), findsOneWidget);
+    expect(find.textContaining('方角'), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is FilledButton && widget.onPressed == null,
+      ),
+      findsOneWidget,
+    );
+
+    controller.dispose();
+  });
+
   testWidgets('shows file name row above circle after loading via picker',
       (tester) async {
     final controller = buildTestController(hasGeoJson: false);

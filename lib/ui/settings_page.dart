@@ -22,7 +22,7 @@ class _SettingsPageState extends State<SettingsPage> {
   late final TextEditingController _gpsAccuracyThresholdController;
   late final TextEditingController _leaveConfirmSamplesController;
   late final TextEditingController _leaveConfirmSecondsController;
-  double _alarmVolume = 1.0;
+  double _alarmVolume = 0.5;
   bool _isSaving = false;
   AppConfig? _defaultConfig;
 
@@ -66,7 +66,7 @@ class _SettingsPageState extends State<SettingsPage> {
         sampleIntervalS: const {'fast': 3},
         sampleDistanceM: const {'fast': 15},
         screenWakeOnLeave: false,
-        alarmVolume: 1.0,
+        alarmVolume: 0.5,
       );
     }
 
@@ -390,7 +390,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             },
                           ),
                           Text(
-                            '音量: ${(_alarmVolume * 100).round()}% (デフォルト: 100%)',
+                            '音量: ${(_alarmVolume * 100).round()}% (デフォルト: 50%)',
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                         ],

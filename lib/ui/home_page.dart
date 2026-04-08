@@ -142,6 +142,16 @@ class HomePage extends StatelessWidget {
                                       fontWeight: FontWeight.w500,
                                     ),
                                   ),
+                                  if (snapshot.status ==
+                                      LocationStateStatus.outer) ...[
+                                    const SizedBox(height: 16),
+                                    _AlarmSnoozeAction(
+                                      isSnoozed: controller.isAlarmSnoozed,
+                                      onPressed: controller.canSnoozeAlarm
+                                          ? controller.snoozeAlarmForOneMinute
+                                          : null,
+                                    ),
+                                  ],
                                 ],
                               ],
                             ),
@@ -314,6 +324,13 @@ class HomePage extends StatelessWidget {
                                         fontSize: 18,
                                         fontWeight: FontWeight.w500,
                                       ),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    _AlarmSnoozeAction(
+                                      isSnoozed: controller.isAlarmSnoozed,
+                                      onPressed: controller.canSnoozeAlarm
+                                          ? controller.snoozeAlarmForOneMinute
+                                          : null,
                                     ),
                                   ],
                                 ],
@@ -650,6 +667,28 @@ class _LargeStatusDisplay extends StatelessWidget {
     }
 
     return circleWidget;
+  }
+}
+
+class _AlarmSnoozeAction extends StatelessWidget {
+  const _AlarmSnoozeAction({
+    required this.isSnoozed,
+    required this.onPressed,
+  });
+
+  final bool isSnoozed;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton.icon(
+        onPressed: onPressed,
+        icon: Icon(isSnoozed ? Icons.volume_off : Icons.snooze),
+        label: Text(isSnoozed ? '1分間ミュート中' : '1分間音を停止する'),
+      ),
+    );
   }
 }
 

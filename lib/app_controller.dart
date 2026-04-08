@@ -54,6 +54,8 @@ class AppController extends ChangeNotifier {
   String? _lastErrorMessage;
   String? _geoJsonFileName;
   String? _tempGeoJsonFilePath;
+  Timer? _alarmSnoozeTimer;
+  bool _isAlarmSnoozed = false;
   final List<AppLogEntry> _logs = <AppLogEntry>[];
   MonitoringPermissionState _monitoringPermissionState =
       const MonitoringPermissionState.unknown();
@@ -67,6 +69,9 @@ class AppController extends ChangeNotifier {
   List<AppLogEntry> get logs => List.unmodifiable(_logs);
   bool get developerMode => _developerMode;
   bool get navigationEnabled => _navigationEnabled;
+  bool get isAlarmSnoozed => _isAlarmSnoozed;
+  bool get canSnoozeAlarm =>
+      _snapshot.status == LocationStateStatus.outer && !_isAlarmSnoozed;
   MonitoringPermissionState get monitoringPermissionState =>
       _monitoringPermissionState;
   bool get canStartMonitoring =>
@@ -151,6 +156,7 @@ class AppController extends ChangeNotifier {
 
   /// 位置情報の監視を停止します。
   Future<void> stopMonitoring() async {
+    _clearAlarmSnooze();
     await _subscription?.cancel();
     _subscription = null;
     await locationService.stop();
@@ -426,6 +432,7 @@ class AppController extends ChangeNotifier {
       );
     } else if (previous == LocationStateStatus.outer &&
         _snapshot.status != LocationStateStatus.outer) {
+      _clearAlarmSnooze();
       await notifier.notifyRecover();
       _logInfo(
         'ALERT',
@@ -434,6 +441,47 @@ class AppController extends ChangeNotifier {
       );
     }
     notifyListeners();
+  }
+
+  Future<void> snoozeAlarmForOneMinute() async {
+    if (!canSnoozeAlarm) {
+      return;
+    }
+
+    _clearAlarmSnooze();
+    _isAlarmSnoozed = true;
+    await notifier.stopAlarm();
+    _logInfo(
+      'ALERT',
+      'Alarm snoozed for 1 minute.${_buildNavHint(_snapshot)}',
+      timestamp: _snapshot.timestamp,
+    );
+    _alarmSnoozeTimer = Timer(const Duration(minutes: 1), () {
+      unawaited(_resumeAlarmAfterSnooze());
+    });
+    notifyListeners();
+  }
+
+  Future<void> _resumeAlarmAfterSnooze() async {
+    _alarmSnoozeTimer = null;
+    if (!_isAlarmSnoozed || _snapshot.status != LocationStateStatus.outer) {
+      return;
+    }
+
+    _isAlarmSnoozed = false;
+    await notifier.resumeAlarm();
+    _logWarning(
+      'ALERT',
+      'Alarm resumed after snooze.${_buildNavHint(_snapshot)}',
+      timestamp: DateTime.now(),
+    );
+    notifyListeners();
+  }
+
+  void _clearAlarmSnooze() {
+    _alarmSnoozeTimer?.cancel();
+    _alarmSnoozeTimer = null;
+    _isAlarmSnoozed = false;
   }
 
   @visibleForTesting
@@ -494,6 +542,7 @@ class AppController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _clearAlarmSnooze();
     _subscription?.cancel();
     // dispose()は同期メソッドなので、非同期処理は実行しない
     // アプリ終了時のクリーンアップはmain.dartのWidgetsBindingObserverで処理
