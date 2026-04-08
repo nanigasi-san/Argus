@@ -1,24 +1,49 @@
-プライバシーポリシー
+# ARGUS Privacy Policy
 
-本アプリ（Argus）は、個人開発によるテスト目的のアプリです。
+Last updated: 2026-04-04
 
-1. 取得する情報
-本アプリは、ユーザーの個人情報（氏名、メールアドレス等）を意図的に取得・保存することはありません。
-アプリの機能上必要な範囲で、端末内の情報（例：位置情報、センサー情報等）を利用する場合がありますが、これらの情報が外部サーバーに送信されることはありません。
+ARGUS is a geofencing support app. This policy explains what data the app uses and how that data is handled.
 
-2. 利用目的
-取得した情報は、アプリの機能提供および品質向上のためにのみ使用されます。
+## 1. Data used by the app
 
-3. 第三者提供
-取得した情報を第三者に提供することはありません。
+ARGUS uses the following data only to provide its core features on the device:
 
-4. 外部サービス
-本アプリは、Android OS や Flutter フレームワークが提供する標準機能を使用しています。
-これらのプラットフォームが収集する情報については、各提供元のプライバシーポリシーをご確認ください。
+- Location data
+  The app uses foreground and background location to monitor whether the device remains inside the loaded competition area.
+- Camera access
+  The app uses the camera to scan GeoJSON QR codes.
+- Local files selected by the user
+  The app can import GeoJSON files that the user chooses.
+- Notification permission
+  The app uses notifications to warn the user when they leave the configured area.
 
-5. お問い合わせ
-本ポリシーに関するお問い合わせは、以下までご連絡ください。
-（例：GitHub リポジトリの Issue ページ）
+## 2. How the data is handled
 
-6. 改定
-本ポリシーは必要に応じて変更されることがあります。
+- Location data is processed on the device to evaluate geofence status.
+- Camera input is processed on the device to decode QR codes.
+- Imported GeoJSON data is stored only on the device.
+- Temporary files created while restoring GeoJSON from QR codes are kept only on the device and can be deleted by the app.
+
+ARGUS does not send location data, camera frames, GeoJSON files, or personal information to an external server operated by the developer.
+
+## 3. Third-party services
+
+ARGUS is built with Flutter and may rely on platform components provided by Android, Google Play services, and related libraries such as ML Kit for barcode scanning. Their handling of data is governed by their own terms and privacy policies.
+
+## 4. Third-party sharing
+
+The developer does not sell, share, or provide personal data to third parties.
+
+## 5. Data retention
+
+Data used by ARGUS remains on the device unless the user removes the app or deletes the related files.
+
+## 6. Contact
+
+Questions about this policy can be sent through the repository issue tracker:
+
+- [ARGUS Issues](https://github.com/nanigasi-san/Argus/issues)
+
+## 7. Changes
+
+This policy may be updated when the app or legal requirements change. The latest version will be published in this repository.

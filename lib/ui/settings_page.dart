@@ -3,7 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../app_controller.dart';
+import '../app_links.dart';
 import '../io/config.dart';
+import 'background_location_disclosure_page.dart';
+import 'monitoring_permission_card.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -19,7 +22,7 @@ class _SettingsPageState extends State<SettingsPage> {
   late final TextEditingController _gpsAccuracyThresholdController;
   late final TextEditingController _leaveConfirmSamplesController;
   late final TextEditingController _leaveConfirmSecondsController;
-  double _alarmVolume = 1.0;
+  double _alarmVolume = 0.5;
   bool _isSaving = false;
   AppConfig? _defaultConfig;
 
@@ -38,6 +41,18 @@ class _SettingsPageState extends State<SettingsPage> {
     });
   }
 
+  Future<void> _openPrivacyPolicy() async {
+    final launched = await openPrivacyPolicy();
+    if (!mounted || launched) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('プライバシーポリシーを開けませんでした。'),
+      ),
+    );
+  }
+
   Future<void> _initializeControllers() async {
     // デフォルト値を読み込む
     try {
@@ -51,7 +66,7 @@ class _SettingsPageState extends State<SettingsPage> {
         sampleIntervalS: const {'fast': 3},
         sampleDistanceM: const {'fast': 15},
         screenWakeOnLeave: false,
-        alarmVolume: 1.0,
+        alarmVolume: 0.5,
       );
     }
 
@@ -187,6 +202,7 @@ class _SettingsPageState extends State<SettingsPage> {
     return Consumer<AppController>(
       builder: (context, controller, _) {
         final config = controller.config;
+        final viewPadding = MediaQuery.viewPaddingOf(context);
         return Scaffold(
           appBar: AppBar(
             title: const Text('Settings'),
@@ -196,8 +212,30 @@ class _SettingsPageState extends State<SettingsPage> {
               : Form(
                   key: _formKey,
                   child: ListView(
-                    padding: const EdgeInsets.all(16),
+                    padding: EdgeInsets.fromLTRB(
+                        16, 16, 16, 16 + viewPadding.bottom),
                     children: [
+                      MonitoringPermissionCard(
+                        permissionState: controller.monitoringPermissionState,
+                        onOpenMonitoringSetup: () async {
+                          await showBackgroundLocationDisclosure(context);
+                        },
+                        onRequestNotifications:
+                            controller.requestNotificationPermission,
+                        onRefresh: controller.refreshMonitoringPermissionState,
+                      ),
+                      const SizedBox(height: 16),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.privacy_tip_outlined),
+                        title: const Text('Privacy Policy'),
+                        subtitle: const Text(
+                          '位置情報とカメラの取り扱いを確認できます',
+                        ),
+                        trailing: const Icon(Icons.open_in_new),
+                        onTap: _openPrivacyPolicy,
+                      ),
+                      const SizedBox(height: 16),
                       TextFormField(
                         controller: _innerBufferController,
                         decoration: InputDecoration(
@@ -352,7 +390,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             },
                           ),
                           Text(
-                            '音量: ${(_alarmVolume * 100).round()}% (デフォルト: 100%)',
+                            '音量: ${(_alarmVolume * 100).round()}% (デフォルト: 50%)',
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                         ],

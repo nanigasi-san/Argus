@@ -5,6 +5,8 @@ import '../app_controller.dart';
 import '../geo/geo_model.dart';
 import '../io/log_entry.dart';
 import '../state_machine/state.dart';
+import 'background_location_disclosure_page.dart';
+import 'monitoring_permission_card.dart';
 import 'qr_scanner_page.dart';
 import 'settings_page.dart';
 
@@ -32,7 +34,24 @@ class HomePage extends StatelessWidget {
             );
             controller.clearError();
           }
+          if (context.mounted &&
+              controller.consumeBackgroundDisclosurePrompt()) {
+            showBackgroundLocationDisclosure(context);
+          }
         });
+
+        final viewPadding = MediaQuery.viewPaddingOf(context);
+        final permissionCard = controller.shouldShowPermissionSetupCard
+            ? MonitoringPermissionCard(
+                permissionState: controller.monitoringPermissionState,
+                onOpenMonitoringSetup: () async {
+                  await showBackgroundLocationDisclosure(context);
+                },
+                onRequestNotifications:
+                    controller.requestNotificationPermission,
+                onRefresh: controller.refreshMonitoringPermissionState,
+              )
+            : null;
 
         return Scaffold(
           appBar: AppBar(
@@ -44,179 +63,26 @@ class HomePage extends StatelessWidget {
               const _OverflowMenu(),
             ],
           ),
-          body: Padding(
-            padding: const EdgeInsets.all(16),
-            child: controller.developerMode
-                ? Column(
-                    children: [
-                      const SizedBox(height: 8),
-                      // 開発者モードの時は上部を縮小
-                      Flexible(
-                        flex: 3,
-                        child: SingleChildScrollView(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const SizedBox(height: 16),
-                              _GpsAccuracyInfo(
-                                  accuracyM: snapshot.horizontalAccuracyM),
-                              const SizedBox(height: 6),
-                              _FileNameInfo(
-                                fileName: controller.geoJsonFileName,
-                                loaded: controller.geoJsonLoaded,
-                              ),
-                              const SizedBox(height: 12),
-                              _LargeStatusDisplay(
-                                status: snapshot.status,
-                                onTap: snapshot.status ==
-                                        LocationStateStatus.waitStart
-                                    ? () => controller.startMonitoring()
-                                    : null,
-                              ),
-                              // ヒントは円内に描画するため外側には出さない
-                              // GeoJSONファイル状態は円の上へ移動済み
-                              const SizedBox(height: 12),
-                              _BottomActions(
-                                isWaitStart: snapshot.status ==
-                                    LocationStateStatus.waitStart,
-                                geoJsonReady: controller.geoJsonLoaded,
-                                onLoadGeoJson:
-                                    controller.reloadGeoJsonFromPicker,
-                                onOpenQr: () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) => const QrScannerPage(),
-                                    ),
-                                  );
-                                },
-                              ),
-                              // developerモードでは常に方角と距離を表示
-                              if (showNav) ...[
-                                const SizedBox(height: 24),
-                                Text(
-                                  '境界までの距離: '
-                                  '${snapshot.distanceToBoundaryM?.toStringAsFixed(1) ?? '-'} m',
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  '方角: '
-                                  '${snapshot.bearingToBoundaryDeg != null ? _formatBearing(snapshot.bearingToBoundaryDeg!) : '-'}',
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ),
-                      // 詳細情報セクション（開発者モードのみ）
-                      const Divider(),
-                      const SizedBox(height: 8),
-                      Flexible(
-                        flex: 4,
-                        child: SingleChildScrollView(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Current state: ${snapshot.status.name}'),
-                              if ((snapshot.notes ?? '').isNotEmpty) ...[
-                                const SizedBox(height: 8),
-                                Text('Notes: ${snapshot.notes}'),
-                              ],
-                              const SizedBox(height: 16),
-                              Text(
-                                'Last update: ${snapshot.timestamp.toLocal()}',
-                              ),
-                              const SizedBox(height: 8),
-                              // Developerモードでは常に距離・方角・境界点を表示
-                              Text(
-                                'Distance to boundary: '
-                                '${snapshot.distanceToBoundaryM?.toStringAsFixed(1) ?? '-'} m',
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Bearing to boundary: '
-                                '${snapshot.bearingToBoundaryDeg != null ? _formatBearing(snapshot.bearingToBoundaryDeg!) : '-'}',
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Nearest boundary point: '
-                                '${snapshot.nearestBoundaryPoint != null ? _formatLatLng(snapshot.nearestBoundaryPoint!) : '-'}',
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Accuracy: '
-                                '${snapshot.horizontalAccuracyM?.toStringAsFixed(1) ?? '-'} m',
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                  'GeoJSON loaded: ${controller.geoJsonLoaded}'),
-                              const SizedBox(height: 24),
-                              if (controller.lastErrorMessage != null) ...[
-                                Material(
-                                  color: Colors.red.withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: ListTile(
-                                    leading: const Icon(
-                                      Icons.error_outline,
-                                      color: Colors.red,
-                                    ),
-                                    title: Text(
-                                      controller.lastErrorMessage!,
-                                      style: const TextStyle(color: Colors.red),
-                                    ),
-                                    trailing: IconButton(
-                                      icon: const Icon(Icons.close,
-                                          color: Colors.red),
-                                      onPressed: controller.clearError,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 24),
-                              ],
-                              const SizedBox(height: 24),
-                              if (controller.logs.isNotEmpty) ...[
-                                const Text(
-                                  'Logs:',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                ...controller.logs
-                                    .take(5)
-                                    .map((entry) => Padding(
-                                          padding:
-                                              const EdgeInsets.only(bottom: 8),
-                                          child: _LogCard(entry: entry),
-                                        )),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  )
-                : Column(
-                    children: [
-                      const SizedBox(height: 8),
-                      // 中央に大きなステータス表示
-                      // waitStartの時はタップ可能でSTARTボタンとして機能
-                      Expanded(
-                        child: SingleChildScrollView(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
+          body: SafeArea(
+            top: false,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + viewPadding.bottom),
+              child: controller.developerMode
+                  ? Column(
+                      children: [
+                        const SizedBox(height: 8),
+                        if (permissionCard != null) ...[
+                          permissionCard,
+                          const SizedBox(height: 16),
+                        ],
+                        // 開発者モードの時は上部を縮小
+                        Flexible(
+                          flex: 3,
+                          child: SingleChildScrollView(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
-                              mainAxisSize: MainAxisSize.min,
                               children: [
+                                const SizedBox(height: 16),
                                 _GpsAccuracyInfo(
                                     accuracyM: snapshot.horizontalAccuracyM),
                                 const SizedBox(height: 6),
@@ -229,7 +95,14 @@ class HomePage extends StatelessWidget {
                                   status: snapshot.status,
                                   onTap: snapshot.status ==
                                           LocationStateStatus.waitStart
-                                      ? () => controller.startMonitoring()
+                                      ? () {
+                                          if (controller.canStartMonitoring) {
+                                            controller.startMonitoring();
+                                          } else {
+                                            showBackgroundLocationDisclosure(
+                                                context);
+                                          }
+                                        }
                                       : null,
                                 ),
                                 // ヒントは円内に描画するため外側には出さない
@@ -244,15 +117,13 @@ class HomePage extends StatelessWidget {
                                   onOpenQr: () {
                                     Navigator.of(context).push(
                                       MaterialPageRoute(
-                                          builder: (_) =>
-                                              const QrScannerPage()),
+                                        builder: (_) => const QrScannerPage(),
+                                      ),
                                     );
                                   },
                                 ),
-                                // outerの時に方角と距離を表示
-                                if (showNav &&
-                                    snapshot.status ==
-                                        LocationStateStatus.outer) ...[
+                                // developerモードでは常に方角と距離を表示
+                                if (showNav) ...[
                                   const SizedBox(height: 24),
                                   Text(
                                     '境界までの距離: '
@@ -271,15 +142,206 @@ class HomePage extends StatelessWidget {
                                       fontWeight: FontWeight.w500,
                                     ),
                                   ),
+                                  if (snapshot.status ==
+                                      LocationStateStatus.outer) ...[
+                                    const SizedBox(height: 16),
+                                    _AlarmSnoozeAction(
+                                      isSnoozed: controller.isAlarmSnoozed,
+                                      onPressed: controller.canSnoozeAlarm
+                                          ? controller.snoozeAlarmForOneMinute
+                                          : null,
+                                    ),
+                                  ],
                                 ],
                               ],
                             ),
                           ),
                         ),
-                      ),
-                      // エラー表示はSnackbarに移行済み
-                    ],
-                  ),
+                        // 詳細情報セクション（開発者モードのみ）
+                        const Divider(),
+                        const SizedBox(height: 8),
+                        Flexible(
+                          flex: 4,
+                          child: SingleChildScrollView(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Current state: ${snapshot.status.name}'),
+                                if ((snapshot.notes ?? '').isNotEmpty) ...[
+                                  const SizedBox(height: 8),
+                                  Text('Notes: ${snapshot.notes}'),
+                                ],
+                                const SizedBox(height: 16),
+                                Text(
+                                  'Last update: ${snapshot.timestamp.toLocal()}',
+                                ),
+                                const SizedBox(height: 8),
+                                // Developerモードでは常に距離・方角・境界点を表示
+                                Text(
+                                  'Distance to boundary: '
+                                  '${snapshot.distanceToBoundaryM?.toStringAsFixed(1) ?? '-'} m',
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Bearing to boundary: '
+                                  '${snapshot.bearingToBoundaryDeg != null ? _formatBearing(snapshot.bearingToBoundaryDeg!) : '-'}',
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Nearest boundary point: '
+                                  '${snapshot.nearestBoundaryPoint != null ? _formatLatLng(snapshot.nearestBoundaryPoint!) : '-'}',
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Accuracy: '
+                                  '${snapshot.horizontalAccuracyM?.toStringAsFixed(1) ?? '-'} m',
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                    'GeoJSON loaded: ${controller.geoJsonLoaded}'),
+                                const SizedBox(height: 24),
+                                if (controller.lastErrorMessage != null) ...[
+                                  Material(
+                                    color: Colors.red.withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: ListTile(
+                                      leading: const Icon(
+                                        Icons.error_outline,
+                                        color: Colors.red,
+                                      ),
+                                      title: Text(
+                                        controller.lastErrorMessage!,
+                                        style:
+                                            const TextStyle(color: Colors.red),
+                                      ),
+                                      trailing: IconButton(
+                                        icon: const Icon(Icons.close,
+                                            color: Colors.red),
+                                        onPressed: controller.clearError,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 24),
+                                ],
+                                const SizedBox(height: 24),
+                                if (controller.logs.isNotEmpty) ...[
+                                  const Text(
+                                    'Logs:',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  ...controller.logs
+                                      .take(5)
+                                      .map((entry) => Padding(
+                                            padding: const EdgeInsets.only(
+                                                bottom: 8),
+                                            child: _LogCard(entry: entry),
+                                          )),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  : Column(
+                      children: [
+                        const SizedBox(height: 8),
+                        if (permissionCard != null) ...[
+                          permissionCard,
+                          const SizedBox(height: 16),
+                        ],
+                        // 中央に大きなステータス表示
+                        // waitStartの時はタップ可能でSTARTボタンとして機能
+                        Expanded(
+                          child: SingleChildScrollView(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  _GpsAccuracyInfo(
+                                      accuracyM: snapshot.horizontalAccuracyM),
+                                  const SizedBox(height: 6),
+                                  _FileNameInfo(
+                                    fileName: controller.geoJsonFileName,
+                                    loaded: controller.geoJsonLoaded,
+                                  ),
+                                  const SizedBox(height: 12),
+                                  _LargeStatusDisplay(
+                                    status: snapshot.status,
+                                    onTap: snapshot.status ==
+                                            LocationStateStatus.waitStart
+                                        ? () {
+                                            if (controller.canStartMonitoring) {
+                                              controller.startMonitoring();
+                                            } else {
+                                              showBackgroundLocationDisclosure(
+                                                  context);
+                                            }
+                                          }
+                                        : null,
+                                  ),
+                                  // ヒントは円内に描画するため外側には出さない
+                                  // GeoJSONファイル状態は円の上へ移動済み
+                                  const SizedBox(height: 12),
+                                  _BottomActions(
+                                    isWaitStart: snapshot.status ==
+                                        LocationStateStatus.waitStart,
+                                    geoJsonReady: controller.geoJsonLoaded,
+                                    onLoadGeoJson:
+                                        controller.reloadGeoJsonFromPicker,
+                                    onOpenQr: () {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                            builder: (_) =>
+                                                const QrScannerPage()),
+                                      );
+                                    },
+                                  ),
+                                  // outerの時に方角と距離を表示
+                                  if (showNav &&
+                                      snapshot.status ==
+                                          LocationStateStatus.outer) ...[
+                                    const SizedBox(height: 24),
+                                    Text(
+                                      '境界までの距離: '
+                                      '${snapshot.distanceToBoundaryM?.toStringAsFixed(1) ?? '-'} m',
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      '方角: '
+                                      '${snapshot.bearingToBoundaryDeg != null ? _formatBearing(snapshot.bearingToBoundaryDeg!) : '-'}',
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    _AlarmSnoozeAction(
+                                      isSnoozed: controller.isAlarmSnoozed,
+                                      onPressed: controller.canSnoozeAlarm
+                                          ? controller.snoozeAlarmForOneMinute
+                                          : null,
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        // エラー表示はSnackbarに移行済み
+                      ],
+                    ),
+            ),
           ),
           // 下部ナビは使用せず、円直下にボタンを配置する構成へ
         );
@@ -605,6 +667,28 @@ class _LargeStatusDisplay extends StatelessWidget {
     }
 
     return circleWidget;
+  }
+}
+
+class _AlarmSnoozeAction extends StatelessWidget {
+  const _AlarmSnoozeAction({
+    required this.isSnoozed,
+    required this.onPressed,
+  });
+
+  final bool isSnoozed;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton.icon(
+        onPressed: onPressed,
+        icon: Icon(isSnoozed ? Icons.volume_off : Icons.snooze),
+        label: Text(isSnoozed ? '1分間ミュート中' : '1分間音を停止する'),
+      ),
+    );
   }
 }
 

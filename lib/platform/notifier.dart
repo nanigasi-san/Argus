@@ -52,12 +52,6 @@ class Notifier {
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
     const initSettings = InitializationSettings(android: androidInit);
     await _notifications.initialize(initSettings);
-    await _notifications.requestPermissions(
-      alert: true,
-      badge: true,
-      sound: true,
-      critical: true,
-    );
     await _notifications.ensureAndroidChannel(
       const AndroidNotificationChannel(
         _channelId,
@@ -85,7 +79,6 @@ class Notifier {
       sound: RawResourceAndroidNotificationSound('alarm'),
       enableVibration: true,
       category: AndroidNotificationCategory.alarm,
-      fullScreenIntent: true,
       audioAttributesUsage: AudioAttributesUsage.alarm,
       ticker: 'Argus警告',
     );
@@ -105,18 +98,11 @@ class Notifier {
       '競技エリアから離れています。',
       notificationDetails,
     );
-    if (!_isAlarming) {
-      // アセット音＋バイブの開始
-      await _alarmPlayer.start();
-      await _vibrationPlayer.start();
-      _isAlarming = true;
-    }
+    await resumeAlarm();
   }
 
   Future<void> notifyRecover() async {
-    await initialize();
-    await _notifications.cancel(_outerNotificationId);
-    await stopAlarm();
+    await dismissOuterAlert();
     debugPrint('Argus: re-entered safe zone');
   }
 
@@ -131,16 +117,25 @@ class Notifier {
       _isAlarming = false;
     }
   }
+
+  Future<void> resumeAlarm() async {
+    if (!_isAlarming) {
+      // アセット音＋バイブの開始
+      await _alarmPlayer.start();
+      await _vibrationPlayer.start();
+      _isAlarming = true;
+    }
+  }
+
+  Future<void> dismissOuterAlert() async {
+    await initialize();
+    await _notifications.cancel(_outerNotificationId);
+    await stopAlarm();
+  }
 }
 
 abstract class LocalNotificationsClient {
   Future<void> initialize(InitializationSettings settings);
-  Future<void> requestPermissions({
-    bool alert = true,
-    bool badge = true,
-    bool sound = true,
-    bool critical = true,
-  });
   Future<void> ensureAndroidChannel(AndroidNotificationChannel channel);
   Future<void> show(
     int id,
@@ -159,33 +154,6 @@ class FlutterLocalNotificationsClient implements LocalNotificationsClient {
   @override
   Future<void> initialize(InitializationSettings settings) async {
     await _plugin.initialize(settings);
-  }
-
-  @override
-  Future<void> requestPermissions({
-    bool alert = true,
-    bool badge = true,
-    bool sound = true,
-    bool critical = true,
-  }) async {
-    final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
-    if (androidPlugin != null) {
-      try {
-        await (androidPlugin as dynamic).requestPermission();
-      } catch (_) {
-        // Older Android plugin versions might not expose requestPermission.
-      }
-    }
-
-    final iosPlugin = _plugin.resolvePlatformSpecificImplementation<
-        IOSFlutterLocalNotificationsPlugin>();
-    await iosPlugin?.requestPermissions(
-      alert: alert,
-      badge: badge,
-      sound: sound,
-      critical: critical,
-    );
   }
 
   @override

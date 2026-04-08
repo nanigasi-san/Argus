@@ -99,6 +99,7 @@ void main() {
     );
 
     expect(find.text('反応距離 (Inner buffer)'), findsOneWidget);
+    expect(find.text('Privacy Policy'), findsOneWidget);
   });
 
   testWidgets('toggling developer mode switch calls controller',
@@ -117,6 +118,8 @@ void main() {
     }
     expect(switchFinder, findsOneWidget);
 
+    await tester.ensureVisible(switchFinder);
+    await tester.pumpAndSettle();
     await tester.tap(switchFinder);
     await tester.pumpAndSettle();
 

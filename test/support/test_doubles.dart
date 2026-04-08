@@ -9,9 +9,11 @@ import 'package:argus/io/file_manager.dart';
 import 'package:argus/io/logger.dart';
 import 'package:argus/platform/location_service.dart';
 import 'package:argus/platform/notifier.dart';
+import 'package:argus/platform/permission_coordinator.dart';
 import 'package:argus/state_machine/state.dart';
 import 'package:argus/state_machine/state_machine.dart';
 import 'package:file_selector/file_selector.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import 'notifier_fakes.dart';
 
@@ -84,8 +86,9 @@ class FakeLocationService implements LocationService {
   Stream<LocationFix> get stream => _controller.stream;
 
   @override
-  Future<void> start(AppConfig config) async {
+  Future<LocationServiceStartResult> start(AppConfig config) async {
     hasStarted = true;
+    return const LocationServiceStartResult.started();
   }
 
   @override
@@ -102,6 +105,9 @@ AppController buildTestController({
   bool hasGeoJson = false,
   StateSnapshot? snapshot,
   bool? developerMode,
+  MonitoringPermissionState? permissionState,
+  bool pendingBackgroundDisclosurePrompt = false,
+  PermissionCoordinator? permissionCoordinator,
 }) {
   final config = createTestConfig();
   final stateMachine = StateMachine(config: config);
@@ -115,6 +121,7 @@ AppController buildTestController({
       notificationsClient: FakeLocalNotificationsClient(),
       alarmPlayer: FakeAlarmPlayer(),
     ),
+    permissionCoordinator: permissionCoordinator,
   );
 
   GeoModel? geoModel;
@@ -130,6 +137,14 @@ AppController buildTestController({
     areaIndex: areaIndex,
     snapshot: snapshot,
     developerMode: developerMode,
+    permissionState: permissionState ??
+        const MonitoringPermissionState(
+          notificationStatus: PermissionStatus.granted,
+          locationWhenInUseStatus: PermissionStatus.granted,
+          locationAlwaysStatus: PermissionStatus.granted,
+          locationServicesEnabled: true,
+        ),
+    pendingBackgroundDisclosurePrompt: pendingBackgroundDisclosurePrompt,
   );
 
   return controller;

@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ARGUS Privacy Policy</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7fb;
+        --card: #ffffff;
+        --text: #18212f;
+        --muted: #5f6b7a;
+        --accent: #1254c2;
+        --border: #d7deeb;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Segoe UI", "Hiragino Sans", sans-serif;
+        background:
+          radial-gradient(circle at top right, rgba(18, 84, 194, 0.12), transparent 28%),
+          linear-gradient(180deg, #f9fbff 0%, var(--bg) 100%);
+        color: var(--text);
+      }
+
+      main {
+        max-width: 840px;
+        margin: 0 auto;
+        padding: 40px 20px 64px;
+      }
+
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        padding: 32px;
+        box-shadow: 0 12px 40px rgba(16, 35, 60, 0.08);
+      }
+
+      h1,
+      h2 {
+        margin-top: 0;
+      }
+
+      h1 {
+        font-size: clamp(2rem, 4vw, 2.8rem);
+        margin-bottom: 8px;
+      }
+
+      h2 {
+        font-size: 1.2rem;
+        margin-top: 32px;
+      }
+
+      p,
+      li {
+        line-height: 1.7;
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      a {
+        color: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="card">
+        <p class="muted">Last updated: 2026-04-04</p>
+        <h1>ARGUS Privacy Policy</h1>
+        <p>
+          ARGUS is a geofencing support app. This policy explains what data the app uses and how that
+          data is handled.
+        </p>
+
+        <h2>1. Data used by the app</h2>
+        <ul>
+          <li>Location data for foreground and background geofence monitoring.</li>
+          <li>Camera access to scan GeoJSON QR codes.</li>
+          <li>Local files selected by the user to import GeoJSON data.</li>
+          <li>Notification permission to warn the user when they leave the configured area.</li>
+        </ul>
+
+        <h2>2. How the data is handled</h2>
+        <ul>
+          <li>Location data is processed on the device to evaluate geofence status.</li>
+          <li>Camera input is processed on the device to decode QR codes.</li>
+          <li>Imported GeoJSON and temporary restore files remain on the device.</li>
+          <li>No developer-operated external server receives location, camera, or GeoJSON data.</li>
+        </ul>
+
+        <h2>3. Third-party services</h2>
+        <p>
+          ARGUS is built with Flutter and may rely on platform components provided by Android, Google Play
+          services, and ML Kit for barcode scanning. Their handling of data is governed by their own terms
+          and privacy policies.
+        </p>
+
+        <h2>4. Third-party sharing</h2>
+        <p>The developer does not sell, share, or provide personal data to third parties.</p>
+
+        <h2>5. Data retention</h2>
+        <p>Data used by ARGUS remains on the device unless the user removes the app or deletes the files.</p>
+
+        <h2>6. Contact</h2>
+        <p>
+          Questions about this policy can be sent through the
+          <a href="https://github.com/nanigasi-san/Argus/issues">ARGUS issue tracker</a>.
+        </p>
+
+        <h2>7. Changes</h2>
+        <p>This policy may be updated when the app or legal requirements change.</p>
+      </section>
+    </main>
+  </body>
+</html>

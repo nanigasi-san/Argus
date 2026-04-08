@@ -28,8 +28,29 @@ class LocationFix {
 /// プラットフォーム固有の実装はこのインターフェースを実装します。
 abstract class LocationService {
   Stream<LocationFix> get stream;
-  Future<void> start(AppConfig config);
+  Future<LocationServiceStartResult> start(AppConfig config);
   Future<void> stop();
+}
+
+enum LocationServiceStartStatus {
+  started,
+  servicesDisabled,
+  permissionMissing,
+  error,
+}
+
+class LocationServiceStartResult {
+  const LocationServiceStartResult({
+    required this.status,
+    this.message,
+  });
+
+  const LocationServiceStartResult.started()
+      : status = LocationServiceStartStatus.started,
+        message = null;
+
+  final LocationServiceStartStatus status;
+  final String? message;
 }
 
 /// Geolocatorパッケージを使用した位置情報サービスの実装。
@@ -44,10 +65,20 @@ class GeolocatorLocationService implements LocationService {
   Stream<LocationFix> get stream => _controller.stream;
 
   @override
-  Future<void> start(AppConfig config) async {
-    final granted = await _ensurePermission();
-    if (!granted) {
-      return;
+  Future<LocationServiceStartResult> start(AppConfig config) async {
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      return const LocationServiceStartResult(
+        status: LocationServiceStartStatus.servicesDisabled,
+        message: '端末の位置情報サービスが無効です。',
+      );
+    }
+
+    final permission = await Geolocator.checkPermission();
+    if (permission != LocationPermission.always) {
+      return const LocationServiceStartResult(
+        status: LocationServiceStartStatus.permissionMissing,
+        message: '位置情報を「常に許可」にしてください。',
+      );
     }
 
     final intervalSeconds = config.sampleIntervalS['fast'] ??
@@ -86,46 +117,33 @@ class GeolocatorLocationService implements LocationService {
       );
     }
 
-    _subscription?.cancel();
-    _subscription = Geolocator.getPositionStream(
-      locationSettings: settings,
-    ).listen((position) {
-      _controller.add(
-        LocationFix(
-          latitude: position.latitude,
-          longitude: position.longitude,
-          accuracyMeters: position.accuracy,
-          timestamp: position.timestamp,
-        ),
+    try {
+      _subscription?.cancel();
+      _subscription = Geolocator.getPositionStream(
+        locationSettings: settings,
+      ).listen((position) {
+        _controller.add(
+          LocationFix(
+            latitude: position.latitude,
+            longitude: position.longitude,
+            accuracyMeters: position.accuracy,
+            timestamp: position.timestamp,
+          ),
+        );
+      });
+      return const LocationServiceStartResult.started();
+    } catch (e) {
+      return LocationServiceStartResult(
+        status: LocationServiceStartStatus.error,
+        message: e.toString(),
       );
-    });
+    }
   }
 
   @override
   Future<void> stop() async {
     await _subscription?.cancel();
     _subscription = null;
-  }
-
-  Future<bool> _ensurePermission() async {
-    if (!await Geolocator.isLocationServiceEnabled()) {
-      return false;
-    }
-    var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-    if (permission == LocationPermission.deniedForever) {
-      await Geolocator.openAppSettings();
-      return false;
-    }
-    if (permission == LocationPermission.whileInUse) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.whileInUse) {
-        await Geolocator.openAppSettings();
-      }
-    }
-    return permission == LocationPermission.always;
   }
 }
 
@@ -138,7 +156,9 @@ class FakeLocationService implements LocationService {
   Stream<LocationFix> get stream => _stream;
 
   @override
-  Future<void> start(AppConfig config) async {}
+  Future<LocationServiceStartResult> start(AppConfig config) async {
+    return const LocationServiceStartResult.started();
+  }
 
   @override
   Future<void> stop() async {}

@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 import 'geo/area_index.dart';
 import 'geo/geo_model.dart';
@@ -14,6 +13,7 @@ import 'io/log_entry.dart';
 import 'io/logger.dart';
 import 'platform/location_service.dart';
 import 'platform/notifier.dart';
+import 'platform/permission_coordinator.dart';
 import 'qr/geojson_qr_codec.dart';
 import 'state_machine/state.dart';
 import 'state_machine/state_machine.dart';
@@ -29,7 +29,10 @@ class AppController extends ChangeNotifier {
     required this.fileManager,
     required this.logger,
     required this.notifier,
-  });
+    PermissionCoordinator? permissionCoordinator,
+  }) : permissionCoordinator = permissionCoordinator ?? PermissionCoordinator();
+
+  final PermissionCoordinator permissionCoordinator;
 
   final StateMachine stateMachine;
   final LocationService locationService;
@@ -51,7 +54,12 @@ class AppController extends ChangeNotifier {
   String? _lastErrorMessage;
   String? _geoJsonFileName;
   String? _tempGeoJsonFilePath;
+  Timer? _alarmSnoozeTimer;
+  bool _isAlarmSnoozed = false;
   final List<AppLogEntry> _logs = <AppLogEntry>[];
+  MonitoringPermissionState _monitoringPermissionState =
+      const MonitoringPermissionState.unknown();
+  bool _pendingBackgroundDisclosurePrompt = false;
 
   StateSnapshot get snapshot => _snapshot;
   AppConfig? get config => _config;
@@ -61,12 +69,29 @@ class AppController extends ChangeNotifier {
   List<AppLogEntry> get logs => List.unmodifiable(_logs);
   bool get developerMode => _developerMode;
   bool get navigationEnabled => _navigationEnabled;
+  bool get isAlarmSnoozed => _isAlarmSnoozed;
+  bool get canSnoozeAlarm =>
+      _snapshot.status == LocationStateStatus.outer && !_isAlarmSnoozed;
+  MonitoringPermissionState get monitoringPermissionState =>
+      _monitoringPermissionState;
+  bool get canStartMonitoring =>
+      geoJsonLoaded && _monitoringPermissionState.canStartMonitoring;
+  bool get shouldShowPermissionSetupCard =>
+      !_monitoringPermissionState.canStartMonitoring ||
+      !_monitoringPermissionState.notificationGranted;
+  bool get shouldPromptBackgroundDisclosure =>
+      _pendingBackgroundDisclosurePrompt;
 
   /// アプリケーションを初期化します。
   ///
   /// 権限の要求、設定ファイルの読み込み、状態マシンの初期化を行います。
   Future<void> initialize() async {
-    await _requestPermissions();
+    await notifier.initialize();
+    _monitoringPermissionState =
+        await permissionCoordinator.requestInitialMonitoringPermissions();
+    _pendingBackgroundDisclosurePrompt =
+        _monitoringPermissionState.locationWhenInUseGranted &&
+            !_monitoringPermissionState.locationAlwaysGranted;
     _config ??= await fileManager.readConfig();
     stateMachine.updateConfig(_config!);
 
@@ -105,20 +130,48 @@ class AppController extends ChangeNotifier {
     if (_config == null || !geoJsonLoaded) {
       return;
     }
-    await locationService.start(_config!);
+    _monitoringPermissionState =
+        await permissionCoordinator.refreshMonitoringPermissionState();
+    if (!_monitoringPermissionState.canStartMonitoring) {
+      _lastErrorMessage = _monitoringPermissionState.monitoringBlockedMessage;
+      _logWarning('APP', _lastErrorMessage!);
+      notifyListeners();
+      return;
+    }
+
+    final result = await locationService.start(_config!);
+    if (result.status != LocationServiceStartStatus.started) {
+      _lastErrorMessage = result.message ?? '位置情報の監視を開始できませんでした。';
+      _logError('APP', _lastErrorMessage!);
+      notifyListeners();
+      return;
+    }
+
     await _subscription?.cancel();
     _subscription = locationService.stream.listen(_handleFix);
+    _lastErrorMessage = null;
     _logInfo('APP', 'Monitoring started.');
     notifyListeners();
   }
 
   /// 位置情報の監視を停止します。
   Future<void> stopMonitoring() async {
+    _clearAlarmSnooze();
     await _subscription?.cancel();
     _subscription = null;
     await locationService.stop();
     _logInfo('APP', 'Monitoring stopped.');
     notifyListeners();
+  }
+
+  Future<void> handleAppTermination() async {
+    _clearAlarmSnooze();
+    await _subscription?.cancel();
+    _subscription = null;
+    await locationService.stop();
+    await notifier.dismissOuterAlert();
+    await cleanupTempGeoJsonFile();
+    _logInfo('APP', 'Application terminated. Monitoring and alert stopped.');
   }
 
   /// 開発者モードの有効/無効を切り替えます。
@@ -238,7 +291,7 @@ class AppController extends ChangeNotifier {
   /// QRテキストからGeoJSONを復元し、一時ファイルとして保存してから
   /// 状態マシンとエリアインデックスを更新します。
   /// エラーが発生した場合は、エラーメッセージを設定します。
-  Future<void> reloadGeoJsonFromQr(String qrText) async {
+  Future<bool> reloadGeoJsonFromQr(String qrText) async {
     // 先に監視を停止（ファイル操作前に停止）
     await stopMonitoring();
 
@@ -248,7 +301,7 @@ class AppController extends ChangeNotifier {
         _lastErrorMessage = 'Invalid QR code format. Expected gjb1: scheme.';
         _logError('APP', _lastErrorMessage!);
         notifyListeners();
-        return;
+        return false;
       }
 
       // QRテキストからGeoJSONを復元
@@ -296,19 +349,23 @@ class AppController extends ChangeNotifier {
       _logInfo('APP', 'GeoJSON loaded from QR code.',
           timestamp: _snapshot.timestamp);
       notifyListeners();
+      return true;
     } on GeoJsonQrException catch (e) {
       _lastErrorMessage = 'Failed to decode QR code: ${e.message}';
       _logError('APP', _lastErrorMessage!);
       notifyListeners();
+      return false;
     } on FormatException catch (e) {
       _lastErrorMessage = 'Failed to parse GeoJSON: ${e.message}';
       _logError('APP', _lastErrorMessage!);
       notifyListeners();
+      return false;
     } catch (e) {
       _lastErrorMessage =
           'Unable to load GeoJSON from QR code: ${e.toString()}';
       _logError('APP', _lastErrorMessage!);
       notifyListeners();
+      return false;
     }
   }
 
@@ -385,6 +442,7 @@ class AppController extends ChangeNotifier {
       );
     } else if (previous == LocationStateStatus.outer &&
         _snapshot.status != LocationStateStatus.outer) {
+      _clearAlarmSnooze();
       await notifier.notifyRecover();
       _logInfo(
         'ALERT',
@@ -395,6 +453,47 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> snoozeAlarmForOneMinute() async {
+    if (!canSnoozeAlarm) {
+      return;
+    }
+
+    _clearAlarmSnooze();
+    _isAlarmSnoozed = true;
+    await notifier.stopAlarm();
+    _logInfo(
+      'ALERT',
+      'Alarm snoozed for 1 minute.${_buildNavHint(_snapshot)}',
+      timestamp: _snapshot.timestamp,
+    );
+    _alarmSnoozeTimer = Timer(const Duration(minutes: 1), () {
+      unawaited(_resumeAlarmAfterSnooze());
+    });
+    notifyListeners();
+  }
+
+  Future<void> _resumeAlarmAfterSnooze() async {
+    _alarmSnoozeTimer = null;
+    if (!_isAlarmSnoozed || _snapshot.status != LocationStateStatus.outer) {
+      return;
+    }
+
+    _isAlarmSnoozed = false;
+    await notifier.resumeAlarm();
+    _logWarning(
+      'ALERT',
+      'Alarm resumed after snooze.${_buildNavHint(_snapshot)}',
+      timestamp: DateTime.now(),
+    );
+    notifyListeners();
+  }
+
+  void _clearAlarmSnooze() {
+    _alarmSnoozeTimer?.cancel();
+    _alarmSnoozeTimer = null;
+    _isAlarmSnoozed = false;
+  }
+
   @visibleForTesting
   void debugSeed({
     AppConfig? config,
@@ -402,6 +501,8 @@ class AppController extends ChangeNotifier {
     AreaIndex? areaIndex,
     bool? developerMode,
     StateSnapshot? snapshot,
+    MonitoringPermissionState? permissionState,
+    bool? pendingBackgroundDisclosurePrompt,
   }) {
     if (config != null) {
       _config = config;
@@ -439,10 +540,19 @@ class AppController extends ChangeNotifier {
     if (snapshot != null) {
       _snapshot = snapshot;
     }
+
+    if (permissionState != null) {
+      _monitoringPermissionState = permissionState;
+    }
+
+    if (pendingBackgroundDisclosurePrompt != null) {
+      _pendingBackgroundDisclosurePrompt = pendingBackgroundDisclosurePrompt;
+    }
   }
 
   @override
   void dispose() {
+    _clearAlarmSnooze();
     _subscription?.cancel();
     // dispose()は同期メソッドなので、非同期処理は実行しない
     // アプリ終了時のクリーンアップはmain.dartのWidgetsBindingObserverで処理
@@ -456,11 +566,6 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  Future<void> _requestPermissions() async {
-    await _ensureNotificationPermission();
-    await _ensureLocationPermission();
-  }
-
   static Future<AppController> bootstrap() async {
     final fileManager = FileManager();
     final config = await fileManager.readConfig();
@@ -472,7 +577,6 @@ class AppController extends ChangeNotifier {
       plugin: notificationsPlugin,
       vibrationPlayer: RepeatingVibrationPlayer(),
     );
-    await notifier.initialize();
     final controller = AppController(
       stateMachine: stateMachine,
       locationService: locationService,
@@ -485,35 +589,41 @@ class AppController extends ChangeNotifier {
     return controller;
   }
 
-  Future<void> _ensureNotificationPermission() async {
-    final status = await Permission.notification.status;
-    if (status.isPermanentlyDenied) {
-      await openAppSettings();
-      return;
+  Future<void> refreshMonitoringPermissionState() async {
+    _monitoringPermissionState =
+        await permissionCoordinator.refreshMonitoringPermissionState();
+    if (_monitoringPermissionState.locationAlwaysGranted) {
+      _pendingBackgroundDisclosurePrompt = false;
     }
-    if (status.isDenied || status.isLimited) {
-      final result = await Permission.notification.request();
-      if (result.isPermanentlyDenied) {
-        await openAppSettings();
-      }
-    }
+    notifyListeners();
   }
 
-  Future<void> _ensureLocationPermission() async {
-    var status = await Permission.locationAlways.status;
-    if (status.isLimited) {
-      status = await Permission.locationAlways.request();
+  Future<void> requestNotificationPermission() async {
+    _monitoringPermissionState =
+        await permissionCoordinator.requestNotificationPermission();
+    notifyListeners();
+  }
+
+  Future<void> completeMonitoringPermissionSetup() async {
+    _monitoringPermissionState =
+        await permissionCoordinator.completeMonitoringSetup();
+    _pendingBackgroundDisclosurePrompt = false;
+    if (_monitoringPermissionState.canStartMonitoring) {
+      _lastErrorMessage = null;
+      _logInfo('APP', 'Monitoring permission setup completed.');
+    } else {
+      _lastErrorMessage = _monitoringPermissionState.monitoringBlockedMessage;
+      _logWarning('APP', _lastErrorMessage!);
     }
-    if (status.isDenied || status.isRestricted) {
-      final whenInUseStatus = await Permission.locationWhenInUse.request();
-      if (!whenInUseStatus.isGranted) {
-        return;
-      }
-      status = await Permission.locationAlways.request();
+    notifyListeners();
+  }
+
+  bool consumeBackgroundDisclosurePrompt() {
+    if (!_pendingBackgroundDisclosurePrompt) {
+      return false;
     }
-    if (status.isPermanentlyDenied || !status.isGranted) {
-      await openAppSettings();
-    }
+    _pendingBackgroundDisclosurePrompt = false;
+    return true;
   }
 
   void _log(
