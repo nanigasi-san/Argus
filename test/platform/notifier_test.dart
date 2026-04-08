@@ -107,5 +107,23 @@ void main() {
       expect(alarm.playCount, 1);
       expect(vibration.startCount, 1);
     });
+
+    test('dismissOuterAlert cancels notification and stops alarm', () async {
+      final notifications = FakeLocalNotificationsClient();
+      final alarm = FakeAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: notifications,
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+
+      await notifier.notifyOuter();
+      await notifier.dismissOuterAlert();
+
+      expect(notifications.cancelledIds, [1001]);
+      expect(alarm.stopCount, 1);
+      expect(vibration.stopCount, 1);
+    });
   });
 }

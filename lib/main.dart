@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -38,8 +40,8 @@ class _ArgusAppState extends State<ArgusApp> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       widget.controller.refreshMonitoringPermissionState();
     } else if (state == AppLifecycleState.detached) {
-      // アプリが完全終了した時に一時ファイルを削除
-      widget.controller.cleanupTempGeoJsonFile();
+      // タスク終了時は監視と警報を停止する
+      unawaited(widget.controller.handleAppTermination());
     }
   }
 

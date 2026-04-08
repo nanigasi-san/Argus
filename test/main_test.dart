@@ -12,13 +12,17 @@ import 'package:argus/state_machine/state_machine.dart';
 import 'dart:io';
 
 class MockLocationService extends LocationService {
+  bool stopped = false;
+
   @override
   Future<LocationServiceStartResult> start(AppConfig config) async {
     return const LocationServiceStartResult.started();
   }
 
   @override
-  Future<void> stop() async {}
+  Future<void> stop() async {
+    stopped = true;
+  }
 
   @override
   Stream<LocationFix> get stream => const Stream.empty();
@@ -42,6 +46,8 @@ class MockEventLogger extends EventLogger {
 }
 
 class MockNotifier extends Notifier {
+  int dismissOuterAlertCount = 0;
+
   @override
   Future<void> updateBadge(LocationStateStatus status) async {}
 
@@ -50,13 +56,17 @@ class MockNotifier extends Notifier {
 
   @override
   Future<void> notifyRecover() async {}
+
+  @override
+  Future<void> dismissOuterAlert() async {
+    dismissOuterAlertCount += 1;
+  }
 }
 
 void main() {
   testWidgets('Argus app displays correctly', (WidgetTester tester) async {
     final mockFileManager = MockFileManager();
     final config = await mockFileManager.readConfig();
-
     final controller = AppController(
       stateMachine: StateMachine(config: config),
       locationService: MockLocationService(),

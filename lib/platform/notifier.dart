@@ -102,9 +102,7 @@ class Notifier {
   }
 
   Future<void> notifyRecover() async {
-    await initialize();
-    await _notifications.cancel(_outerNotificationId);
-    await stopAlarm();
+    await dismissOuterAlert();
     debugPrint('Argus: re-entered safe zone');
   }
 
@@ -127,6 +125,12 @@ class Notifier {
       await _vibrationPlayer.start();
       _isAlarming = true;
     }
+  }
+
+  Future<void> dismissOuterAlert() async {
+    await initialize();
+    await _notifications.cancel(_outerNotificationId);
+    await stopAlarm();
   }
 }
 

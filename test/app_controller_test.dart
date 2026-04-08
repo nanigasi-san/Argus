@@ -271,6 +271,48 @@ void main() {
       expect(vibration.startCount, 1);
     });
 
+    test('handleAppTermination stops monitoring and active alarm', () async {
+      final config = _testConfig();
+      final stateMachine = StateMachine(config: config);
+      final locationService = FakeLocationService();
+      final fileManager = FakeFileManager(config: config);
+      final logger = FakeEventLogger();
+      final notifications = FakeLocalNotificationsClient();
+      final alarm = FakeAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: notifications,
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+      final controller = AppController(
+        stateMachine: stateMachine,
+        locationService: locationService,
+        fileManager: fileManager,
+        logger: logger,
+        notifier: notifier,
+      );
+
+      controller.debugSeed(
+        snapshot: StateSnapshot(
+          status: LocationStateStatus.outer,
+          timestamp: DateTime.utc(2024, 1, 1),
+          geoJsonLoaded: true,
+        ),
+      );
+
+      await notifier.notifyOuter();
+      expect(alarm.playCount, 1);
+
+      await controller.handleAppTermination();
+
+      expect(locationService.stopped, isTrue);
+      expect(notifications.cancelledIds, [1001]);
+      expect(alarm.stopCount, 1);
+      expect(vibration.stopCount, 1);
+      expect(controller.isAlarmSnoozed, isFalse);
+    });
+
     test('reloadGeoJsonFromQr loads GeoJSON from valid QR code', () async {
       await _ensureBrotliCli();
 

@@ -164,6 +164,16 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> handleAppTermination() async {
+    _clearAlarmSnooze();
+    await _subscription?.cancel();
+    _subscription = null;
+    await locationService.stop();
+    await notifier.dismissOuterAlert();
+    await cleanupTempGeoJsonFile();
+    _logInfo('APP', 'Application terminated. Monitoring and alert stopped.');
+  }
+
   /// 開発者モードの有効/無効を切り替えます。
   ///
   /// 開発者モードが有効な場合、UIに詳細な状態情報が表示されます。
