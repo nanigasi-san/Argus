@@ -95,12 +95,19 @@ class _BackgroundLocationDisclosurePageState
                               fontWeight: FontWeight.w700,
                             ),
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 12),
                           Text(
-                            'ARGUS は、ユーザーが監視を開始した後、GeoJSON で設定した競技エリアからの離脱を検知して通知するため、アプリを閉じている時や使用していない時でも位置情報（location）データを使用します。位置情報は端末内でのみ判定に使用され、開発者のサーバーには送信しません。',
+                            'ARGUS は geofence 監視機能のために location data を使用します。',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '監視開始後は、アプリが closed or not in use の状態でも位置情報を使って競技エリアからの離脱を検知し、通知します。',
                             style: theme.textTheme.bodyLarge,
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 12),
                           Container(
                             width: double.infinity,
                             padding: const EdgeInsets.all(16),
@@ -118,11 +125,14 @@ class _BackgroundLocationDisclosurePageState
                                   ),
                                 ),
                                 const SizedBox(height: 10),
-                                const Text('・監視中はアプリが非前面でも離脱を検知します。'),
+                                const Text(
+                                    '・位置情報は GeoJSON で設定した競技エリアの離脱検知に使います。'),
                                 const SizedBox(height: 6),
-                                const Text('・位置情報は GeoJSON の競技エリア判定にのみ使います。'),
+                                const Text(
+                                    '・位置情報は app is closed or not in use でも使われます。'),
                                 const SizedBox(height: 6),
-                                const Text('・位置情報データは開発者のサーバーへ送信しません。'),
+                                const Text(
+                                    '・位置情報データは端末内でのみ処理し、開発者のサーバーへ送信しません。'),
                               ],
                             ),
                           ),

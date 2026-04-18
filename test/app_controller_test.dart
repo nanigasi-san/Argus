@@ -24,6 +24,74 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('AppController', () {
+    test('initialize only refreshes permission state', () async {
+      final config = _testConfig();
+      final stateMachine = StateMachine(config: config);
+      final locationService = FakeLocationService();
+      final fileManager = FakeFileManager(config: config);
+      final logger = FakeEventLogger();
+      final notifier = Notifier(
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: FakeAlarmPlayer(),
+      );
+      final coordinator = _TrackingPermissionCoordinator(
+        refreshState: const MonitoringPermissionState(
+          notificationStatus: PermissionStatus.denied,
+          locationWhenInUseStatus: PermissionStatus.denied,
+          locationAlwaysStatus: PermissionStatus.denied,
+          locationServicesEnabled: true,
+        ),
+      );
+      final controller = AppController(
+        stateMachine: stateMachine,
+        locationService: locationService,
+        fileManager: fileManager,
+        logger: logger,
+        notifier: notifier,
+        permissionCoordinator: coordinator,
+      );
+
+      await controller.initialize();
+
+      expect(coordinator.refreshCount, 1);
+      expect(coordinator.completeSetupCount, 0);
+      expect(coordinator.requestNotificationCount, 0);
+      expect(controller.monitoringPermissionState.locationWhenInUseGranted,
+          isFalse);
+      expect(
+          controller.monitoringPermissionState.locationAlwaysGranted, isFalse);
+    });
+
+    test('completeMonitoringPermissionSetup updates permission state',
+        () async {
+      final config = _testConfig();
+      final stateMachine = StateMachine(config: config);
+      final locationService = FakeLocationService();
+      final fileManager = FakeFileManager(config: config);
+      final logger = FakeEventLogger();
+      final notifier = Notifier(
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: FakeAlarmPlayer(),
+      );
+      final coordinator = _TrackingPermissionCoordinator(
+        completeState: _grantedMonitoringPermissionState(),
+      );
+      final controller = AppController(
+        stateMachine: stateMachine,
+        locationService: locationService,
+        fileManager: fileManager,
+        logger: logger,
+        notifier: notifier,
+        permissionCoordinator: coordinator,
+      );
+
+      await controller.completeMonitoringPermissionSetup();
+
+      expect(coordinator.completeSetupCount, 1);
+      expect(controller.monitoringPermissionState.canStartMonitoring, isTrue);
+      expect(controller.lastErrorMessage, isNull);
+    });
+
     test('loading new GeoJSON resets to init and stops alarm', () async {
       final config = _testConfig();
       final stateMachine = StateMachine(config: config);
@@ -603,6 +671,43 @@ class _GrantedPermissionCoordinator extends PermissionCoordinator {
   @override
   Future<MonitoringPermissionState> refreshMonitoringPermissionState() async {
     return _grantedMonitoringPermissionState();
+  }
+}
+
+class _TrackingPermissionCoordinator extends PermissionCoordinator {
+  _TrackingPermissionCoordinator({
+    MonitoringPermissionState? refreshState,
+    MonitoringPermissionState? completeState,
+    MonitoringPermissionState? notificationState,
+  })  : _refreshState = refreshState ?? _grantedMonitoringPermissionState(),
+        _completeState = completeState ?? _grantedMonitoringPermissionState(),
+        _notificationState =
+            notificationState ?? _grantedMonitoringPermissionState();
+
+  final MonitoringPermissionState _refreshState;
+  final MonitoringPermissionState _completeState;
+  final MonitoringPermissionState _notificationState;
+
+  int refreshCount = 0;
+  int completeSetupCount = 0;
+  int requestNotificationCount = 0;
+
+  @override
+  Future<MonitoringPermissionState> refreshMonitoringPermissionState() async {
+    refreshCount += 1;
+    return _refreshState;
+  }
+
+  @override
+  Future<MonitoringPermissionState> completeMonitoringSetup() async {
+    completeSetupCount += 1;
+    return _completeState;
+  }
+
+  @override
+  Future<MonitoringPermissionState> requestNotificationPermission() async {
+    requestNotificationCount += 1;
+    return _notificationState;
   }
 }
 

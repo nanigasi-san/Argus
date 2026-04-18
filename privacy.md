@@ -9,7 +9,7 @@ ARGUS is a geofencing support app. This policy explains what data the app uses a
 ARGUS uses the following data only to provide its core features on the device:
 
 - Location data
-  The app uses foreground and background location to monitor whether the device remains inside the loaded competition area.
+  The app uses foreground and background location to monitor whether the device remains inside the loaded competition area, including when the app is closed or not in use after monitoring has started.
 - Camera access
   The app uses the camera to scan GeoJSON QR codes.
 - Local files selected by the user
@@ -20,6 +20,7 @@ ARGUS uses the following data only to provide its core features on the device:
 ## 2. How the data is handled
 
 - Location data is processed on the device to evaluate geofence status.
+  Background location is used only to keep geofence monitoring active after the user starts monitoring.
 - Camera input is processed on the device to decode QR codes.
 - Imported GeoJSON data is stored only on the device.
 - Temporary files created while restoring GeoJSON from QR codes are kept only on the device and can be deleted by the app.

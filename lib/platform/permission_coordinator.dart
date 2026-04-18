@@ -170,29 +170,6 @@ class PermissionCoordinator {
   final OpenLocationSettingsCallback _openLocationSettings;
   final LocationServicesEnabledCallback _locationServicesEnabled;
 
-  bool _requestedNotificationThisSession = false;
-  bool _requestedForegroundLocationThisSession = false;
-
-  Future<MonitoringPermissionState>
-      requestInitialMonitoringPermissions() async {
-    if (!_requestedNotificationThisSession) {
-      final status = await _gateway.notificationStatus();
-      if (!_isGranted(status)) {
-        await _gateway.requestNotification();
-      }
-      _requestedNotificationThisSession = true;
-    }
-
-    var foregroundStatus = await _gateway.locationWhenInUseStatus();
-    if (!_requestedForegroundLocationThisSession &&
-        !_isGranted(foregroundStatus)) {
-      foregroundStatus = await _gateway.requestLocationWhenInUse();
-      _requestedForegroundLocationThisSession = true;
-    }
-
-    return refreshMonitoringPermissionState();
-  }
-
   Future<MonitoringPermissionState> refreshMonitoringPermissionState() async {
     final locationServicesEnabled = await _locationServicesEnabled();
     final notificationStatus = await _gateway.notificationStatus();
@@ -209,7 +186,6 @@ class PermissionCoordinator {
 
   Future<MonitoringPermissionState> requestNotificationPermission() async {
     await _gateway.requestNotification();
-    _requestedNotificationThisSession = true;
     return refreshMonitoringPermissionState();
   }
 
@@ -222,7 +198,6 @@ class PermissionCoordinator {
 
     if (!state.locationWhenInUseGranted) {
       await _gateway.requestLocationWhenInUse();
-      _requestedForegroundLocationThisSession = true;
       state = await refreshMonitoringPermissionState();
       if (!state.locationWhenInUseGranted &&
           _needsManualSettings(state.locationWhenInUseStatus)) {

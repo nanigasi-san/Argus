@@ -202,9 +202,13 @@ void main() {
 
     expect(find.text('バックグラウンド位置情報の開示'), findsOneWidget);
     expect(find.text('同意して位置情報の設定へ進む'), findsOneWidget);
+    expect(
+      find.textContaining('ARGUS は geofence 監視機能のために location data を使用します。'),
+      findsOneWidget,
+    );
   });
 
-  testWidgets('shows disclosure automatically when pending on launch',
+  testWidgets('does not show disclosure automatically on launch',
       (tester) async {
     final controller = buildTestController(
       hasGeoJson: true,
@@ -214,11 +218,10 @@ void main() {
         locationAlwaysStatus: PermissionStatus.denied,
         locationServicesEnabled: true,
       ),
-      pendingBackgroundDisclosurePrompt: true,
     );
 
     await _pumpHome(tester, controller);
 
-    expect(find.text('バックグラウンド位置情報の開示'), findsOneWidget);
+    expect(find.text('バックグラウンド位置情報の開示'), findsNothing);
   });
 }
