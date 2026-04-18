@@ -3,10 +3,12 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
 import 'package:argus/app_controller.dart';
 import 'package:argus/platform/notifier.dart';
+import 'package:argus/platform/permission_coordinator.dart';
 import 'package:argus/state_machine/state_machine.dart';
 import 'package:argus/ui/settings_page.dart';
 
@@ -124,5 +126,28 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(controller.developerMode, isTrue);
+  });
+
+  testWidgets('permission card opens disclosure flow', (tester) async {
+    final controller = buildTestController(
+      hasGeoJson: true,
+      permissionState: const MonitoringPermissionState(
+        notificationStatus: PermissionStatus.granted,
+        locationWhenInUseStatus: PermissionStatus.granted,
+        locationAlwaysStatus: PermissionStatus.denied,
+        locationServicesEnabled: true,
+      ),
+    );
+
+    await _pumpSettings(tester, controller);
+
+    await tester.tap(find.text('監視開始前に設定する'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('バックグラウンド位置情報の開示'), findsOneWidget);
+    expect(
+      find.textContaining('closed or not in use'),
+      findsWidgets,
+    );
   });
 }

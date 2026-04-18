@@ -50,7 +50,7 @@ class MonitoringPermissionCard extends StatelessWidget {
                     children: [
                       Text(
                         needsMonitoringSetup
-                            ? 'バックグラウンド位置情報の設定が必要です'
+                            ? '監視開始前に位置情報の設定が必要です'
                             : '通知権限を許可すると警告を見逃しにくくなります',
                         style: theme.textTheme.titleMedium,
                       ),
@@ -96,7 +96,7 @@ class MonitoringPermissionCard extends StatelessWidget {
                   FilledButton.icon(
                     onPressed: onOpenMonitoringSetup,
                     icon: const Icon(Icons.gps_fixed),
-                    label: const Text('開示を確認して設定へ進む'),
+                    label: const Text('監視開始前に設定する'),
                   ),
                 if (needsNotifications)
                   OutlinedButton.icon(

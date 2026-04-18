@@ -4,13 +4,11 @@ import 'package:permission_handler/permission_handler.dart';
 
 void main() {
   group('PermissionCoordinator', () {
-    test('initial monitoring permissions stop before background location',
+    test('refreshMonitoringPermissionState does not request permissions',
         () async {
       final gateway = _FakePermissionGateway(
         notificationStatusValue: PermissionStatus.denied,
-        notificationRequestResult: PermissionStatus.granted,
         locationWhenInUseStatusValue: PermissionStatus.denied,
-        locationWhenInUseRequestResult: PermissionStatus.granted,
         locationAlwaysStatusValue: PermissionStatus.denied,
       );
 
@@ -21,21 +19,23 @@ void main() {
         locationServicesEnabled: () async => true,
       );
 
-      final state = await coordinator.requestInitialMonitoringPermissions();
+      final state = await coordinator.refreshMonitoringPermissionState();
 
-      expect(gateway.requestNotificationCount, 1);
-      expect(gateway.requestLocationWhenInUseCount, 1);
+      expect(gateway.requestNotificationCount, 0);
+      expect(gateway.requestLocationWhenInUseCount, 0);
       expect(gateway.requestLocationAlwaysCount, 0);
-      expect(state.locationWhenInUseGranted, isTrue);
+      expect(state.notificationGranted, isFalse);
+      expect(state.locationWhenInUseGranted, isFalse);
       expect(state.locationAlwaysGranted, isFalse);
     });
 
     test(
-        'completeMonitoringSetup requests background location after disclosure',
+        'completeMonitoringSetup requests foreground and background location after disclosure',
         () async {
       final gateway = _FakePermissionGateway(
         notificationStatusValue: PermissionStatus.granted,
-        locationWhenInUseStatusValue: PermissionStatus.granted,
+        locationWhenInUseStatusValue: PermissionStatus.denied,
+        locationWhenInUseRequestResult: PermissionStatus.granted,
         locationAlwaysStatusValue: PermissionStatus.denied,
         locationAlwaysRequestResult: PermissionStatus.granted,
       );
@@ -49,6 +49,7 @@ void main() {
 
       final state = await coordinator.completeMonitoringSetup();
 
+      expect(gateway.requestLocationWhenInUseCount, 1);
       expect(gateway.requestLocationAlwaysCount, 1);
       expect(state.canStartMonitoring, isTrue);
     });

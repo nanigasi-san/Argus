@@ -106,7 +106,6 @@ AppController buildTestController({
   StateSnapshot? snapshot,
   bool? developerMode,
   MonitoringPermissionState? permissionState,
-  bool pendingBackgroundDisclosurePrompt = false,
   PermissionCoordinator? permissionCoordinator,
 }) {
   final config = createTestConfig();
@@ -144,7 +143,6 @@ AppController buildTestController({
           locationAlwaysStatus: PermissionStatus.granted,
           locationServicesEnabled: true,
         ),
-    pendingBackgroundDisclosurePrompt: pendingBackgroundDisclosurePrompt,
   );
 
   return controller;

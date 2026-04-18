@@ -43,7 +43,6 @@ class HarnessBuilder {
     bool? developerMode,
     StateSnapshot? snapshot,
     MonitoringPermissionState? permissionState,
-    bool pendingBackgroundDisclosurePrompt = false,
     PermissionCoordinator? permissionCoordinator,
   }) {
     final config = createConfig();
@@ -82,7 +81,6 @@ class HarnessBuilder {
             locationAlwaysStatus: PermissionStatus.granted,
             locationServicesEnabled: true,
           ),
-      pendingBackgroundDisclosurePrompt: pendingBackgroundDisclosurePrompt,
     );
 
     return controller;
