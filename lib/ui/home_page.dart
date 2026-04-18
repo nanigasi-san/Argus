@@ -34,6 +34,10 @@ class HomePage extends StatelessWidget {
             );
             controller.clearError();
           }
+          if (context.mounted &&
+              controller.consumeBackgroundDisclosurePrompt()) {
+            showBackgroundLocationDisclosure(context);
+          }
         });
 
         final viewPadding = MediaQuery.viewPaddingOf(context);
