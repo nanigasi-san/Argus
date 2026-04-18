@@ -1,47 +1,63 @@
-import 'dart:async';
-
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:argus/io/config.dart';
 import 'package:argus/platform/location_service.dart';
 
-import '../support/test_doubles.dart' as test_doubles;
-
 void main() {
-  group('Location service test doubles', () {
-    test('LocationFix stores provided values', () {
-      final fix = LocationFix(
-        latitude: 35.0,
-        longitude: 139.0,
-        accuracyMeters: 4.5,
-        batteryPercent: 90,
-        timestamp: DateTime.utc(2024, 1, 1),
-      );
+  final config = AppConfig(
+    innerBufferM: 5,
+    leaveConfirmSamples: 1,
+    leaveConfirmSeconds: 1,
+    gpsAccuracyBadMeters: 10,
+    sampleIntervalS: const {'fast': 3},
+    sampleDistanceM: const {'fast': 5},
+    screenWakeOnLeave: false,
+    alarmVolume: 0.5,
+  );
 
-      expect(fix.latitude, 35.0);
-      expect(fix.longitude, 139.0);
-      expect(fix.accuracyMeters, 4.5);
-      expect(fix.batteryPercent, 90);
-    });
+  test('LocationFix stores provided values', () {
+    final timestamp = DateTime.utc(2024, 1, 1);
+    const accuracy = 4.2;
+    const battery = 0.75;
+    final fix = LocationFix(
+      latitude: 35.0,
+      longitude: 139.0,
+      timestamp: timestamp,
+      accuracyMeters: accuracy,
+      batteryPercent: battery,
+    );
 
-    test('FakeLocationService emits updates and tracks lifecycle', () async {
-      final service = test_doubles.FakeLocationService();
-      final config = test_doubles.createTestConfig();
-      final completer = Completer<LocationFix>();
-      service.stream.listen(completer.complete);
+    expect(fix.latitude, 35.0);
+    expect(fix.longitude, 139.0);
+    expect(fix.timestamp, timestamp);
+    expect(fix.accuracyMeters, accuracy);
+    expect(fix.batteryPercent, battery);
+  });
 
-      await service.start(config);
-      expect(service.hasStarted, isTrue);
+  test('LocationServiceStartResult.started has started status and no message',
+      () {
+    const result = LocationServiceStartResult.started();
 
-      final fix = LocationFix(
+    expect(result.status, LocationServiceStartStatus.started);
+    expect(result.message, isNull);
+  });
+
+  test('FakeLocationService emits updates and tracks lifecycle', () async {
+    final fixes = <LocationFix>[
+      LocationFix(
         latitude: 1,
         longitude: 2,
-        timestamp: DateTime.utc(2024, 1, 1, 0, 0, 1),
-      );
-      service.add(fix);
-      expect(await completer.future, fix);
+        timestamp: DateTime.utc(2024, 1, 1),
+      ),
+    ];
+    final service = FakeLocationService(Stream<LocationFix>.fromIterable(fixes));
 
-      await service.stop();
-      expect(service.hasStopped, isTrue);
-    });
+    final received = await service.stream.toList();
+    final result = await service.start(config);
+    await service.stop();
+
+    expect(received, hasLength(1));
+    expect(received.single.latitude, 1);
+    expect(result.status, LocationServiceStartStatus.started);
   });
 }

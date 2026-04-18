@@ -226,6 +226,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                       const SizedBox(height: 16),
                       ListTile(
+                        key: const Key('privacyPolicyTile'),
                         contentPadding: EdgeInsets.zero,
                         leading: const Icon(Icons.privacy_tip_outlined),
                         title: const Text('Privacy Policy'),
@@ -237,6 +238,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                       const SizedBox(height: 16),
                       TextFormField(
+                        key: const Key('innerBufferField'),
                         controller: _innerBufferController,
                         decoration: InputDecoration(
                           labelText: '反応距離 (Inner buffer)',
@@ -266,6 +268,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                       const SizedBox(height: 16),
                       TextFormField(
+                        key: const Key('pollingIntervalField'),
                         controller: _pollingIntervalController,
                         decoration: InputDecoration(
                           labelText: 'ポーリング間隔 (GPS間隔)',
@@ -291,6 +294,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                       const SizedBox(height: 16),
                       TextFormField(
+                        key: const Key('gpsAccuracyField'),
                         controller: _gpsAccuracyThresholdController,
                         decoration: InputDecoration(
                           labelText: 'GPS精度閾値',
@@ -320,6 +324,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                       const SizedBox(height: 16),
                       TextFormField(
+                        key: const Key('leaveConfirmSamplesField'),
                         controller: _leaveConfirmSamplesController,
                         decoration: InputDecoration(
                           labelText: '離脱確定サンプル数',
@@ -345,6 +350,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                       const SizedBox(height: 16),
                       TextFormField(
+                        key: const Key('leaveConfirmSecondsField'),
                         controller: _leaveConfirmSecondsController,
                         decoration: InputDecoration(
                           labelText: '離脱確定秒数',
@@ -397,6 +403,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                       const SizedBox(height: 24),
                       ElevatedButton(
+                        key: const Key('saveSettingsButton'),
                         onPressed: _isSaving ? null : _applySettings,
                         style: ElevatedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 16),
@@ -425,6 +432,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                       const SizedBox(height: 16),
                       ElevatedButton(
+                        key: const Key('exportLogsButton'),
                         onPressed: () async {
                           final export = await controller.logger.exportJsonl();
                           if (!context.mounted) return;

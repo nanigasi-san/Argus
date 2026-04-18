@@ -20,10 +20,22 @@ class QrScannerPage extends StatefulWidget {
     super.key,
     this.permissionCoordinator,
     this.scannerOverride,
+    this.scannerBuilder,
+    this.startScannerOverride,
+    this.stopScannerOverride,
+    this.disposeScannerOverride,
   });
 
   final PermissionCoordinator? permissionCoordinator;
   final Widget? scannerOverride;
+  final Widget Function(
+    BuildContext context,
+    MobileScannerController? controller,
+    Future<void> Function(BarcodeCapture capture) onDetect,
+  )? scannerBuilder;
+  final Future<void> Function()? startScannerOverride;
+  final Future<void> Function()? stopScannerOverride;
+  final VoidCallback? disposeScannerOverride;
 
   @override
   State<QrScannerPage> createState() => _QrScannerPageState();
@@ -61,6 +73,7 @@ class _QrScannerPageState extends State<QrScannerPage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    widget.disposeScannerOverride?.call();
     _controller?.dispose();
     super.dispose();
   }
@@ -84,7 +97,7 @@ class _QrScannerPageState extends State<QrScannerPage>
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
       case AppLifecycleState.detached:
-        unawaited(_controller?.stop() ?? Future<void>.value());
+        unawaited(_stopScanner());
     }
   }
 
@@ -137,7 +150,7 @@ class _QrScannerPageState extends State<QrScannerPage>
     _isStartingScanner = true;
 
     try {
-      await _controller!.start();
+      await _startScannerController();
       if (!mounted) {
         return;
       }
@@ -184,6 +197,16 @@ class _QrScannerPageState extends State<QrScannerPage>
   Future<void> _openSettingsAndRefresh() async {
     _awaitingSettingsReturn = true;
     await _permissionCoordinator.openSettings();
+  }
+
+  Future<void> _startScannerController() {
+    return widget.startScannerOverride?.call() ?? _controller!.start();
+  }
+
+  Future<void> _stopScanner() {
+    return widget.stopScannerOverride?.call() ??
+        _controller?.stop() ??
+        Future<void>.value();
   }
 
   Future<void> _handleBarcode(BarcodeCapture capture) async {
@@ -265,14 +288,16 @@ class _QrScannerPageState extends State<QrScannerPage>
       body: Stack(
         children: [
           Positioned.fill(
-            child: _usesRealScanner
-                ? (_controller == null
-                    ? const ColoredBox(color: Colors.black)
-                    : MobileScanner(
-                        controller: _controller!,
-                        onDetect: _handleBarcode,
-                      ))
-                : (widget.scannerOverride ?? const SizedBox.shrink()),
+            child: widget.scannerBuilder != null
+                ? widget.scannerBuilder!(context, _controller, _handleBarcode)
+                : _usesRealScanner
+                    ? (_controller == null
+                        ? const ColoredBox(color: Colors.black)
+                        : MobileScanner(
+                            controller: _controller!,
+                            onDetect: _handleBarcode,
+                          ))
+                    : (widget.scannerOverride ?? const SizedBox.shrink()),
           ),
           if (_scannerState != _QrScannerState.ready)
             Positioned.fill(

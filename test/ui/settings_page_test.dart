@@ -1,8 +1,6 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:argus/io/config.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
@@ -13,23 +11,8 @@ import 'package:argus/state_machine/state_machine.dart';
 import 'package:argus/ui/settings_page.dart';
 
 import '../support/notifier_fakes.dart';
+import '../support/platform_mocks.dart';
 import '../support/test_doubles.dart';
-
-Future<void> _mockDefaultConfigAsset() async {
-  TestWidgetsFlutterBinding.ensureInitialized();
-  final bytes = await File('assets/config/default_config.json').readAsBytes();
-  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-      .setMockMethodCallHandler(
-    const MethodChannel('flutter/assets'),
-    (MethodCall methodCall) async {
-      if (methodCall.method == 'loadString' &&
-          methodCall.arguments == 'assets/config/default_config.json') {
-        return String.fromCharCodes(bytes);
-      }
-      return null;
-    },
-  );
-}
 
 Future<void> _pumpSettings(
   WidgetTester tester,
@@ -67,9 +50,44 @@ Future<void> _pumpUntilVisible(
   fail('Widget not found after pumping.');
 }
 
+Future<void> _scrollUntilVisible(WidgetTester tester, Finder finder) async {
+  await tester.scrollUntilVisible(
+    finder,
+    300,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.pumpAndSettle();
+}
+
+Future<void> _enterFieldText(
+  WidgetTester tester,
+  Key key,
+  String value,
+) async {
+  final finder = find.byKey(key);
+  await _scrollUntilVisible(tester, finder);
+  await tester.tap(finder);
+  await tester.pump();
+  await tester.enterText(finder, value);
+  await tester.pump();
+}
+
+Future<void> _invokeSaveButton(WidgetTester tester) async {
+  final finder = find.byKey(const Key('saveSettingsButton'));
+  await _scrollUntilVisible(tester, finder);
+  final button = tester.widget<ElevatedButton>(finder);
+  expect(button.onPressed, isNotNull);
+  button.onPressed!.call();
+  await tester.pump();
+}
+
 void main() {
   setUpAll(() async {
-    await _mockDefaultConfigAsset();
+    await mockDefaultConfigAsset();
+  });
+
+  tearDown(() async {
+    await clearUrlLauncherMock();
   });
 
   testWidgets('shows progress indicator when config is null', (tester) async {
@@ -94,14 +112,11 @@ void main() {
     final controller = buildTestController(hasGeoJson: true);
     expect(controller.config, isNotNull);
 
-    await _pumpSettings(tester, controller, settle: false);
-    await _pumpUntilVisible(
-      tester,
-      find.text('反応距離 (Inner buffer)'),
-    );
+    await _pumpSettings(tester, controller);
 
     expect(find.text('反応距離 (Inner buffer)'), findsOneWidget);
     expect(find.text('Privacy Policy'), findsOneWidget);
+    expect(find.textContaining('デフォルト:'), findsWidgets);
   });
 
   testWidgets('toggling developer mode switch calls controller',
@@ -150,4 +165,98 @@ void main() {
       findsWidgets,
     );
   });
+
+  testWidgets('privacy policy failure shows snackbar', (tester) async {
+    await mockUrlLauncher(launchResult: false);
+    final controller = _RecordingSettingsController();
+
+    await _pumpSettings(tester, controller);
+
+    await tester.tap(find.byKey(const Key('privacyPolicyTile')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('プライバシーポリシーを開けませんでした。'), findsOneWidget);
+  });
+
+  testWidgets('export logs opens dialog and can close', (tester) async {
+    final controller = _RecordingSettingsController();
+
+    await _pumpSettings(tester, controller);
+    await _scrollUntilVisible(
+        tester, find.byKey(const Key('exportLogsButton')));
+    await tester.tap(find.byKey(const Key('exportLogsButton')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Export (JSONL)'), findsOneWidget);
+    expect(find.text('Close'), findsOneWidget);
+
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Export (JSONL)'), findsNothing);
+  });
+
+  testWidgets('invalid values block save and show validation errors',
+      (tester) async {
+    final controller = _RecordingSettingsController();
+
+    await _pumpSettings(tester, controller);
+    await _enterFieldText(
+      tester,
+      const Key('pollingIntervalField'),
+      '0',
+    );
+    await _enterFieldText(
+      tester,
+      const Key('leaveConfirmSamplesField'),
+      '0',
+    );
+    await _enterFieldText(
+      tester,
+      const Key('leaveConfirmSecondsField'),
+      '0',
+    );
+    await _invokeSaveButton(tester);
+    await tester.pumpAndSettle();
+
+    expect(find.text('1以上の整数を入力してください'), findsWidgets);
+    expect(controller.updateConfigCalls, 0);
+  });
+}
+
+class _RecordingSettingsController extends AppController {
+  _RecordingSettingsController()
+      : super(
+          stateMachine: StateMachine(config: createTestConfig()),
+          locationService: FakeLocationService(),
+          fileManager: FakeFileManager(config: createTestConfig()),
+          logger: FakeEventLogger(),
+          notifier: Notifier(
+            notificationsClient: FakeLocalNotificationsClient(),
+            alarmPlayer: FakeAlarmPlayer(),
+          ),
+        ) {
+    debugSeed(
+      config: createTestConfig(),
+      permissionState: const MonitoringPermissionState(
+        notificationStatus: PermissionStatus.granted,
+        locationWhenInUseStatus: PermissionStatus.granted,
+        locationAlwaysStatus: PermissionStatus.granted,
+        locationServicesEnabled: true,
+      ),
+    );
+  }
+  AppConfig? savedConfig;
+  Object? updateConfigError;
+  int updateConfigCalls = 0;
+
+  @override
+  Future<void> updateConfig(AppConfig newConfig) async {
+    updateConfigCalls += 1;
+    if (updateConfigError != null) {
+      throw updateConfigError!;
+    }
+    savedConfig = newConfig;
+    debugSeed(config: newConfig);
+  }
 }

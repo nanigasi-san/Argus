@@ -92,6 +92,211 @@ void main() {
       expect(controller.lastErrorMessage, isNull);
     });
 
+    test('startMonitoring sets blocked error when permission is missing',
+        () async {
+      final coordinator = _TrackingPermissionCoordinator(
+        refreshState: const MonitoringPermissionState(
+          notificationStatus: PermissionStatus.granted,
+          locationWhenInUseStatus: PermissionStatus.granted,
+          locationAlwaysStatus: PermissionStatus.denied,
+          locationServicesEnabled: true,
+        ),
+      );
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: FakeLocationService(),
+        fileManager: FakeFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+        permissionCoordinator: coordinator,
+      );
+
+      controller.debugSeed(
+        config: _testConfig(),
+        geoJson: _squareModel(),
+        permissionState: const MonitoringPermissionState(
+          notificationStatus: PermissionStatus.granted,
+          locationWhenInUseStatus: PermissionStatus.granted,
+          locationAlwaysStatus: PermissionStatus.denied,
+          locationServicesEnabled: true,
+        ),
+      );
+
+      await controller.startMonitoring();
+
+      expect(controller.lastErrorMessage, contains('常に許可'));
+      expect(controller.logs.first.level.name, 'warning');
+    });
+
+    test('clearError removes existing error and notifies listeners', () async {
+      final controller = _buildController();
+      controller.debugSeed(
+        snapshot: StateSnapshot(
+          status: LocationStateStatus.outer,
+          timestamp: DateTime.now(),
+          geoJsonLoaded: true,
+        ),
+      );
+      await controller.reloadGeoJsonFromQr('invalid:qr');
+
+      expect(controller.lastErrorMessage, isNotNull);
+
+      controller.clearError();
+
+      expect(controller.lastErrorMessage, isNull);
+    });
+
+    test('startMonitoring surfaces location service start errors', () async {
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: _FailingStartLocationService(),
+        fileManager: FakeFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+      );
+      controller.debugSeed(
+        config: _testConfig(),
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+
+      await controller.startMonitoring();
+
+      expect(controller.lastErrorMessage, 'boom');
+      expect(controller.logs.first.level.name, 'error');
+    });
+
+    test('updateConfig saves config and restarts active monitoring', () async {
+      final config = _testConfig();
+      final stateMachine = StateMachine(config: config);
+      final locationService = FakeLocationService();
+      final fileManager = _SavingFileManager(config: config);
+      final controller = AppController(
+        stateMachine: stateMachine,
+        locationService: locationService,
+        fileManager: fileManager,
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+      );
+      controller.debugSeed(
+        config: config,
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+      await controller.startMonitoring();
+
+      final updated = AppConfig(
+        innerBufferM: 12,
+        leaveConfirmSamples: 2,
+        leaveConfirmSeconds: 5,
+        gpsAccuracyBadMeters: 20,
+        sampleIntervalS: const {'fast': 2},
+        sampleDistanceM: const {'fast': 1},
+        screenWakeOnLeave: false,
+        alarmVolume: 0.8,
+      );
+
+      await controller.updateConfig(updated);
+
+      expect(fileManager.savedConfig, isNotNull);
+      expect(fileManager.savedConfig!.innerBufferM, 12);
+      expect(locationService.startCount, 2);
+      expect(locationService.stopCount, 1);
+      expect(controller.config!.alarmVolume, 0.8);
+    });
+
+    test('refreshMonitoringPermissionState updates permission state',
+        () async {
+      final coordinator = _TrackingPermissionCoordinator(
+        refreshState: const MonitoringPermissionState(
+          notificationStatus: PermissionStatus.granted,
+          locationWhenInUseStatus: PermissionStatus.granted,
+          locationAlwaysStatus: PermissionStatus.denied,
+          locationServicesEnabled: true,
+        ),
+      );
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: FakeLocationService(),
+        fileManager: FakeFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+        permissionCoordinator: coordinator,
+      );
+
+      await controller.refreshMonitoringPermissionState();
+
+      expect(controller.monitoringPermissionState.locationAlwaysGranted, isFalse);
+      expect(coordinator.refreshCount, 1);
+    });
+
+    test('requestNotificationPermission updates permission state', () async {
+      final coordinator = _TrackingPermissionCoordinator(
+        notificationState: const MonitoringPermissionState(
+          notificationStatus: PermissionStatus.granted,
+          locationWhenInUseStatus: PermissionStatus.granted,
+          locationAlwaysStatus: PermissionStatus.granted,
+          locationServicesEnabled: true,
+        ),
+      );
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: FakeLocationService(),
+        fileManager: FakeFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+        permissionCoordinator: coordinator,
+      );
+
+      await controller.requestNotificationPermission();
+
+      expect(coordinator.requestNotificationCount, 1);
+      expect(controller.monitoringPermissionState.notificationGranted, isTrue);
+    });
+
+    test('completeMonitoringPermissionSetup keeps blocked error when denied',
+        () async {
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: FakeLocationService(),
+        fileManager: FakeFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+        permissionCoordinator: _TrackingPermissionCoordinator(
+          completeState: const MonitoringPermissionState(
+            notificationStatus: PermissionStatus.granted,
+            locationWhenInUseStatus: PermissionStatus.granted,
+            locationAlwaysStatus: PermissionStatus.denied,
+            locationServicesEnabled: true,
+          ),
+        ),
+      );
+
+      await controller.completeMonitoringPermissionSetup();
+
+      expect(controller.lastErrorMessage, contains('常に許可'));
+    });
+
     test('loading new GeoJSON resets to init and stops alarm', () async {
       final config = _testConfig();
       final stateMachine = StateMachine(config: config);
@@ -464,6 +669,63 @@ void main() {
       expect(controller.geoJsonLoaded, isFalse);
     });
 
+    test('reloadGeoJsonFromPicker handles parse errors gracefully', () async {
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: FakeLocationService(),
+        fileManager: _InvalidGeoJsonFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+      );
+
+      await controller.reloadGeoJsonFromPicker();
+
+      expect(controller.lastErrorMessage, contains('Failed to parse GeoJSON'));
+    });
+
+    test('reloadGeoJsonFromPicker ignores user cancellation', () async {
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: FakeLocationService(),
+        fileManager: _ThrowingGeoJsonFileManager(
+          config: _testConfig(),
+          error: Exception('user cancel'),
+        ),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+      );
+
+      await controller.reloadGeoJsonFromPicker();
+
+      expect(controller.lastErrorMessage, isNull);
+    });
+
+    test('reloadGeoJsonFromPicker reports unexpected file errors', () async {
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: FakeLocationService(),
+        fileManager: _ThrowingGeoJsonFileManager(
+          config: _testConfig(),
+          error: Exception('disk failure'),
+        ),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+      );
+
+      await controller.reloadGeoJsonFromPicker();
+
+      expect(controller.lastErrorMessage, contains('Unable to open file'));
+    });
+
     test('reloadGeoJsonFromQr handles decode errors gracefully', () async {
       final config = _testConfig();
       final stateMachine = StateMachine(config: config);
@@ -737,6 +999,44 @@ class FakeFileManager extends FileManager {
   }
 }
 
+class _SavingFileManager extends FakeFileManager {
+  _SavingFileManager({required super.config});
+
+  AppConfig? savedConfig;
+
+  @override
+  Future<void> saveConfig(AppConfig config) async {
+    savedConfig = config;
+  }
+}
+
+class _InvalidGeoJsonFileManager extends FakeFileManager {
+  _InvalidGeoJsonFileManager({required super.config});
+
+  @override
+  Future<XFile?> pickGeoJsonFile() async {
+    return XFile.fromData(
+      utf8.encode('not-json'),
+      name: 'broken.geojson',
+      mimeType: 'application/geo+json',
+    );
+  }
+}
+
+class _ThrowingGeoJsonFileManager extends FakeFileManager {
+  _ThrowingGeoJsonFileManager({
+    required super.config,
+    required this.error,
+  });
+
+  final Object error;
+
+  @override
+  Future<XFile?> pickGeoJsonFile() async {
+    throw error;
+  }
+}
+
 class FakeEventLogger extends EventLogger {
   final List<StateSnapshot> stateChanges = <StateSnapshot>[];
 
@@ -760,6 +1060,8 @@ class FakeLocationService implements LocationService {
 
   bool started = false;
   bool stopped = false;
+  int startCount = 0;
+  int stopCount = 0;
 
   @override
   Stream<LocationFix> get stream => _controller.stream;
@@ -767,17 +1069,35 @@ class FakeLocationService implements LocationService {
   @override
   Future<LocationServiceStartResult> start(AppConfig config) async {
     started = true;
+    startCount += 1;
     return const LocationServiceStartResult.started();
   }
 
   @override
   Future<void> stop() async {
     stopped = true;
+    stopCount += 1;
   }
 
   void add(LocationFix fix) {
     _controller.add(fix);
   }
+}
+
+class _FailingStartLocationService implements LocationService {
+  @override
+  Stream<LocationFix> get stream => const Stream.empty();
+
+  @override
+  Future<LocationServiceStartResult> start(AppConfig config) async {
+    return const LocationServiceStartResult(
+      status: LocationServiceStartStatus.error,
+      message: 'boom',
+    );
+  }
+
+  @override
+  Future<void> stop() async {}
 }
 
 Future<void> _ensureBrotliCli() async {

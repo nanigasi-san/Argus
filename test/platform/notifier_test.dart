@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:argus/platform/notifier.dart';
+import 'package:argus/state_machine/state.dart';
 import '../support/notifier_fakes.dart';
 
 void main() {
@@ -124,6 +125,38 @@ void main() {
       expect(notifications.cancelledIds, [1001]);
       expect(alarm.stopCount, 1);
       expect(vibration.stopCount, 1);
+    });
+
+    test('initialize is idempotent and updates badge state', () async {
+      final notifications = FakeLocalNotificationsClient();
+      final notifier = Notifier(
+        notificationsClient: notifications,
+        alarmPlayer: FakeAlarmPlayer(),
+        vibrationPlayer: FakeVibrationPlayer(),
+      );
+
+      await notifier.initialize();
+      await notifier.initialize();
+      await notifier.updateBadge(LocationStateStatus.near);
+
+      expect(notifications.initializeCount, 1);
+      expect(notifications.ensureChannelCount, 1);
+      expect(notifier.badgeState.value, LocationStateStatus.near);
+    });
+
+    test('stopAlarm is a no-op when alarm is not active', () async {
+      final alarm = FakeAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+
+      await notifier.stopAlarm();
+
+      expect(alarm.stopCount, 0);
+      expect(vibration.stopCount, 0);
     });
   });
 }

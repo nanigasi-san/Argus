@@ -2,14 +2,14 @@ name: CI
 
 on:
   push:
-    branches: [ '*' ]
+    branches: ["main"]
   pull_request:
-    branches: [ '*' ]
+    branches: ["*"]
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -17,7 +17,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          channel: "stable"
 
       - name: Verify Flutter installation
         run: flutter --version
@@ -34,17 +34,17 @@ jobs:
           if [ -f coverage/lcov.info ]; then
             echo "## Coverage Report" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            
+
             # Parse and display coverage using Python script (more accurate)
             if [ -f scripts/parse_coverage.py ]; then
               # Run Python script and capture output
               python_output=$(python3 scripts/parse_coverage.py 2>&1)
-              
+
               # Extract values from Python output (format: "Overall Coverage: 51.5%")
               overall_coverage=$(echo "$python_output" | grep "Overall Coverage:" | sed 's/Overall Coverage: //')
               total_lines=$(echo "$python_output" | grep "Total Lines:" | sed 's/Total Lines: //')
               hit_lines=$(echo "$python_output" | grep "Hit Lines:" | sed 's/Hit Lines: //')
-              
+
               # Write to GitHub step summary
               echo "### Overall Coverage: ${overall_coverage}" >> $GITHUB_STEP_SUMMARY
               echo "- **Total Lines**: ${total_lines}" >> $GITHUB_STEP_SUMMARY
@@ -54,7 +54,7 @@ jobs:
               echo '```' >> $GITHUB_STEP_SUMMARY
               echo "$python_output" | grep -A 1000 "File Coverage:" >> $GITHUB_STEP_SUMMARY
               echo '```' >> $GITHUB_STEP_SUMMARY
-              
+
               # Display in console (use Python script output directly)
               echo "=== Coverage Summary ==="
               echo "$python_output"
