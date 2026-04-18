@@ -253,13 +253,15 @@ class AppController extends ChangeNotifier {
       final tempFileName = await _saveTempGeoJson(restoredGeoJson);
       final model = GeoModel.fromGeoJson(restoredGeoJson);
 
-      await _loadGeoJsonModel(model, tempFileName, 'GeoJSON loaded from QR code');
+      await _loadGeoJsonModel(
+          model, tempFileName, 'GeoJSON loaded from QR code');
     } on GeoJsonQrException catch (e) {
       _handleGeoJsonError('Failed to decode QR code: ${e.message}');
     } on FormatException catch (e) {
       _handleGeoJsonError('Failed to parse GeoJSON: ${e.message}');
     } catch (e) {
-      _handleGeoJsonError('Unable to load GeoJSON from QR code: ${e.toString()}');
+      _handleGeoJsonError(
+          'Unable to load GeoJSON from QR code: ${e.toString()}');
     }
   }
 
@@ -295,7 +297,8 @@ class AppController extends ChangeNotifier {
         final file = File(_tempGeoJsonFilePath!);
         if (await file.exists()) {
           await file.delete();
-          _logInfo('APP', 'Temporary GeoJSON file deleted: $_tempGeoJsonFilePath');
+          _logInfo(
+              'APP', 'Temporary GeoJSON file deleted: $_tempGeoJsonFilePath');
         }
       } catch (e) {
         _logError('APP', 'Failed to delete temporary GeoJSON file: $e');
@@ -482,13 +485,16 @@ class AppController extends ChangeNotifier {
 
   Future<void> _ensureNotificationPermission() async {
     final status = await Permission.notification.status;
-    if (status.isPermanentlyDenied) {
+    if (status.isGranted || status.isProvisional) {
+      return;
+    }
+    if (status.isPermanentlyDenied || status.isRestricted) {
       await openAppSettings();
       return;
     }
     if (status.isDenied || status.isLimited) {
       final result = await Permission.notification.request();
-      if (result.isPermanentlyDenied) {
+      if (result.isPermanentlyDenied || result.isRestricted) {
         await openAppSettings();
       }
     }
@@ -496,17 +502,29 @@ class AppController extends ChangeNotifier {
 
   Future<void> _ensureLocationPermission() async {
     var status = await Permission.locationAlways.status;
-    if (status.isLimited) {
-      status = await Permission.locationAlways.request();
+    if (status.isGranted) {
+      return;
     }
-    if (status.isDenied || status.isRestricted) {
-      final whenInUseStatus = await Permission.locationWhenInUse.request();
+    if (status.isPermanentlyDenied || status.isRestricted) {
+      await openAppSettings();
+      return;
+    }
+
+    var whenInUseStatus = await Permission.locationWhenInUse.status;
+    if (!whenInUseStatus.isGranted) {
+      whenInUseStatus = await Permission.locationWhenInUse.request();
       if (!whenInUseStatus.isGranted) {
+        if (whenInUseStatus.isPermanentlyDenied ||
+            whenInUseStatus.isRestricted) {
+          await openAppSettings();
+        }
         return;
       }
-      status = await Permission.locationAlways.request();
     }
-    if (status.isPermanentlyDenied || !status.isGranted) {
+
+    status = await Permission.locationAlways.request();
+    if (!status.isGranted &&
+        (status.isPermanentlyDenied || status.isRestricted)) {
       await openAppSettings();
     }
   }

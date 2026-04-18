@@ -77,7 +77,9 @@ class GeolocatorLocationService implements LocationService {
         accuracy: LocationAccuracy.best,
         distanceFilter: distanceFilter,
         pauseLocationUpdatesAutomatically: false,
+        activityType: ActivityType.fitness,
         showBackgroundLocationIndicator: true,
+        allowBackgroundLocationUpdates: true,
       );
     } else {
       settings = const LocationSettings(

@@ -1,0 +1,94 @@
+workflows:
+  ios-testflight:
+    name: iOS TestFlight
+    max_build_duration: 120
+    integrations:
+      app_store_connect: argus-app-store
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.argus
+      vars:
+        BUNDLE_ID: "com.argus"
+        APP_STORE_APPLE_ID: "REPLACE_WITH_APPLE_ID"
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Validate App Store metadata
+        script: |
+          if [ "$APP_STORE_APPLE_ID" = "REPLACE_WITH_APPLE_ID" ]; then
+            echo "Set APP_STORE_APPLE_ID in Codemagic before running iOS workflows."
+            exit 1
+          fi
+      - name: Install Flutter dependencies
+        script: flutter pub get
+      - name: Run static analysis
+        script: flutter analyze
+      - name: Run tests
+        script: flutter test
+      - name: Install CocoaPods dependencies
+        script: |
+          cd ios
+          pod install
+      - name: Apply provisioning profiles
+        script: xcode-project use-profiles
+      - name: Build signed IPA
+        script: |
+          BUILD_NUMBER=$(($(app-store-connect get-latest-app-store-build-number "$APP_STORE_APPLE_ID") + 1))
+          flutter build ipa --release --build-number="$BUILD_NUMBER"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - build/ios/archive/*.xcarchive
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+
+  ios-app-store-release:
+    name: iOS App Store Release
+    max_build_duration: 120
+    integrations:
+      app_store_connect: argus-app-store
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.argus
+      vars:
+        BUNDLE_ID: "com.argus"
+        APP_STORE_APPLE_ID: "REPLACE_WITH_APPLE_ID"
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Validate App Store metadata
+        script: |
+          if [ "$APP_STORE_APPLE_ID" = "REPLACE_WITH_APPLE_ID" ]; then
+            echo "Set APP_STORE_APPLE_ID in Codemagic before running iOS workflows."
+            exit 1
+          fi
+      - name: Install Flutter dependencies
+        script: flutter pub get
+      - name: Run static analysis
+        script: flutter analyze
+      - name: Run tests
+        script: flutter test
+      - name: Install CocoaPods dependencies
+        script: |
+          cd ios
+          pod install
+      - name: Apply provisioning profiles
+        script: xcode-project use-profiles
+      - name: Build signed IPA
+        script: |
+          BUILD_NUMBER=$(($(app-store-connect get-latest-app-store-build-number "$APP_STORE_APPLE_ID") + 1))
+          flutter build ipa --release --build-number="$BUILD_NUMBER"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - build/ios/archive/*.xcarchive
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        submit_to_app_store: true
+        cancel_previous_submissions: true

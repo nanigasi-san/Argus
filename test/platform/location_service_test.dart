@@ -51,19 +51,23 @@ void main() {
       // Note: This test verifies the structure of iOS settings.
       // Actual platform detection happens at runtime, so we test the settings
       // structure directly.
-      
+
       // Create AppleSettings directly to verify iOS configuration
       final appleSettings = AppleSettings(
         accuracy: LocationAccuracy.best,
         distanceFilter: 0,
         pauseLocationUpdatesAutomatically: false,
+        activityType: ActivityType.fitness,
         showBackgroundLocationIndicator: true,
+        allowBackgroundLocationUpdates: true,
       );
 
       expect(appleSettings.accuracy, LocationAccuracy.best);
       expect(appleSettings.distanceFilter, 0);
       expect(appleSettings.pauseLocationUpdatesAutomatically, false);
+      expect(appleSettings.activityType, ActivityType.fitness);
       expect(appleSettings.showBackgroundLocationIndicator, true);
+      expect(appleSettings.allowBackgroundLocationUpdates, true);
     });
 
     test('creates AndroidSettings for Android platform', () {

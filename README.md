@@ -50,6 +50,12 @@ flutter build ios --release
 
 これらの権限は`ios/Runner/Info.plist`に設定されており、初回起動時にユーザーに許可を求めます。
 
+## Codemagic
+
+- iOS CI/CD は `codemagic.yaml` 前提です。
+- TestFlight 向けと App Store 提出向けで workflow を分けています。
+- セットアップ手順は `docs/ios_codemagic.md` を参照してください。
+
 ## テストカバレッジ
 
 ```bash

@@ -13,16 +13,22 @@ class Notifier {
     LocalNotificationsClient? notificationsClient,
     AlarmPlayer? alarmPlayer,
     VibrationPlayer? vibrationPlayer,
+    TargetPlatform? targetPlatform,
+    bool enableCriticalAlerts = false,
   })  : _notifications = notificationsClient ??
             FlutterLocalNotificationsClient(
               plugin ?? FlutterLocalNotificationsPlugin(),
             ),
         _alarmPlayer = alarmPlayer ?? const RingtoneAlarmPlayer(),
-        _vibrationPlayer = vibrationPlayer ?? RepeatingVibrationPlayer();
+        _vibrationPlayer = vibrationPlayer ?? RepeatingVibrationPlayer(),
+        _targetPlatform = targetPlatform ?? defaultTargetPlatform,
+        _enableCriticalAlerts = enableCriticalAlerts;
 
   final LocalNotificationsClient _notifications;
   final AlarmPlayer _alarmPlayer;
   final VibrationPlayer _vibrationPlayer;
+  final TargetPlatform _targetPlatform;
+  final bool _enableCriticalAlerts;
 
   final ValueNotifier<LocationStateStatus> badgeState =
       ValueNotifier<LocationStateStatus>(
@@ -44,33 +50,34 @@ class Notifier {
 
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosInit = DarwinInitializationSettings(
-      requestAlertPermission: true,
-      requestBadgePermission: true,
-      requestSoundPermission: true,
-      requestCriticalPermission: true,
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
+      requestCriticalPermission: false,
+      defaultPresentAlert: true,
+      defaultPresentBadge: true,
+      defaultPresentSound: true,
+      defaultPresentBanner: true,
+      defaultPresentList: true,
     );
     const initSettings = InitializationSettings(
       android: androidInit,
       iOS: iosInit,
     );
     await _notifications.initialize(initSettings);
-    await _notifications.requestPermissions(
-      alert: true,
-      badge: true,
-      sound: true,
-      critical: true,
-    );
-    await _notifications.ensureAndroidChannel(
-      const AndroidNotificationChannel(
-        _channelId,
-        _channelName,
-        description: _channelDescription,
-        importance: Importance.max,
-        playSound: true,
-        enableVibration: true,
-        audioAttributesUsage: AudioAttributesUsage.alarm,
-      ),
-    );
+    if (_targetPlatform == TargetPlatform.android) {
+      await _notifications.ensureAndroidChannel(
+        const AndroidNotificationChannel(
+          _channelId,
+          _channelName,
+          description: _channelDescription,
+          importance: Importance.max,
+          playSound: true,
+          enableVibration: true,
+          audioAttributesUsage: AudioAttributesUsage.alarm,
+        ),
+      );
+    }
 
     _initialized = true;
   }
@@ -86,14 +93,18 @@ class Notifier {
       playSound: true,
       enableVibration: true,
       category: AndroidNotificationCategory.alarm,
-      fullScreenIntent: true,
       audioAttributesUsage: AudioAttributesUsage.alarm,
       ticker: 'Argus警告',
     );
-    const iosDetails = DarwinNotificationDetails(
+    final iosDetails = DarwinNotificationDetails(
       presentAlert: true,
+      presentBadge: true,
       presentSound: true,
-      interruptionLevel: InterruptionLevel.critical,
+      presentBanner: true,
+      presentList: true,
+      interruptionLevel: _enableCriticalAlerts
+          ? InterruptionLevel.critical
+          : InterruptionLevel.timeSensitive,
     );
     final notificationDetails = NotificationDetails(
       android: androidDetails,
@@ -134,12 +145,6 @@ class Notifier {
 
 abstract class LocalNotificationsClient {
   Future<void> initialize(InitializationSettings settings);
-  Future<void> requestPermissions({
-    bool alert = true,
-    bool badge = true,
-    bool sound = true,
-    bool critical = true,
-  });
   Future<void> ensureAndroidChannel(AndroidNotificationChannel channel);
   Future<void> show(
     int id,
@@ -158,33 +163,6 @@ class FlutterLocalNotificationsClient implements LocalNotificationsClient {
   @override
   Future<void> initialize(InitializationSettings settings) async {
     await _plugin.initialize(settings);
-  }
-
-  @override
-  Future<void> requestPermissions({
-    bool alert = true,
-    bool badge = true,
-    bool sound = true,
-    bool critical = true,
-  }) async {
-    final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
-    if (androidPlugin != null) {
-      try {
-        await (androidPlugin as dynamic).requestPermission();
-      } catch (_) {
-        // Older Android plugin versions might not expose requestPermission.
-      }
-    }
-
-    final iosPlugin = _plugin.resolvePlatformSpecificImplementation<
-        IOSFlutterLocalNotificationsPlugin>();
-    await iosPlugin?.requestPermissions(
-      alert: alert,
-      badge: badge,
-      sound: sound,
-      critical: critical,
-    );
   }
 
   @override

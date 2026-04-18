@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:argus/platform/notifier.dart';
 import '../support/notifier_fakes.dart';
 
@@ -33,10 +35,12 @@ void main() {
       expect(vibration.startCount, 2);
     });
 
-    test('initializes with iOS settings', () async {
+    test('initializes with iOS settings without requesting permissions',
+        () async {
       final notifications = FakeLocalNotificationsClient();
       final notifier = Notifier(
         notificationsClient: notifications,
+        targetPlatform: TargetPlatform.iOS,
       );
 
       await notifier.initialize();
@@ -44,11 +48,65 @@ void main() {
       expect(notifications.initialized, isTrue);
       expect(notifications.lastInitSettings, isNotNull);
       expect(notifications.lastInitSettings!.iOS, isNotNull);
-      expect(notifications.lastInitSettings!.iOS!.requestAlertPermission, isTrue);
-      expect(notifications.lastInitSettings!.iOS!.requestBadgePermission, isTrue);
-      expect(notifications.lastInitSettings!.iOS!.requestSoundPermission, isTrue);
-      expect(notifications.lastInitSettings!.iOS!.requestCriticalPermission, isTrue);
-      expect(notifications.requestedPermissions, isTrue);
+      expect(
+        notifications.lastInitSettings!.iOS!.requestAlertPermission,
+        isFalse,
+      );
+      expect(
+        notifications.lastInitSettings!.iOS!.requestBadgePermission,
+        isFalse,
+      );
+      expect(
+        notifications.lastInitSettings!.iOS!.requestSoundPermission,
+        isFalse,
+      );
+      expect(
+        notifications.lastInitSettings!.iOS!.requestCriticalPermission,
+        isFalse,
+      );
+      expect(notifications.lastChannel, isNull);
+    });
+
+    test('creates Android channel only on Android', () async {
+      final notifications = FakeLocalNotificationsClient();
+      final notifier = Notifier(
+        notificationsClient: notifications,
+        targetPlatform: TargetPlatform.android,
+      );
+
+      await notifier.initialize();
+
+      expect(notifications.lastChannel, isNotNull);
+    });
+
+    test('uses time-sensitive alerts on iOS unless critical alerts are enabled',
+        () async {
+      final notifications = FakeLocalNotificationsClient();
+      final notifier = Notifier(
+        notificationsClient: notifications,
+        targetPlatform: TargetPlatform.iOS,
+      );
+
+      await notifier.notifyOuter();
+
+      expect(
+        notifications.lastNotificationDetails?.iOS?.interruptionLevel,
+        InterruptionLevel.timeSensitive,
+      );
+
+      final criticalNotifications = FakeLocalNotificationsClient();
+      final criticalNotifier = Notifier(
+        notificationsClient: criticalNotifications,
+        targetPlatform: TargetPlatform.iOS,
+        enableCriticalAlerts: true,
+      );
+
+      await criticalNotifier.notifyOuter();
+
+      expect(
+        criticalNotifications.lastNotificationDetails?.iOS?.interruptionLevel,
+        InterruptionLevel.critical,
+      );
     });
   });
 }
