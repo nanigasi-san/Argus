@@ -6,12 +6,15 @@ class FakeLocalNotificationsClient implements LocalNotificationsClient {
   final List<int> shownIds = <int>[];
   final List<int> cancelledIds = <int>[];
   bool initialized = false;
+  int initializeCount = 0;
   AndroidNotificationChannel? lastChannel;
+  int ensureChannelCount = 0;
   bool requestedPermissions = false;
 
   @override
   Future<void> initialize(InitializationSettings settings) async {
     initialized = true;
+    initializeCount += 1;
   }
 
   Future<void> requestPermissions({
@@ -26,6 +29,7 @@ class FakeLocalNotificationsClient implements LocalNotificationsClient {
   @override
   Future<void> ensureAndroidChannel(AndroidNotificationChannel channel) async {
     lastChannel = channel;
+    ensureChannelCount += 1;
   }
 
   @override

@@ -108,6 +108,140 @@ void main() {
       throwsA(isA<DecodeFailedException>()),
     );
   });
+
+  test('bundle getters and exception toString expose metadata', () {
+    final bundle = GeoJsonQrBundle(
+      qrTexts: const ['a', 'b'],
+      pngImages: const [],
+      minimizedGeoJson: '{}',
+      hashHex: null,
+      info: const GeoJsonInfo(type: 'FeatureCollection', featureCount: 0),
+    );
+
+    final validation = GeoJsonValidationException('bad json');
+    final compress = CompressFailedException('compress failed', 'cli');
+    final decompress = DecompressFailedException('decompress failed');
+    final payload = PayloadTooLargeException('too large');
+    final qr = QrGenerationException('render failed');
+
+    expect(bundle.chunkCount, 2);
+    expect(bundle.isSplit, isTrue);
+    expect(validation.toString(), contains('E_INVALID_GEOJSON'));
+    expect(compress.toString(), contains('cli'));
+    expect(decompress.code, 'E_DECOMPRESS_FAILED');
+    expect(payload.code, 'E_PAYLOAD_TOO_LARGE');
+    expect(qr.code, 'E_QR_GENERATION');
+  });
+
+  test('encode without hash omits hash suffix', () async {
+    final bundle = await encodeGeoJson(
+      GeoJsonQrEncodeInput(
+        geoJson: sampleGeoJson,
+        enableHash: false,
+        generatePng: false,
+      ),
+    );
+
+    expect(bundle.hashHex, isNull);
+    expect(bundle.chunkCount, 1);
+    expect(bundle.qrTexts.single, startsWith('gjb1:'));
+    expect(bundle.qrTexts.single.contains('#'), isFalse);
+  });
+
+  test('decode rejects empty input and empty gjb1 payload', () async {
+    await expectLater(
+      decodeGeoJson(const GeoJsonQrDecodeInput(qrTexts: [])),
+      throwsA(isA<UnsupportedSchemeException>()),
+    );
+    await expectLater(
+      decodeGeoJson(const GeoJsonQrDecodeInput(qrTexts: ['gjb1:'])),
+      throwsA(isA<DecodeFailedException>()),
+    );
+  });
+
+  test('minify and validate reject malformed GeoJSON structures', () {
+    expect(
+      () => minifyGeoJson('{invalid'),
+      throwsA(isA<GeoJsonValidationException>()),
+    );
+    expect(
+      () => validateGeoJsonStructure(const ['not-an-object']),
+      throwsA(isA<GeoJsonValidationException>()),
+    );
+    expect(
+      () => validateGeoJsonStructure(const {'features': []}),
+      throwsA(isA<GeoJsonValidationException>()),
+    );
+    expect(
+      () => validateGeoJsonStructure(const {'type': 'Circle'}),
+      throwsA(isA<GeoJsonValidationException>()),
+    );
+    expect(
+      () => validateGeoJsonStructure(
+        const {'type': 'FeatureCollection', 'features': 'oops'},
+      ),
+      throwsA(isA<GeoJsonValidationException>()),
+    );
+  });
+
+  test('buildGjB1pTexts rejects undersized limits', () {
+    expect(
+      () => buildGjB1pTexts('payload', maxLength: 12),
+      throwsA(isA<PayloadTooLargeException>()),
+    );
+    expect(
+      () => buildGjB1pTexts('x' * 1000, maxLength: 13),
+      throwsA(isA<PayloadTooLargeException>()),
+    );
+  });
+
+  test('decode rejects malformed gjb1p metadata and malformed hash suffix',
+      () async {
+    await expectLater(
+      decodeGeoJson(const GeoJsonQrDecodeInput(qrTexts: ['gjb1p:abc'])),
+      throwsA(isA<UnsupportedSchemeException>()),
+    );
+    await expectLater(
+      decodeGeoJson(
+        const GeoJsonQrDecodeInput(
+          qrTexts: ['gjb1p:0/2:a', 'gjb1p:2/2:b'],
+        ),
+      ),
+      throwsA(isA<ChunkMismatchException>()),
+    );
+    await expectLater(
+      decodeGeoJson(
+        const GeoJsonQrDecodeInput(
+          qrTexts: ['gjb1p:1/2:a', 'gjb1p:2/3:b'],
+        ),
+      ),
+      throwsA(isA<ChunkMismatchException>()),
+    );
+    await expectLater(
+      decodeGeoJson(
+        const GeoJsonQrDecodeInput(
+          qrTexts: ['gjb1p:1/2:a', 'gjb1p:1/2:b'],
+        ),
+      ),
+      throwsA(isA<ChunkMismatchException>()),
+    );
+    await expectLater(
+      decodeGeoJson(
+        const GeoJsonQrDecodeInput(qrTexts: ['gjb1:payload#xyz']),
+      ),
+      throwsA(isA<DecodeFailedException>()),
+    );
+  });
+
+  test('generateQrPng supports high ECC and rejects oversized payloads', () {
+    final png = generateQrPng('hello', QrErrorCorrectionLevel.high);
+
+    expect(png, isNotEmpty);
+    expect(
+      () => generateQrPng('x' * 5000, QrErrorCorrectionLevel.high),
+      throwsA(isA<PayloadTooLargeException>()),
+    );
+  });
 }
 
 Future<void> _ensureBrotliCli() async {

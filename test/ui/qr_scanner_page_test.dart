@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:mobile_scanner/src/enums/mobile_scanner_error_code.dart';
 import 'package:provider/provider.dart';
 
 import 'package:argus/app_controller.dart';
@@ -135,6 +137,400 @@ void main() {
       expect(find.textContaining('カメラ権限'), findsOneWidget);
       expect(find.text('再試行'), findsOneWidget);
     });
+
+    testWidgets('shows settings button when camera requires manual settings',
+        (WidgetTester tester) async {
+      final controller = _buildController();
+      final coordinator = _SequenceCameraPermissionCoordinator(
+        states: const [
+          CameraPermissionState(status: PermissionStatus.permanentlyDenied),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppController>.value(
+            value: controller,
+            child: QrScannerPage(
+              permissionCoordinator: coordinator,
+              scannerOverride: const ColoredBox(color: Colors.black),
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('アプリ設定を開く'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('アプリ設定を開く'), findsOneWidget);
+      expect(coordinator.openSettingsCount, 1);
+    });
+
+    testWidgets('retry after permission grant hides error panel',
+        (WidgetTester tester) async {
+      final controller = _buildController();
+      final coordinator = _SequenceCameraPermissionCoordinator(
+        states: const [
+          CameraPermissionState(status: PermissionStatus.denied),
+          CameraPermissionState(status: PermissionStatus.granted),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppController>.value(
+            value: controller,
+            child: QrScannerPage(
+              permissionCoordinator: coordinator,
+              scannerOverride: const ColoredBox(color: Colors.black),
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+      expect(find.text('再試行'), findsOneWidget);
+
+      await tester.tap(find.text('再試行'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('再試行'), findsNothing);
+    });
+
+    testWidgets('invalid QR shows dismissible error banner',
+        (WidgetTester tester) async {
+      final controller = _RecordingQrController();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppController>.value(
+            value: controller,
+            child: QrScannerPage(
+              permissionCoordinator: _FakePermissionCoordinator(),
+              scannerOverride: const SizedBox.shrink(),
+              scannerBuilder: (context, controller, onDetect) {
+                return Center(
+                  child: ElevatedButton(
+                    onPressed: () => onDetect(
+                      const BarcodeCapture(
+                        barcodes: [Barcode(rawValue: 'not-a-geojson-qr')],
+                      ),
+                    ),
+                    child: const Text('Emit Invalid'),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Emit Invalid'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('GeoJSON QR コードではありません。'), findsOneWidget);
+      expect(controller.scannedTexts, isEmpty);
+
+      await tester.tap(find.text('Dismiss'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('GeoJSON QR コードではありません。'), findsNothing);
+    });
+
+    testWidgets('valid QR displays controller error when load fails',
+        (WidgetTester tester) async {
+      final controller = _RecordingQrController()
+        ..loadedResult = false
+        ..reloadErrorMessage = 'GeoJSON の読込に失敗しました。';
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppController>.value(
+            value: controller,
+            child: QrScannerPage(
+              permissionCoordinator: _FakePermissionCoordinator(),
+              scannerOverride: const SizedBox.shrink(),
+              scannerBuilder: (context, scannerController, onDetect) {
+                return Center(
+                  child: ElevatedButton(
+                    onPressed: () => onDetect(
+                      const BarcodeCapture(
+                        barcodes: [Barcode(rawValue: 'gjb1:test')],
+                      ),
+                    ),
+                    child: const Text('Emit Valid'),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Emit Valid'));
+      await tester.pumpAndSettle();
+
+      expect(controller.scannedTexts, ['gjb1:test']);
+      expect(find.text('GeoJSON の読込に失敗しました。'), findsOneWidget);
+    });
+
+    testWidgets('successful QR load pops scanner route', (WidgetTester tester) async {
+      final controller = _RecordingQrController()..loadedResult = true;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppController>.value(
+            value: controller,
+            child: Builder(
+              builder: (context) => ElevatedButton(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => ChangeNotifierProvider<AppController>.value(
+                        value: controller,
+                        child: QrScannerPage(
+                          permissionCoordinator: _FakePermissionCoordinator(),
+                          scannerOverride: const SizedBox.shrink(),
+                          scannerBuilder: (context, scannerController, onDetect) {
+                            return Center(
+                              child: ElevatedButton(
+                                onPressed: () => onDetect(
+                                  const BarcodeCapture(
+                                    barcodes: [Barcode(rawValue: 'gjb1:success')],
+                                  ),
+                                ),
+                                child: const Text('Emit Success'),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  );
+                },
+                child: const Text('Open Scanner'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open Scanner'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Emit Success'));
+      await tester.pumpAndSettle();
+
+      expect(controller.scannedTexts, ['gjb1:success']);
+      expect(find.text('Open Scanner'), findsOneWidget);
+      expect(find.text('Scan QR Code'), findsNothing);
+    });
+
+    testWidgets('real scanner lifecycle restarts on resume and stops on pause',
+        (WidgetTester tester) async {
+      final controller = _buildController();
+      var startCount = 0;
+      var stopCount = 0;
+      var disposeCount = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppController>.value(
+            value: controller,
+            child: QrScannerPage(
+              permissionCoordinator: _FakePermissionCoordinator(),
+              scannerBuilder: (context, scannerController, onDetect) =>
+                  const ColoredBox(color: Colors.black),
+              startScannerOverride: () async {
+                startCount += 1;
+              },
+              stopScannerOverride: () async {
+                stopCount += 1;
+              },
+              disposeScannerOverride: () {
+                disposeCount += 1;
+              },
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(const SizedBox.shrink());
+
+      expect(startCount, 2);
+      expect(stopCount, 1);
+      expect(disposeCount, 1);
+    });
+
+    testWidgets('scanner permission start error offers settings action',
+        (WidgetTester tester) async {
+      final controller = _buildController();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppController>.value(
+            value: controller,
+            child: QrScannerPage(
+              permissionCoordinator: _FakePermissionCoordinator(),
+              scannerBuilder: (context, scannerController, onDetect) =>
+                  const ColoredBox(color: Colors.black),
+              startScannerOverride: () async {
+                throw const MobileScannerException(
+                  errorCode: MobileScannerErrorCode.controllerUninitialized,
+                  errorDetails:
+                      MobileScannerErrorDetails(message: 'permission denied'),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('アプリ設定から許可してください'), findsOneWidget);
+      expect(find.text('アプリ設定を開く'), findsOneWidget);
+    });
+
+    testWidgets('scanner mlkit start error shows retry guidance',
+        (WidgetTester tester) async {
+      final controller = _buildController();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppController>.value(
+            value: controller,
+            child: QrScannerPage(
+              permissionCoordinator: _FakePermissionCoordinator(),
+              scannerBuilder: (context, scannerController, onDetect) =>
+                  const ColoredBox(color: Colors.black),
+              startScannerOverride: () async {
+                throw const MobileScannerException(
+                  errorCode: MobileScannerErrorCode.controllerInitializing,
+                  errorDetails: MobileScannerErrorDetails(
+                    message: 'mlkit download required',
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('ネットワークに接続した状態'), findsOneWidget);
+    });
+
+    testWidgets('scanner generic start error shows generic failure message',
+        (WidgetTester tester) async {
+      final controller = _buildController();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppController>.value(
+            value: controller,
+            child: QrScannerPage(
+              permissionCoordinator: _FakePermissionCoordinator(),
+              scannerBuilder: (context, scannerController, onDetect) =>
+                  const ColoredBox(color: Colors.black),
+              startScannerOverride: () async {
+                throw Exception('unexpected');
+              },
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('QR スキャナを開始できませんでした'), findsWidgets);
+    });
+
+    testWidgets('empty or null barcode payload is ignored',
+        (WidgetTester tester) async {
+      final controller = _RecordingQrController();
+      var emitNull = false;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppController>.value(
+            value: controller,
+            child: QrScannerPage(
+              permissionCoordinator: _FakePermissionCoordinator(),
+              scannerOverride: const SizedBox.shrink(),
+              scannerBuilder: (context, scannerController, onDetect) {
+                return Center(
+                  child: ElevatedButton(
+                    onPressed: () => onDetect(
+                      BarcodeCapture(
+                        barcodes: emitNull
+                            ? const [Barcode(rawValue: null)]
+                            : const [],
+                      ),
+                    ),
+                    child: const Text('Emit Empty'),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Emit Empty'));
+      await tester.pumpAndSettle();
+      emitNull = true;
+      await tester.tap(find.text('Emit Empty'));
+      await tester.pumpAndSettle();
+
+      expect(controller.scannedTexts, isEmpty);
+      expect(find.text('Dismiss'), findsNothing);
+    });
+
+    testWidgets('controller exception while loading QR is surfaced',
+        (WidgetTester tester) async {
+      final controller = _RecordingQrController()
+        ..reloadError = Exception('boom');
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppController>.value(
+            value: controller,
+            child: QrScannerPage(
+              permissionCoordinator: _FakePermissionCoordinator(),
+              scannerOverride: const SizedBox.shrink(),
+              scannerBuilder: (context, scannerController, onDetect) {
+                return Center(
+                  child: ElevatedButton(
+                    onPressed: () => onDetect(
+                      const BarcodeCapture(
+                        barcodes: [Barcode(rawValue: 'gjb1:error')],
+                      ),
+                    ),
+                    child: const Text('Emit Error'),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Emit Error'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('QR コードの処理中にエラーが発生しました'), findsOneWidget);
+    });
   });
 }
 
@@ -235,4 +631,84 @@ class _DeniedCameraPermissionCoordinator extends PermissionCoordinator {
           openLocationSettings: () async => true,
           locationServicesEnabled: () async => true,
         );
+}
+
+AppController _buildController() {
+  final config = _testConfig();
+  return AppController(
+    stateMachine: StateMachine(config: config),
+    locationService: _FakeLocationService(),
+    fileManager: _FakeFileManager(config: config),
+    logger: _FakeEventLogger(),
+    notifier: Notifier(
+      notificationsClient: FakeLocalNotificationsClient(),
+      alarmPlayer: FakeAlarmPlayer(),
+    ),
+  );
+}
+
+class _SequenceCameraPermissionCoordinator extends PermissionCoordinator {
+  _SequenceCameraPermissionCoordinator({required this.states});
+
+  final List<CameraPermissionState> states;
+  int _index = 0;
+  int openSettingsCount = 0;
+
+  @override
+  Future<CameraPermissionState> ensureCameraPermission({
+    bool openSettingsIfNeeded = false,
+  }) async {
+    final current = states[_index < states.length ? _index : states.length - 1];
+    if (_index < states.length - 1) {
+      _index += 1;
+    }
+    return current;
+  }
+
+  @override
+  Future<bool> openSettings() async {
+    openSettingsCount += 1;
+    return true;
+  }
+}
+
+class _RecordingQrController extends AppController {
+  _RecordingQrController()
+      : super(
+          stateMachine: StateMachine(config: _testConfig()),
+          locationService: _FakeLocationService(),
+          fileManager: _FakeFileManager(config: _testConfig()),
+          logger: _FakeEventLogger(),
+          notifier: Notifier(
+            notificationsClient: FakeLocalNotificationsClient(),
+            alarmPlayer: FakeAlarmPlayer(),
+          ),
+        ) {
+    debugSeed(
+      config: _testConfig(),
+      permissionState: const MonitoringPermissionState(
+        notificationStatus: PermissionStatus.granted,
+        locationWhenInUseStatus: PermissionStatus.granted,
+        locationAlwaysStatus: PermissionStatus.granted,
+        locationServicesEnabled: true,
+      ),
+    );
+  }
+
+  final List<String> scannedTexts = <String>[];
+  bool loadedResult = true;
+  String? reloadErrorMessage;
+  Object? reloadError;
+
+  @override
+  Future<bool> reloadGeoJsonFromQr(String qrText) async {
+    scannedTexts.add(qrText);
+    if (reloadError != null) {
+      throw reloadError!;
+    }
+    return loadedResult;
+  }
+
+  @override
+  String? get lastErrorMessage => reloadErrorMessage;
 }
