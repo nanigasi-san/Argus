@@ -28,7 +28,8 @@ void main() {
       expect(readyState.canStartMonitoring, isTrue);
       expect(readyState.setupSummary, '監視を開始できる状態です。');
       expect(
-        readyState.copyWith(locationAlwaysStatus: PermissionStatus.denied)
+        readyState
+            .copyWith(locationAlwaysStatus: PermissionStatus.denied)
             .locationAlwaysGranted,
         isFalse,
       );
@@ -39,7 +40,8 @@ void main() {
           CameraPermissionState(status: PermissionStatus.provisional);
       const denied =
           CameraPermissionState(status: PermissionStatus.permanentlyDenied);
-      const normalDenied = CameraPermissionState(status: PermissionStatus.denied);
+      const normalDenied =
+          CameraPermissionState(status: PermissionStatus.denied);
 
       expect(granted.isGranted, isTrue);
       expect(granted.message, 'カメラを使用できます。');

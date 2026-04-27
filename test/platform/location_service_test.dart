@@ -50,7 +50,8 @@ void main() {
         timestamp: DateTime.utc(2024, 1, 1),
       ),
     ];
-    final service = FakeLocationService(Stream<LocationFix>.fromIterable(fixes));
+    final service =
+        FakeLocationService(Stream<LocationFix>.fromIterable(fixes));
 
     final received = await service.stream.toList();
     final result = await service.start(config);

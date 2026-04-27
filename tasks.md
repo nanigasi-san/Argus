@@ -27,7 +27,7 @@
 - [x] const constructor 化と不要なオブジェクト生成削減を行う
 - [x] 高頻度 location / vibration / alarm 処理のバッテリー影響を改善する
 - [x] ライフサイクルに応じた停止・再開処理を改善する
-- [ ] emulator で起動と主要導線を確認する
+- [x] emulator で起動と主要導線を確認する
 
 ## 2. 軽微な修正
 - [x] setting で設定できる数値の役割を整理する
@@ -41,11 +41,11 @@
 - [x] 小さい画面でも主要 UI が崩れないか確認する
 
 ## 3. 最終確認
-- [ ] flutter pub get を実行する
-- [ ] format を実行する
-- [ ] analyze を実行する
-- [ ] test を実行する
-- [ ] Android debug build を実行する
-- [ ] emulator で主要導線を確認する
-- [ ] すべての tasks.md のチェックを再確認する
-- [ ] FINAL_REPORT.md を作成する
+- [x] flutter pub get を実行する
+- [x] format を実行する
+- [x] analyze を実行する
+- [x] test を実行する
+- [x] Android debug build を実行する
+- [x] emulator で主要導線を確認する
+- [x] すべての tasks.md のチェックを再確認する
+- [x] FINAL_REPORT.md を作成する

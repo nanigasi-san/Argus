@@ -128,3 +128,38 @@
   - フォントはアプリサイズとライセンス確認の負荷を抑えるため、外部ネットワーク取得パッケージは追加せず、OS 同梱の Noto Sans CJK JP / Yu Gothic / Meiryo などへのフォールバックで完全オフライン動作を優先した。
 - 次にやること:
   - UI / 文言改善をコミットする。
+
+### 最終検証
+- 実行したこと:
+  - UI / 文言 / フォント関連の変更をコミット。
+  - `flutter pub get`, `dart format .`, `flutter analyze`, `flutter test`, `flutter build apk --debug` を実行。
+  - Android emulator `Medium_Phone_API_36.0` を起動し、debug APK をインストールして Activity 起動を確認。
+  - emulator スクリーンショットでホーム画面、設定画面、連絡先リンク、`Created` 表記、設定値説明の表示を確認。
+- 実行したコマンド:
+  - `flutter pub get`
+  - `dart format .`
+  - `flutter analyze`
+  - `flutter test`
+  - `flutter build apk --debug`
+  - `flutter emulators`
+  - `flutter emulators --launch Medium_Phone_API_36.0`
+  - `flutter devices`
+  - `adb -s emulator-5554 install -r build\app\outputs\flutter-apk\app-debug.apk`
+  - `adb -s emulator-5554 shell monkey -p com.argus.orienteering 1`
+  - `adb -s emulator-5554 exec-out screencap -p`
+- 成功 / 失敗:
+  - `flutter pub get`: 成功。依存の newer versions 警告のみ。
+  - `dart format .`: 成功。既存テスト 3 ファイルに機械的整形差分あり。
+  - `flutter analyze`: 成功。
+  - `flutter test`: 成功。214 tests passed。
+  - `flutter build apk --debug`: 成功。`build\app\outputs\flutter-apk\app-debug.apk` を生成。
+  - emulator: 起動直後は `offline`、30 秒待機後に online。APK install と Activity 起動に成功。
+- emulator 確認:
+  - ホーム画面: 表示成功。権限カード、GeoJSON待機、`Created by Kaito YAMADA`、`お問い合わせ: yamada.orien@gmail.com` を確認。
+  - 設定画面: overflow menu から表示成功。日本語タイトル、プライバシーポリシー、数値設定の説明を確認。
+- 未実行:
+  - iOS build。Windows 環境のため Xcode / iOS Simulator が利用できない。
+- 置いた仮定:
+  - ユーザー指示に従い、今後のコミット前検証は毎回 `dart format .` と `flutter analyze` を基本とし、`flutter test` は節目で実行する。
+- 次にやること:
+  - `FINAL_REPORT.md` を作成し、最終コミットする。
