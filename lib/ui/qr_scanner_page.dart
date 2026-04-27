@@ -284,7 +284,7 @@ class _QrScannerPageState extends State<QrScannerPage>
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Scan QR Code'),
+        title: const Text('QRコードを読み込む'),
       ),
       body: Stack(
         children: [
@@ -328,7 +328,7 @@ class _QrScannerPageState extends State<QrScannerPage>
                     CircularProgressIndicator(),
                     SizedBox(height: 16),
                     Text(
-                      'Processing QR code...',
+                      'QRコードを処理しています...',
                       style: TextStyle(color: Colors.white, fontSize: 16),
                     ),
                   ],
@@ -360,7 +360,7 @@ class _QrScannerPageState extends State<QrScannerPage>
                             _errorMessage = null;
                           });
                         },
-                        child: const Text('Dismiss'),
+                        child: const Text('閉じる'),
                       ),
                     ],
                   ),

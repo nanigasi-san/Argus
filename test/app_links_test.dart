@@ -23,4 +23,19 @@ void main() {
       isTrue,
     );
   });
+
+  test('openContactEmail launches mailto URL', () async {
+    final calls = await mockUrlLauncher(launchResult: true);
+
+    final launched = await openContactEmail();
+
+    expect(launched, isTrue);
+    expect(calls, isNotEmpty);
+    expect(
+      calls.any((call) =>
+          call.method.toLowerCase().contains('launch') &&
+          call.arguments.toString().contains('mailto:$contactEmail')),
+      isTrue,
+    );
+  });
 }

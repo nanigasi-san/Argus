@@ -89,6 +89,6 @@ void main() {
     await tester.pumpAndSettle();
 
     // Verify that the status information is displayed (only visible in developer mode)
-    expect(find.textContaining('Current state'), findsOneWidget);
+    expect(find.textContaining('現在の状態'), findsOneWidget);
   });
 }

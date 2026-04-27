@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_controller.dart';
+import '../app_links.dart';
 import '../geo/geo_model.dart';
 import '../io/log_entry.dart';
 import '../state_machine/state.dart';
@@ -169,39 +170,39 @@ class HomePage extends StatelessWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('Current state: ${snapshot.status.name}'),
+                                Text('現在の状態: ${snapshot.status.name}'),
                                 if ((snapshot.notes ?? '').isNotEmpty) ...[
                                   const SizedBox(height: 8),
-                                  Text('Notes: ${snapshot.notes}'),
+                                  Text('メモ: ${snapshot.notes}'),
                                 ],
                                 const SizedBox(height: 16),
                                 Text(
-                                  'Last update: ${snapshot.timestamp.toLocal()}',
+                                  '最終更新: ${snapshot.timestamp.toLocal()}',
                                 ),
                                 const SizedBox(height: 8),
                                 // Developerモードでは常に距離・方角・境界点を表示
                                 Text(
-                                  'Distance to boundary: '
+                                  '境界までの距離: '
                                   '${snapshot.distanceToBoundaryM?.toStringAsFixed(1) ?? '-'} m',
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  'Bearing to boundary: '
+                                  '方角: '
                                   '${snapshot.bearingToBoundaryDeg != null ? _formatBearing(snapshot.bearingToBoundaryDeg!) : '-'}',
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  'Nearest boundary point: '
+                                  '最寄り境界点: '
                                   '${snapshot.nearestBoundaryPoint != null ? _formatLatLng(snapshot.nearestBoundaryPoint!) : '-'}',
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  'Accuracy: '
+                                  'GPS精度: '
                                   '${snapshot.horizontalAccuracyM?.toStringAsFixed(1) ?? '-'} m',
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                    'GeoJSON loaded: ${controller.geoJsonLoaded}'),
+                                    'GeoJSON読込済み: ${controller.geoJsonLoaded}'),
                                 const SizedBox(height: 24),
                                 if (controller.lastErrorMessage != null) ...[
                                   Material(
@@ -229,7 +230,7 @@ class HomePage extends StatelessWidget {
                                 const SizedBox(height: 24),
                                 if (controller.logs.isNotEmpty) ...[
                                   const Text(
-                                    'Logs:',
+                                    'ログ:',
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 16,
@@ -531,14 +532,50 @@ class _BottomActions extends StatelessWidget {
 class _CreditFooter extends StatelessWidget {
   const _CreditFooter();
 
+  Future<void> _openContact(BuildContext context) async {
+    final launched = await openContactEmail();
+    if (!context.mounted || launched) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('メールアプリを開けませんでした。')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Text(
-      'created by Kaito YAMADA',
-      textAlign: TextAlign.center,
-      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
+    final theme = Theme.of(context);
+    final footerStyle = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final linkStyle = footerStyle?.copyWith(
+      color: theme.colorScheme.primary,
+      decoration: TextDecoration.underline,
+      decorationColor: theme.colorScheme.primary,
+    );
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          'Created by Kaito YAMADA',
+          textAlign: TextAlign.center,
+          style: footerStyle,
+        ),
+        const SizedBox(height: 4),
+        InkWell(
+          onTap: () => _openContact(context),
+          borderRadius: BorderRadius.circular(4),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            child: Text(
+              'お問い合わせ: $contactEmail',
+              textAlign: TextAlign.center,
+              style: linkStyle,
+            ),
           ),
+        ),
+      ],
     );
   }
 }
@@ -550,8 +587,8 @@ class _OverflowMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     return PopupMenuButton<int>(
       itemBuilder: (context) => const [
-        PopupMenuItem(value: 1, child: Text('Settings')),
-        PopupMenuItem(value: 2, child: Text('Generate QR code')),
+        PopupMenuItem(value: 1, child: Text('設定')),
+        PopupMenuItem(value: 2, child: Text('QRコードを生成')),
       ],
       onSelected: (value) {
         if (value == 1) {

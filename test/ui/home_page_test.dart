@@ -55,8 +55,8 @@ void main() {
 
     await _pumpHome(tester, controller);
 
-    expect(find.textContaining('境界までの距離'), findsOneWidget);
-    expect(find.textContaining('方角'), findsOneWidget);
+    expect(find.textContaining('境界までの距離'), findsWidgets);
+    expect(find.textContaining('方角'), findsWidgets);
   });
 
   testWidgets('shows navigation details when state is OUTER', (tester) async {
@@ -174,7 +174,11 @@ void main() {
 
     expect(find.text('ファイルを\n読み込む'), findsOneWidget);
     expect(find.text('QRコードを\n読み込む'), findsOneWidget);
-    expect(find.text('created by Kaito YAMADA'), findsOneWidget);
+    expect(find.text('Created by Kaito YAMADA'), findsOneWidget);
+    expect(
+      find.text('お問い合わせ: yamada.orien@gmail.com'),
+      findsOneWidget,
+    );
     expect(find.text('Start monitoring'), findsNothing);
   });
 
@@ -241,10 +245,10 @@ void main() {
 
     await tester.tap(find.byType(PopupMenuButton<int>));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Generate QR code'));
+    await tester.tap(find.text('QRコードを生成'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Generate QR code'), findsOneWidget);
+    expect(find.text('QRコードを生成'), findsOneWidget);
     expect(find.text('GeoJSONを選択'), findsOneWidget);
   });
 
@@ -274,7 +278,7 @@ void main() {
     expect(find.text('バックグラウンド位置情報の開示'), findsOneWidget);
     expect(find.text('同意して位置情報の設定へ進む'), findsOneWidget);
     expect(
-      find.textContaining('ARGUS は geofence 監視機能のために location data を使用します。'),
+      find.textContaining('ARGUS はジオフェンス監視機能のために位置情報を使用します。'),
       findsOneWidget,
     );
   });

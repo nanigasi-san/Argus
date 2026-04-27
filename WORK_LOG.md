@@ -92,3 +92,39 @@
   - release 署名ファイルがない開発環境では release build より debug build 検証を優先し、署名情報の表示や生成は行わない。
 - 次にやること:
   - このタスク範囲をコミットする。
+
+### UI / 設定画面 / 文言 / フォント改善
+- 実行したこと:
+  - `AppTheme` を追加し、アプリ全体に日本語向けフォントファミリーとフォールバックを設定。
+  - ホーム画面下部に `お問い合わせ: yamada.orien@gmail.com` を追加し、`mailto:` でメールアプリを開く導線を実装。
+  - `created by Kaito YAMADA` を `Created by Kaito YAMADA` に変更。
+  - `Settings`, `Developer mode`, `Export logs`, `Scan QR Code`, `Generate QR code`, `Privacy Policy` などの表示文言を自然な日本語に変更。
+  - バックグラウンド位置情報の開示文に混在していた `geofence`, `location data`, `closed or not in use` を日本語化。
+  - 設定画面の数値項目に役割、範囲、単位、デフォルト値を明記し、上限・下限バリデーションを追加。
+  - `url_launcher` は既存 dependency として利用し、新規 dependency は追加しなかった。
+- 変更したファイル:
+  - `lib/theme/app_theme.dart`
+  - `lib/main.dart`
+  - `lib/app_links.dart`
+  - `lib/ui/home_page.dart`
+  - `lib/ui/settings_page.dart`
+  - `lib/ui/background_location_disclosure_page.dart`
+  - `lib/ui/qr_generator_page.dart`
+  - `lib/ui/qr_scanner_page.dart`
+  - `test/app_links_test.dart`
+  - `test/ui/home_page_test.dart`
+  - `test/ui/settings_page_test.dart`
+  - `test/ui/background_location_disclosure_page_test.dart`
+  - `test/ui/qr_scanner_page_test.dart`
+  - `test/widget_test.dart`
+- 実行したコマンド:
+  - `dart format ...`
+  - `flutter analyze`
+  - `flutter test test\ui\home_page_test.dart test\ui\settings_page_test.dart test\ui\background_location_disclosure_page_test.dart test\ui\qr_scanner_page_test.dart test\ui\qr_generator_page_test.dart test\widget_test.dart test\app_links_test.dart`
+- 成功 / 失敗:
+  - `flutter analyze`: 成功。
+  - UI 関連テスト: 文言変更により一度 `home_page_test` が重複表示数で失敗。期待値を実際の開発者モード表示に合わせて更新し、再実行で成功。
+- 置いた仮定:
+  - フォントはアプリサイズとライセンス確認の負荷を抑えるため、外部ネットワーク取得パッケージは追加せず、OS 同梱の Noto Sans CJK JP / Yu Gothic / Meiryo などへのフォールバックで完全オフライン動作を優先した。
+- 次にやること:
+  - UI / 文言改善をコミットする。

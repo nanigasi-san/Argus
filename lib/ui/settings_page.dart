@@ -59,14 +59,18 @@ class _SettingsPageState extends State<SettingsPage> {
       _defaultConfig = await AppConfig.loadDefault();
     } catch (_) {
       _defaultConfig = AppConfig(
-        innerBufferM: 30.0,
-        leaveConfirmSamples: 3,
-        leaveConfirmSeconds: 10,
-        gpsAccuracyBadMeters: 40.0,
-        sampleIntervalS: const {'fast': 3},
-        sampleDistanceM: const {'fast': 15},
+        innerBufferM: AppConfig.defaultInnerBufferM,
+        leaveConfirmSamples: AppConfig.defaultLeaveConfirmSamples,
+        leaveConfirmSeconds: AppConfig.defaultLeaveConfirmSeconds,
+        gpsAccuracyBadMeters: AppConfig.defaultGpsAccuracyBadMeters,
+        sampleIntervalS: const {
+          'fast': AppConfig.defaultFastSampleIntervalS,
+        },
+        sampleDistanceM: const {
+          'fast': AppConfig.defaultFastSampleDistanceM,
+        },
         screenWakeOnLeave: false,
-        alarmVolume: 0.5,
+        alarmVolume: AppConfig.defaultAlarmVolume,
       );
     }
 
@@ -99,11 +103,16 @@ class _SettingsPageState extends State<SettingsPage> {
       _alarmVolume = _defaultConfig!.alarmVolume;
     } else {
       // フォールバック
-      _innerBufferController.text = '30.0';
-      _pollingIntervalController.text = '3';
-      _gpsAccuracyThresholdController.text = '40.0';
-      _leaveConfirmSamplesController.text = '3';
-      _leaveConfirmSecondsController.text = '10';
+      _innerBufferController.text =
+          AppConfig.defaultInnerBufferM.toStringAsFixed(1);
+      _pollingIntervalController.text =
+          AppConfig.defaultFastSampleIntervalS.toString();
+      _gpsAccuracyThresholdController.text =
+          AppConfig.defaultGpsAccuracyBadMeters.toStringAsFixed(1);
+      _leaveConfirmSamplesController.text =
+          AppConfig.defaultLeaveConfirmSamples.toString();
+      _leaveConfirmSecondsController.text =
+          AppConfig.defaultLeaveConfirmSeconds.toString();
     }
   }
 
@@ -136,26 +145,30 @@ class _SettingsPageState extends State<SettingsPage> {
       // デフォルト値を取得（まだ読み込まれていない場合）
       _defaultConfig ??= await AppConfig.loadDefault();
 
-      // 空欄の場合はデフォルト値を使用
-      final innerBuffer = _innerBufferController.text.trim().isEmpty
-          ? (_defaultConfig?.innerBufferM ?? 30.0)
-          : double.parse(_innerBufferController.text);
-
-      final pollingInterval = _pollingIntervalController.text.trim().isEmpty
-          ? (_defaultConfig?.sampleIntervalS['fast'] ?? 3)
-          : int.parse(_pollingIntervalController.text);
-
-      final gpsAccuracy = _gpsAccuracyThresholdController.text.trim().isEmpty
-          ? (_defaultConfig?.gpsAccuracyBadMeters ?? 40.0)
-          : double.parse(_gpsAccuracyThresholdController.text);
-
-      final leaveSamples = _leaveConfirmSamplesController.text.trim().isEmpty
-          ? (_defaultConfig?.leaveConfirmSamples ?? 3)
-          : int.parse(_leaveConfirmSamplesController.text);
-
-      final leaveSeconds = _leaveConfirmSecondsController.text.trim().isEmpty
-          ? (_defaultConfig?.leaveConfirmSeconds ?? 10)
-          : int.parse(_leaveConfirmSecondsController.text);
+      final innerBuffer = _readDouble(
+        _innerBufferController,
+        _defaultConfig?.innerBufferM ?? AppConfig.defaultInnerBufferM,
+      );
+      final pollingInterval = _readInt(
+        _pollingIntervalController,
+        _defaultConfig?.sampleIntervalS['fast'] ??
+            AppConfig.defaultFastSampleIntervalS,
+      );
+      final gpsAccuracy = _readDouble(
+        _gpsAccuracyThresholdController,
+        _defaultConfig?.gpsAccuracyBadMeters ??
+            AppConfig.defaultGpsAccuracyBadMeters,
+      );
+      final leaveSamples = _readInt(
+        _leaveConfirmSamplesController,
+        _defaultConfig?.leaveConfirmSamples ??
+            AppConfig.defaultLeaveConfirmSamples,
+      );
+      final leaveSeconds = _readInt(
+        _leaveConfirmSecondsController,
+        _defaultConfig?.leaveConfirmSeconds ??
+            AppConfig.defaultLeaveConfirmSeconds,
+      );
 
       final newConfig = AppConfig(
         innerBufferM: innerBuffer,
@@ -169,7 +182,7 @@ class _SettingsPageState extends State<SettingsPage> {
         sampleDistanceM: currentConfig.sampleDistanceM,
         screenWakeOnLeave: currentConfig.screenWakeOnLeave,
         alarmVolume: _alarmVolume,
-      );
+      ).normalized();
 
       await controller.updateConfig(newConfig);
 
@@ -205,7 +218,7 @@ class _SettingsPageState extends State<SettingsPage> {
         final viewPadding = MediaQuery.viewPaddingOf(context);
         return Scaffold(
           appBar: AppBar(
-            title: const Text('Settings'),
+            title: const Text('設定'),
           ),
           body: config == null
               ? const Center(child: CircularProgressIndicator())
@@ -229,7 +242,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         key: const Key('privacyPolicyTile'),
                         contentPadding: EdgeInsets.zero,
                         leading: const Icon(Icons.privacy_tip_outlined),
-                        title: const Text('Privacy Policy'),
+                        title: const Text('プライバシーポリシー'),
                         subtitle: const Text(
                           '位置情報とカメラの取り扱いを確認できます',
                         ),
@@ -241,9 +254,9 @@ class _SettingsPageState extends State<SettingsPage> {
                         key: const Key('innerBufferField'),
                         controller: _innerBufferController,
                         decoration: InputDecoration(
-                          labelText: '反応距離 (Inner buffer)',
+                          labelText: '境界バッファ距離',
                           helperText:
-                              'エリア境界との距離バッファ（メートル）\nデフォルト: ${_defaultConfig?.innerBufferM.toStringAsFixed(1) ?? '30.0'} m（空欄でデフォルト値を使用）',
+                              '境界からこの距離以内を近接として扱います。範囲: ${AppConfig.minInnerBufferM.toStringAsFixed(0)}-${AppConfig.maxInnerBufferM.toStringAsFixed(0)} m\nデフォルト: ${_defaultConfig?.innerBufferM.toStringAsFixed(1) ?? AppConfig.defaultInnerBufferM.toStringAsFixed(1)} m（空欄でデフォルト値）',
                           border: const OutlineInputBorder(),
                         ),
                         keyboardType: const TextInputType.numberWithOptions(
@@ -260,10 +273,12 @@ class _SettingsPageState extends State<SettingsPage> {
                             return null;
                           }
                           final num = double.tryParse(value);
-                          if (num == null || num < 0) {
-                            return '0以上の数値を入力してください';
-                          }
-                          return null;
+                          return _validateDoubleRange(
+                            num,
+                            AppConfig.minInnerBufferM,
+                            AppConfig.maxInnerBufferM,
+                            'm',
+                          );
                         },
                       ),
                       const SizedBox(height: 16),
@@ -271,9 +286,9 @@ class _SettingsPageState extends State<SettingsPage> {
                         key: const Key('pollingIntervalField'),
                         controller: _pollingIntervalController,
                         decoration: InputDecoration(
-                          labelText: 'ポーリング間隔 (GPS間隔)',
+                          labelText: 'GPS取得間隔',
                           helperText:
-                              '位置取得間隔（秒）\nデフォルト: ${_defaultConfig?.sampleIntervalS['fast'] ?? 3} 秒（空欄でデフォルト値を使用）',
+                              '位置情報を取得する間隔です。短すぎるとバッテリー消費が増えます。範囲: ${AppConfig.minSampleIntervalS}-${AppConfig.maxSampleIntervalS} 秒\nデフォルト: ${_defaultConfig?.sampleIntervalS['fast'] ?? AppConfig.defaultFastSampleIntervalS} 秒（空欄でデフォルト値）',
                           border: const OutlineInputBorder(),
                         ),
                         keyboardType: TextInputType.number,
@@ -286,10 +301,12 @@ class _SettingsPageState extends State<SettingsPage> {
                             return null;
                           }
                           final num = int.tryParse(value);
-                          if (num == null || num < 1) {
-                            return '1以上の整数を入力してください';
-                          }
-                          return null;
+                          return _validateIntRange(
+                            num,
+                            AppConfig.minSampleIntervalS,
+                            AppConfig.maxSampleIntervalS,
+                            '秒',
+                          );
                         },
                       ),
                       const SizedBox(height: 16),
@@ -297,9 +314,9 @@ class _SettingsPageState extends State<SettingsPage> {
                         key: const Key('gpsAccuracyField'),
                         controller: _gpsAccuracyThresholdController,
                         decoration: InputDecoration(
-                          labelText: 'GPS精度閾値',
+                          labelText: 'GPS精度しきい値',
                           helperText:
-                              '位置精度がこの値を超えるとGPS不良と判定（メートル）\nデフォルト: ${_defaultConfig?.gpsAccuracyBadMeters.toStringAsFixed(1) ?? '40.0'} m（空欄でデフォルト値を使用）',
+                              '推定精度がこの値を超えるとGPS不良として扱います。範囲: ${AppConfig.minGpsAccuracyBadMeters.toStringAsFixed(0)}-${AppConfig.maxGpsAccuracyBadMeters.toStringAsFixed(0)} m\nデフォルト: ${_defaultConfig?.gpsAccuracyBadMeters.toStringAsFixed(1) ?? AppConfig.defaultGpsAccuracyBadMeters.toStringAsFixed(1)} m（空欄でデフォルト値）',
                           border: const OutlineInputBorder(),
                         ),
                         keyboardType: const TextInputType.numberWithOptions(
@@ -316,10 +333,12 @@ class _SettingsPageState extends State<SettingsPage> {
                             return null;
                           }
                           final num = double.tryParse(value);
-                          if (num == null || num < 0) {
-                            return '0以上の数値を入力してください';
-                          }
-                          return null;
+                          return _validateDoubleRange(
+                            num,
+                            AppConfig.minGpsAccuracyBadMeters,
+                            AppConfig.maxGpsAccuracyBadMeters,
+                            'm',
+                          );
                         },
                       ),
                       const SizedBox(height: 16),
@@ -329,7 +348,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         decoration: InputDecoration(
                           labelText: '離脱確定サンプル数',
                           helperText:
-                              'OUTER確定に必要な連続サンプル数\nデフォルト: ${_defaultConfig?.leaveConfirmSamples ?? 3}（空欄でデフォルト値を使用）',
+                              'エリア外と確定するために必要な連続判定回数です。範囲: ${AppConfig.minLeaveConfirmSamples}-${AppConfig.maxLeaveConfirmSamples} 回\nデフォルト: ${_defaultConfig?.leaveConfirmSamples ?? AppConfig.defaultLeaveConfirmSamples} 回（空欄でデフォルト値）',
                           border: const OutlineInputBorder(),
                         ),
                         keyboardType: TextInputType.number,
@@ -342,10 +361,12 @@ class _SettingsPageState extends State<SettingsPage> {
                             return null;
                           }
                           final num = int.tryParse(value);
-                          if (num == null || num < 1) {
-                            return '1以上の整数を入力してください';
-                          }
-                          return null;
+                          return _validateIntRange(
+                            num,
+                            AppConfig.minLeaveConfirmSamples,
+                            AppConfig.maxLeaveConfirmSamples,
+                            '回',
+                          );
                         },
                       ),
                       const SizedBox(height: 16),
@@ -355,7 +376,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         decoration: InputDecoration(
                           labelText: '離脱確定秒数',
                           helperText:
-                              'OUTER確定に必要な経過秒数\nデフォルト: ${_defaultConfig?.leaveConfirmSeconds ?? 10} 秒（空欄でデフォルト値を使用）',
+                              'エリア外と確定するために必要な経過時間です。範囲: ${AppConfig.minLeaveConfirmSeconds}-${AppConfig.maxLeaveConfirmSeconds} 秒\nデフォルト: ${_defaultConfig?.leaveConfirmSeconds ?? AppConfig.defaultLeaveConfirmSeconds} 秒（空欄でデフォルト値）',
                           border: const OutlineInputBorder(),
                         ),
                         keyboardType: TextInputType.number,
@@ -368,10 +389,12 @@ class _SettingsPageState extends State<SettingsPage> {
                             return null;
                           }
                           final num = int.tryParse(value);
-                          if (num == null || num < 1) {
-                            return '1以上の整数を入力してください';
-                          }
-                          return null;
+                          return _validateIntRange(
+                            num,
+                            AppConfig.minLeaveConfirmSeconds,
+                            AppConfig.maxLeaveConfirmSeconds,
+                            '秒',
+                          );
                         },
                       ),
                       const SizedBox(height: 16),
@@ -423,9 +446,9 @@ class _SettingsPageState extends State<SettingsPage> {
                       const SizedBox(height: 16),
                       SwitchListTile.adaptive(
                         key: const Key('developerModeSwitch'),
-                        title: const Text('Developer mode'),
+                        title: const Text('開発者モード'),
                         subtitle: const Text(
-                          'Show distance/bearing details even inside the geofence.',
+                          'エリア内でも距離や方角などの詳細情報を表示します。',
                         ),
                         value: controller.developerMode,
                         onChanged: controller.setDeveloperMode,
@@ -439,20 +462,20 @@ class _SettingsPageState extends State<SettingsPage> {
                           showDialog<void>(
                             context: context,
                             builder: (_) => AlertDialog(
-                              title: const Text('Export (JSONL)'),
+                              title: const Text('ログ出力 (JSONL)'),
                               content: SingleChildScrollView(
                                 child: Text(export),
                               ),
                               actions: [
                                 TextButton(
                                   onPressed: () => Navigator.of(context).pop(),
-                                  child: const Text('Close'),
+                                  child: const Text('閉じる'),
                                 ),
                               ],
                             ),
                           );
                         },
-                        child: const Text('Export logs'),
+                        child: const Text('ログを出力'),
                       ),
                     ],
                   ),
@@ -460,5 +483,40 @@ class _SettingsPageState extends State<SettingsPage> {
         );
       },
     );
+  }
+
+  double _readDouble(TextEditingController controller, double fallback) {
+    final text = controller.text.trim();
+    return text.isEmpty ? fallback : double.parse(text);
+  }
+
+  int _readInt(TextEditingController controller, int fallback) {
+    final text = controller.text.trim();
+    return text.isEmpty ? fallback : int.parse(text);
+  }
+
+  String? _validateDoubleRange(
+    double? value,
+    double min,
+    double max,
+    String unit,
+  ) {
+    if (value == null) {
+      return '数値を入力してください';
+    }
+    if (value < min || value > max) {
+      return '${min.toStringAsFixed(0)}-${max.toStringAsFixed(0)} $unit の範囲で入力してください';
+    }
+    return null;
+  }
+
+  String? _validateIntRange(int? value, int min, int max, String unit) {
+    if (value == null) {
+      return '整数を入力してください';
+    }
+    if (value < min || value > max) {
+      return '$min-$max $unit の範囲で入力してください';
+    }
+    return null;
   }
 }

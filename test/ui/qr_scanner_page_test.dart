@@ -50,7 +50,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // AppBarのタイトルを確認
-      expect(find.text('Scan QR Code'), findsOneWidget);
+      expect(find.text('QRコードを読み込む'), findsOneWidget);
     });
 
     testWidgets('can navigate back', (WidgetTester tester) async {
@@ -98,7 +98,7 @@ void main() {
       await tester.tap(find.text('Open Scanner'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Scan QR Code'), findsOneWidget);
+      expect(find.text('QRコードを読み込む'), findsOneWidget);
 
       // 戻るボタンをタップ
       await tester.tap(find.byType(BackButton));
@@ -234,7 +234,7 @@ void main() {
       expect(find.text('GeoJSON QR コードではありません。'), findsOneWidget);
       expect(controller.scannedTexts, isEmpty);
 
-      await tester.tap(find.text('Dismiss'));
+      await tester.tap(find.text('閉じる'));
       await tester.pumpAndSettle();
 
       expect(find.text('GeoJSON QR コードではありません。'), findsNothing);
@@ -369,7 +369,7 @@ void main() {
 
       expect(controller.scannedTexts, ['gjb1:success']);
       expect(find.text('Open Scanner'), findsOneWidget);
-      expect(find.text('Scan QR Code'), findsNothing);
+      expect(find.text('QRコードを読み込む'), findsNothing);
     });
 
     testWidgets('real scanner lifecycle restarts on resume and stops on pause',
@@ -514,7 +514,7 @@ void main() {
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
       await tester.pump();
 
-      expect(find.text('Scan QR Code'), findsOneWidget);
+      expect(find.text('QRコードを読み込む'), findsOneWidget);
     });
 
     testWidgets('scanner permission start error offers settings action',
@@ -766,7 +766,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(controller.scannedTexts, isEmpty);
-      expect(find.text('Dismiss'), findsNothing);
+      expect(find.text('閉じる'), findsNothing);
     });
 
     testWidgets('controller exception while loading QR is surfaced',
