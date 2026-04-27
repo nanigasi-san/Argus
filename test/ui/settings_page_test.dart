@@ -32,24 +32,6 @@ Future<void> _pumpSettings(
   }
 }
 
-Future<void> _pumpUntilVisible(
-  WidgetTester tester,
-  Finder finder, {
-  int maxTicks = 10,
-}) async {
-  for (var i = 0; i < maxTicks; i++) {
-    await tester.pump();
-    if (finder.evaluate().isNotEmpty) {
-      return;
-    }
-    await tester.pump(const Duration(milliseconds: 50));
-    if (finder.evaluate().isNotEmpty) {
-      return;
-    }
-  }
-  fail('Widget not found after pumping.');
-}
-
 Future<void> _scrollUntilVisible(WidgetTester tester, Finder finder) async {
   await tester.scrollUntilVisible(
     finder,

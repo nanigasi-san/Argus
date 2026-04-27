@@ -1,10 +1,8 @@
-import 'dart:typed_data';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-const MethodChannel _assetsChannel = MethodChannel('flutter/assets');
 const MethodChannel _urlLauncherChannel =
     MethodChannel('plugins.flutter.io/url_launcher');
 

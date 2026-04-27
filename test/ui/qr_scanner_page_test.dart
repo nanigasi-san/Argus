@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:mobile_scanner/src/enums/mobile_scanner_error_code.dart';
 import 'package:provider/provider.dart';
 
 import 'package:argus/app_controller.dart';

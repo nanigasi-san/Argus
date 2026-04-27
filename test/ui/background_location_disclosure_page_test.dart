@@ -117,7 +117,7 @@ class _DisclosureTestController extends AppController {
         ) {
     debugSeed(
       config: createTestConfig(),
-      permissionState: MonitoringPermissionState(
+      permissionState: const MonitoringPermissionState(
         notificationStatus: PermissionStatus.granted,
         locationWhenInUseStatus: PermissionStatus.granted,
         locationAlwaysStatus: PermissionStatus.denied,
