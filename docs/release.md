@@ -50,3 +50,9 @@ base64 -w 0 release-keystore.jks
 - 署名エラー: keystore の base64 文字列破損、alias/password 不一致を確認
 - 配信エラー: サービスアカウントの権限不足または packageName 不一致を確認
 - ループ実行: bot commit には `[skip release]` を付与して再実行を抑止
+
+## PR運用ルール
+
+- リリース自動化に関する PR タイトル・本文は日本語で記載します。
+- PR 本文には `created by Codex` を含めます。
+
