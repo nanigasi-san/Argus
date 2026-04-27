@@ -433,9 +433,13 @@ QrPayload _parseQrPayload(List<String> texts) {
 
 QrPayload _parseSinglePayload(GeoJsonQrScheme scheme, String text) {
   final prefix = scheme._singlePrefix;
+  // coverage:ignore-start
+  // _parseQrPayload routes by prefix before calling this helper, so this guard
+  // is defensive against future private misuse rather than public behavior.
   if (!text.startsWith('$prefix:')) {
     throw UnsupportedSchemeException('Expected $prefix scheme');
   }
+  // coverage:ignore-end
   final payloadWithHash = text.substring(prefix.length + 1);
   if (payloadWithHash.isEmpty) {
     throw DecodeFailedException('Empty $prefix payload');

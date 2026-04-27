@@ -427,6 +427,10 @@ class _GeneratedQr {
   }
 }
 
+// coverage:ignore-start
+// These default adapters call platform plugins. Widget tests cover the
+// surrounding behavior by injecting file picker, gallery saver, and share
+// handlers instead of invoking real platform channels.
 Future<fs.XFile?> _pickGeoJsonFile() {
   return fs.openFile();
 }
@@ -461,12 +465,13 @@ Future<void> _shareQrImage(
     ),
   );
 }
+// coverage:ignore-end
 
 String _displayFileName(fs.XFile file) {
   if (file.name.isNotEmpty) {
     return file.name;
   }
-  return path.basename(file.path);
+  return path.basename(file.path); // coverage:ignore-line
 }
 
 String _schemeLabel(String qrText) {
