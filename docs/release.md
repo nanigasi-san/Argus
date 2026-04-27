@@ -4,54 +4,43 @@
 
 ## 配信フロー
 
-### main: production 配信
+### production 配信
 
-- Workflow: `.github/workflows/production_release_android.yml`
-- Trigger: `main` への `push`
+- Workflow: `.github/workflows/android_release.yml`
+- Trigger: `vX.Y.Z` 形式の tag push
 - Track: `production`
-- Version: `pubspec.yaml` の `version: x.y.z+n` を更新してからAABを作成
-  - デフォルトは `minor`
-  - bot commit には `[skip release]` が付き、再実行ループを防ぎます
+- Status: `draft`
+- Version:
+  - `versionName`: tag名から先頭の `v` を除いた値
+  - `versionCode`: `github.run_number + RELEASE_VERSION_CODE_OFFSET`
 
-mainでのバージョン更新オプションは、pushするcommit messageに次のどれかを含めて指定します。
-
-```text
-[version:major]  # 0.2.3+6 -> 1.0.0+7
-[version:minor]  # 0.2.3+6 -> 0.3.0+7
-[version:patch]  # 0.2.3+6 -> 0.2.4+7
-```
-
-指定しない場合は `[version:minor]` と同じ扱いです。
-
-### main以外: closed test 配信
-
-- Workflow: `.github/workflows/closed_test_release_android.yml`
-- Trigger: `main` 以外への `push`、または手動実行
-- Track: `PLAY_CLOSED_TRACK` repository variable の値
-  - 未設定の場合は `beta`
-- Version: `versionCode` だけ更新
-  - 例: `0.2.3+6 -> 0.2.3+7`
-  - Google Playは同じ `versionCode` の再アップロードを拒否するため、closed testでも `+n` は毎回上げます
-
-## バージョン更新コマンド
-
-ローカルで確認・手動更新したい場合は `scripts/bump_version.sh` を使います。
+productionはtag pushでAABを作成し、Google Play Consoleにdraft releaseとしてアップロードします。ユーザーへ公開する前に、Play Consoleでリリース内容・versionCode・審査状態を確認してください。
 
 ```bash
-scripts/bump_version.sh pubspec.yaml major
-scripts/bump_version.sh pubspec.yaml minor
-scripts/bump_version.sh pubspec.yaml patch
-scripts/bump_version.sh pubspec.yaml code
+git checkout main
+git pull
+git tag v1.2.3
+git push origin v1.2.3
 ```
 
-各オプションの意味:
+### closed test 配信
 
-| option | 更新例 | 用途 |
-| --- | --- | --- |
-| `major` | `0.2.3+6 -> 1.0.0+7` | 大きな互換性変更、正式版の区切り |
-| `minor` | `0.2.3+6 -> 0.3.0+7` | 通常のproduction更新。mainのデフォルト |
-| `patch` | `0.2.3+6 -> 0.2.4+7` | 小さな修正をproductionへ出す場合 |
-| `code` | `0.2.3+6 -> 0.2.3+7` | closed test用。表示バージョンは変えずGoogle Play用のビルド番号だけ上げる |
+- Workflow: `.github/workflows/android_release.yml`
+- Trigger: GitHub Actions の `Run workflow` から手動実行
+- Track: `PLAY_CLOSED_TRACK` repository variable の値
+  - 未設定の場合は `beta`
+- Status: `completed`
+- Version:
+  - `versionName`: `pubspec.yaml` の `version: x.y.z+n` から `x.y.z` を使用
+  - `versionCode`: `github.run_number + RELEASE_VERSION_CODE_OFFSET`
+
+PR branch、feature branch、mainへのpushではGoogle Play配信は走りません。
+
+## バージョン管理
+
+workflowは `pubspec.yaml` を更新・commit・pushしません。リリース時のAndroid versionは `flutter build appbundle` の `--build-name` と `--build-number` で注入します。
+
+Google Playは同じ `versionCode` の再アップロードを拒否します。`RELEASE_VERSION_CODE_OFFSET` は初期値 `1000` にしてあり、過去の `versionCode` より大きい番号から開始します。
 
 ## GitHub Secrets / Variables
 
@@ -72,6 +61,9 @@ Variables:
 - `PLAY_CLOSED_TRACK`
   - closed testing track名
   - 未設定時は `beta`
+- `RELEASE_VERSION_CODE_OFFSET`
+  - workflow内の初期値は `1000`
+  - 過去にGoogle Playへアップロード済みの最大 `versionCode` を上回るように必要なら調整します
 
 PowerShellでkeystore系Secretを登録する例:
 
@@ -94,7 +86,9 @@ gh secret set ANDROID_KEY_PASSWORD --repo $repo --body $props["keyPassword"]
 
 - `android/key.properties` と `.jks` はリポジトリに含めません。
 - `PLAY_SERVICE_ACCOUNT_JSON` が未設定の場合、AAB artifactは作られますがGoogle Play upload stepはスキップされます。
-- 同じbranchで古いCD実行が残っている場合は `concurrency` により新しい実行が優先されます。
+- 同じrefで古いCD実行が残っている場合は `concurrency` により新しい実行が優先されます。
+- production draftを公開する作業はPlay Consoleで手動実行します。
+- release tagを作り直す場合は、既存tagを削除してから再作成してください。公開済みのversionCodeは再利用できません。
 - GitHub公式ActionsはNode 24対応版を使います。
   - `actions/checkout@v6`
   - `actions/setup-java@v5`
@@ -102,11 +96,15 @@ gh secret set ANDROID_KEY_PASSWORD --repo $repo --body $props["keyPassword"]
 
 ## トラブルシュート
 
-- non-fast-forwardでpushに失敗する
-  - workflowはcheckout後にremote branch先端へ同期します。古いworkflow定義で走った実行はキャンセルして再実行してください。
+- production配信が走らない
+  - `v1.2.3` のような `vX.Y.Z` 形式のtagをpushしているか確認してください。
+- closed test配信が走らない
+  - Actions画面から `android_release` workflowを手動実行してください。
 - 署名エラー
   - `ANDROID_KEYSTORE_BASE64`、alias、store password、key password の不一致を確認してください。
 - Play uploadがスキップされる
   - `PLAY_SERVICE_ACCOUNT_JSON` がActions Secretに登録されているか確認してください。
+- versionCodeエラー
+  - Google Playに既に存在するversionCode以下でビルドされています。`RELEASE_VERSION_CODE_OFFSET` を上げてください。
 - Play uploadが権限エラーになる
   - Play Consoleでservice accountに対象アプリのproduction/closed testing release権限があるか確認してください。

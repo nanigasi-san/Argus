@@ -1,0 +1,137 @@
+name: android_release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RELEASE_VERSION_CODE_OFFSET: ${{ vars.RELEASE_VERSION_CODE_OFFSET || 1000 }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+      PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+      PLAY_CLOSED_TRACK: ${{ vars.PLAY_CLOSED_TRACK }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release config
+        id: release_config
+        run: |
+          set -euo pipefail
+
+          if ! [[ "$RELEASE_VERSION_CODE_OFFSET" =~ ^[0-9]+$ ]]; then
+            echo "RELEASE_VERSION_CODE_OFFSET must be a non-negative integer: $RELEASE_VERSION_CODE_OFFSET" >&2
+            exit 1
+          fi
+
+          build_number=$((GITHUB_RUN_NUMBER + RELEASE_VERSION_CODE_OFFSET))
+
+          if [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            tag="${GITHUB_REF_NAME}"
+            if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Unsupported release tag: $tag" >&2
+              exit 1
+            fi
+
+            build_name="${tag#v}"
+            track="production"
+            release_status="draft"
+            artifact_suffix="production"
+          else
+            current_line="$(awk '/^version:[[:space:]]*[0-9]+\.[0-9]+\.[0-9]+\+[0-9]+$/ {print; exit}' pubspec.yaml)"
+            if [[ -z "$current_line" ]]; then
+              echo "version line not found or unsupported format in pubspec.yaml" >&2
+              exit 1
+            fi
+
+            current_version="${current_line#version: }"
+            build_name="${current_version%%+*}"
+            track="${PLAY_CLOSED_TRACK:-beta}"
+            release_status="completed"
+            artifact_suffix="closed"
+          fi
+
+          echo "build_name=$build_name" >> "$GITHUB_OUTPUT"
+          echo "build_number=$build_number" >> "$GITHUB_OUTPUT"
+          echo "track=$track" >> "$GITHUB_OUTPUT"
+          echo "release_status=$release_status" >> "$GITHUB_OUTPUT"
+          echo "artifact_suffix=$artifact_suffix" >> "$GITHUB_OUTPUT"
+          echo "release_name=Argus $build_name ($build_number)" >> "$GITHUB_OUTPUT"
+
+          echo "Build name: $build_name"
+          echo "Build number: $build_number"
+          echo "Track: $track"
+          echo "Release status: $release_status"
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Restore Android signing config
+        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' && env.ANDROID_KEY_ALIAS != '' && env.ANDROID_KEY_PASSWORD != '' && env.ANDROID_STORE_PASSWORD != '' }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release-keystore.jks"
+
+          cat > android/key.properties <<KEYS
+          storeFile=$RUNNER_TEMP/release-keystore.jks
+          storePassword=$ANDROID_STORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          keyPassword=$ANDROID_KEY_PASSWORD
+          KEYS
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build release appbundle
+        run: |
+          flutter build appbundle --release \
+            --build-name "${{ steps.release_config.outputs.build_name }}" \
+            --build-number "${{ steps.release_config.outputs.build_number }}"
+
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-release-${{ steps.release_config.outputs.artifact_suffix }}-artifacts
+          path: |
+            build/app/outputs/bundle/release/app-release.aab
+            build/app/outputs/mapping/release/mapping.txt
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload to Google Play
+        if: ${{ env.PLAY_SERVICE_ACCOUNT_JSON != '' }}
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ env.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.argus.orienteering
+          releaseFiles: build/app/outputs/bundle/release/app-release.aab
+          releaseName: ${{ steps.release_config.outputs.release_name }}
+          track: ${{ steps.release_config.outputs.track }}
+          status: ${{ steps.release_config.outputs.release_status }}
+          inAppUpdatePriority: 2
