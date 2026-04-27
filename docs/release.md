@@ -4,26 +4,31 @@
 
 ## ワークフロー
 
-- ファイル: `.github/workflows/release-android.yml`
+### 1) production_release_android
+
+- ファイル: `.github/workflows/production_release_android.yml`
+- トリガー: `main` への `push`
+- 配信先: `production`
+- 実行内容:
+  1. 署名鍵情報を復元
+  2. `pubspec.yaml` の `versionCode`（`x.y.z+n` の `n`）を +1
+  3. version bump を bot で commit/push（`[skip release]` 付き）
+  4. AAB をビルド
+  5. Play Console の production にアップロード
+
+### 2) closed_test_release_android
+
+- ファイル: `.github/workflows/closed_test_release_android.yml`
 - トリガー:
-  - `push`（全ブランチ）
-  - `pull_request`（全ブランチ）
+  - `main` 以外への `push`
+  - `pull_request`
   - `workflow_dispatch`（手動実行）
-
-## 配信トラックのルール
-
-- `main` への `push`: **production** に配信
-- 上記以外（main以外へのpush / pull_request / workflow_dispatch）: **closed testing** に配信
-  - デフォルトは `beta` トラック
+- 配信先: closed testing（デフォルト `beta`）
   - `Repository Variables` の `PLAY_CLOSED_TRACK` で上書き可能
-
-## 実行内容
-
-1. （Secretsがある場合）署名鍵情報を復元
-2. `main` push のときだけ `pubspec.yaml` の `versionCode`（`x.y.z+n` の `n`）を +1
-3. `main` push のときだけ version bump を bot で commit/push（`[skip release]` 付き）
-4. AAB をビルド
-5. Play Console へ配信（track は上記ルールで自動選択）
+- 実行内容:
+  1. 署名鍵情報を復元
+  2. AAB をビルド
+  3. Play Console の closed testing track へアップロード
 
 ## 必須 Secrets
 
@@ -55,14 +60,14 @@ base64 -w 0 release-keystore.jks
 ## 運用メモ
 
 - `versionName`（`x.y.z`）は手動管理です。必要時のみ `pubspec.yaml` で更新します。
-- `versionCode`（`+n` の n）は `main` push 時のみ自動更新されます。
+- `versionCode`（`+n` の n）は `production_release_android`（main push）時のみ自動更新されます。
 - bot commit には `[skip release]` を付与して再実行ループを抑止します。
+- `pull_request`（特にfork由来）で Secrets が使えない場合は、Play への upload step はスキップされます。
 
 ## トラブルシュート
 
 - 署名エラー: keystore の base64 文字列破損、alias/password 不一致を確認
 - 配信エラー: サービスアカウントの権限不足または packageName 不一致を確認
-- pull_request（特にfork由来）で Secrets が使えない場合は、Play への upload step はスキップされます
 
 ## PR運用ルール
 
