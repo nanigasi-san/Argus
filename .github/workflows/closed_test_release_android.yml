@@ -67,8 +67,8 @@ jobs:
           keyPassword=$ANDROID_KEY_PASSWORD
           KEYS
 
-      - name: Bump patch version
-        run: scripts/bump_version.sh pubspec.yaml patch
+      - name: Bump Android versionCode
+        run: scripts/bump_version.sh pubspec.yaml code
 
       - name: Commit bumped version
         run: |
@@ -78,7 +78,7 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add pubspec.yaml
-            git commit -m "chore(release): bump patch version [skip release]"
+            git commit -m "chore(release): bump versionCode [skip release]"
             git push origin HEAD:"${GITHUB_REF_NAME}"
           fi
 

@@ -4,8 +4,8 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  scripts/bump_version.sh [pubspec.yaml] [major|minor|patch]
-  scripts/bump_version.sh [major|minor|patch]
+  scripts/bump_version.sh [pubspec.yaml] [major|minor|patch|code]
+  scripts/bump_version.sh [major|minor|patch|code]
 
 Defaults to pubspec.yaml and patch.
 
@@ -13,6 +13,7 @@ Examples:
   scripts/bump_version.sh patch
   scripts/bump_version.sh pubspec.yaml minor
   scripts/bump_version.sh pubspec.yaml major
+  scripts/bump_version.sh pubspec.yaml code
 USAGE
 }
 
@@ -26,7 +27,7 @@ fi
 
 if [[ $# -gt 0 ]]; then
   case "$1" in
-    major|minor|patch)
+    major|minor|patch|code)
       BUMP_PART="$1"
       ;;
     *)
@@ -37,7 +38,7 @@ if [[ $# -gt 0 ]]; then
 fi
 
 case "$BUMP_PART" in
-  major|minor|patch) ;;
+  major|minor|patch|code) ;;
   *)
     echo "unsupported bump part: $BUMP_PART" >&2
     usage >&2
@@ -86,6 +87,8 @@ case "$BUMP_PART" in
     ;;
   patch)
     patch=$((patch + 1))
+    ;;
+  code)
     ;;
 esac
 
