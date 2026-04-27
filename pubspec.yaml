@@ -1,7 +1,7 @@
 name: argus
 description: Geo-fence monitoring app per spec.md
 publish_to: 'none'
-version: 0.2.5+8
+version: 0.2.5+9
 environment:
   sdk: '>=3.2.0 <4.0.0'
 
