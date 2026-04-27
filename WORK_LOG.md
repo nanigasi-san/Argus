@@ -1,0 +1,58 @@
+# Work Log
+
+## 2026-04-28
+
+### 事前調査
+- 実行したこと:
+  - リポジトリ直下、Flutter / Dart バージョン、Git 状態、主要設定ファイル、主要 Dart ファイル、Android / iOS 設定、テスト構成を確認。
+  - `rg --files` は Codex 同梱 `rg.exe` の実行権限エラーで失敗したため、PowerShell `Get-ChildItem` に切り替えた。
+- 実行したコマンド:
+  - `flutter --version`
+  - `dart --version`
+  - `git status --short --branch`
+  - `Get-ChildItem -Force`
+  - `Get-ChildItem -Path lib -Recurse -File`
+  - `Get-ChildItem -Path test,integration_test,test_driver -Recurse -File`
+  - `Get-Content -Raw pubspec.yaml`
+  - `Get-Content -Raw analysis_options.yaml`
+  - `Get-Content -Raw android\app\src\main\AndroidManifest.xml`
+  - `Get-Content -Raw ios\Runner\Info.plist`
+- 成功 / 失敗:
+  - 成功: Flutter / Dart と各設定ファイルの確認。
+  - 失敗: `rg --files`。理由は `rg.exe` 起動時のアクセス拒否。
+- 確認結果:
+  - Flutter: 3.35.7 stable。
+  - Dart: 3.9.2。
+  - `pubspec.yaml`: Flutter アプリ `argus`、SDK `>=3.2.0 <4.0.0`、`provider`, `geolocator`, `permission_handler`, `flutter_local_notifications`, `mobile_scanner`, `url_launcher`, `share_plus`, `gal` などを使用。
+  - `analysis_options.yaml`: `flutter_lints`、`prefer_const_constructors`, `avoid_print`。
+  - Android ディレクトリ: あり。位置情報、バックグラウンド位置情報、通知、カメラ、foreground service、wakelock 権限あり。
+  - iOS ディレクトリ: あり。位置情報、写真ライブラリ、background location の plist 設定あり。
+  - 主要画面: `HomePage`, `SettingsPage`, `QrScannerPage`, `QrGeneratorPage`, `BackgroundLocationDisclosurePage`。
+  - 状態管理: `AppController` が `ChangeNotifier`、`provider` で注入。
+  - ルーティング: `MaterialPageRoute` による直接遷移。
+  - 設定画面: `TextEditingController` と `TextFormField` 中心。数値範囲は下限のみで、上限・補正が不足。
+  - 多言語化・文言管理: l10n は未導入。画面文言は Dart 内に直書き。日本語と英語が混在。
+  - フォント設定: アプリ全体の明示フォントなし。
+  - テスト: unit/widget/integration test あり。
+  - 想定検証コマンド: `flutter pub get`, `dart format .`, `flutter analyze`, `flutter test`, `flutter build apk --debug`, `flutter devices`, `flutter run`。
+- 既存の不具合候補:
+  - `AppConfig.fromJson` が異常値や欠落に弱く、保存済み config が不正だとデフォルトへ丸ごと戻る。
+  - 設定画面の数値入力に上限がなく、GPS 間隔 1 秒などバッテリー消費が大きい値を保存できる。
+  - `AppController` の async 完了後 `notifyListeners()` が dispose 後に呼ばれる可能性がある。
+  - `location_service.dart` に `dart:io Platform` 判定が直接あり、platform 差分が実装内に散在しやすい。
+  - Android release signing が `key.properties` 欠落時でも null を `String` に cast しており、Gradle 評価時エラーの可能性がある。
+  - `RepeatingVibrationPlayer.stop()` がループ完了を待たず、再 start 直後に `_isRunning` が残る可能性がある。
+  - Android foreground location が `enableWakeLock: true` 固定で、必要以上にバッテリーを使う可能性がある。
+  - UI 文言に `Settings`, `Developer mode`, `Export logs`, `created` など英語混在がある。
+- パフォーマンス・バッテリー消費リスク:
+  - 位置情報の `distanceFilter` が 0 固定で、高頻度更新になりやすい。
+  - 設定上 `sample_interval_s.fast` を過小にできる。
+  - `HomePage` の `Consumer` が画面全体を再ビルドする。
+  - ログ表示や状態文字列の一部が build ごとに組み立てられる。
+- 置いた仮定:
+  - 現状の構成規模では l10n 導入より、まず文言定数と日本語表記の統一を優先する。
+  - フォントは完全オフライン要件を優先し、外部取得が必要な `google_fonts` より同梱または OS フォールバックを優先する。
+  - 本番デプロイ、署名、課金 API は実行しない。
+- 次にやること:
+  - 管理ファイルをコミットする。
+  - platform / 設定値 / バッテリー関連の修正から着手する。
