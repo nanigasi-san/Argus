@@ -2,14 +2,17 @@ name: Android Release
 
 on:
   push:
-    branches: ["main"]
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
   release:
-    if: github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, '[skip release]')
+    if: github.actor != 'github-actions[bot]' && (github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip release]'))
     runs-on: ubuntu-latest
 
     steps:
@@ -29,18 +32,30 @@ jobs:
         with:
           channel: stable
 
+      - name: Decide release track
+        id: decide_track
+        run: |
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "track=production" >> "$GITHUB_OUTPUT"
+            echo "target=main push -> production"
+          else
+            # closed testing track。必要なら repository variable PLAY_CLOSED_TRACK で上書き可能
+            closed_track="${{ vars.PLAY_CLOSED_TRACK }}"
+            if [[ -z "$closed_track" ]]; then
+              closed_track="beta"
+            fi
+            echo "track=$closed_track" >> "$GITHUB_OUTPUT"
+            echo "target=non-main push / pull_request / manual -> $closed_track"
+          fi
+
       - name: Restore Android signing config
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' && secrets.ANDROID_STORE_PASSWORD != '' }}
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
         run: |
-          test -n "$ANDROID_KEYSTORE_BASE64"
-          test -n "$ANDROID_KEY_ALIAS"
-          test -n "$ANDROID_KEY_PASSWORD"
-          test -n "$ANDROID_STORE_PASSWORD"
-
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release-keystore.jks"
 
           cat > android/key.properties <<KEYS
@@ -51,9 +66,11 @@ jobs:
           KEYS
 
       - name: Bump Android versionCode
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         run: scripts/bump_version.sh pubspec.yaml
 
       - name: Commit bumped version
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         run: |
           if git diff --quiet -- pubspec.yaml; then
             echo "No version changes to commit"
@@ -81,12 +98,13 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-      - name: Upload to Google Play internal track
+      - name: Upload to Google Play
+        if: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: com.argus.orienteering
           releaseFiles: build/app/outputs/bundle/release/app-release.aab
-          track: internal
+          track: ${{ steps.decide_track.outputs.track }}
           status: completed
           inAppUpdatePriority: 2

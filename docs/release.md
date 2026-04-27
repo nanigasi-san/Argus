@@ -1,17 +1,29 @@
 # Android リリース自動化運用
 
-このプロジェクトでは、`main` への push を契機に GitHub Actions で Android AAB のビルドと Play Console への配信を行います。
+このプロジェクトでは、GitHub Actions で Android AAB のビルドと Play Console への配信を行います。
 
 ## ワークフロー
 
 - ファイル: `.github/workflows/release-android.yml`
-- トリガー: `main` ブランチへの push
-- 実行内容:
-  1. 署名鍵情報を Secrets から復元
-  2. `pubspec.yaml` の `versionCode`（`x.y.z+n` の `n`）を +1
-  3. 変更を bot で main に commit/push（`[skip release]` 付き）
-  4. AAB をビルド
-  5. Play Console の `internal` track にアップロード
+- トリガー:
+  - `push`（全ブランチ）
+  - `pull_request`（全ブランチ）
+  - `workflow_dispatch`（手動実行）
+
+## 配信トラックのルール
+
+- `main` への `push`: **production** に配信
+- 上記以外（main以外へのpush / pull_request / workflow_dispatch）: **closed testing** に配信
+  - デフォルトは `beta` トラック
+  - `Repository Variables` の `PLAY_CLOSED_TRACK` で上書き可能
+
+## 実行内容
+
+1. （Secretsがある場合）署名鍵情報を復元
+2. `main` push のときだけ `pubspec.yaml` の `versionCode`（`x.y.z+n` の `n`）を +1
+3. `main` push のときだけ version bump を bot で commit/push（`[skip release]` 付き）
+4. AAB をビルド
+5. Play Console へ配信（track は上記ルールで自動選択）
 
 ## 必須 Secrets
 
@@ -38,21 +50,21 @@ base64 -w 0 release-keystore.jks
 1. Play Console 側で対象アプリにサービスアカウントを招待済みであること
 2. サービスアカウントに「リリース管理」相当の権限があること
 3. `android/key.properties` はリポジトリに含めず、CIで毎回生成されること
+4. closed track を `beta` 以外にしたい場合は `PLAY_CLOSED_TRACK` を設定すること
 
 ## 運用メモ
 
 - `versionName`（`x.y.z`）は手動管理です。必要時のみ `pubspec.yaml` で更新します。
-- `versionCode`（`+n` の n）は workflow により自動更新されます。
-- internal track で検証後、production への昇格は Play Console 側で実施してください。
+- `versionCode`（`+n` の n）は `main` push 時のみ自動更新されます。
+- bot commit には `[skip release]` を付与して再実行ループを抑止します。
 
 ## トラブルシュート
 
 - 署名エラー: keystore の base64 文字列破損、alias/password 不一致を確認
 - 配信エラー: サービスアカウントの権限不足または packageName 不一致を確認
-- ループ実行: bot commit には `[skip release]` を付与して再実行を抑止
+- pull_request（特にfork由来）で Secrets が使えない場合は、Play への upload step はスキップされます
 
 ## PR運用ルール
 
 - リリース自動化に関する PR タイトル・本文は日本語で記載します。
 - PR 本文には `created by Codex` を含めます。
-
