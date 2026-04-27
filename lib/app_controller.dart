@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'geo/area_index.dart';
@@ -18,6 +19,8 @@ import 'qr/geojson_qr_codec.dart';
 import 'state_machine/state.dart';
 import 'state_machine/state_machine.dart';
 
+typedef QrImageAnalyzer = Future<String?> Function(String imagePath);
+
 /// アプリケーション全体の状態と動作を管理するコントローラ。
 ///
 /// 位置情報の監視、GeoJSONの読み込み、設定管理、ログ記録などを統合的に処理します。
@@ -30,9 +33,13 @@ class AppController extends ChangeNotifier {
     required this.logger,
     required this.notifier,
     PermissionCoordinator? permissionCoordinator,
-  }) : permissionCoordinator = permissionCoordinator ?? PermissionCoordinator();
+    QrImageAnalyzer? qrImageAnalyzer,
+  })  : permissionCoordinator =
+            permissionCoordinator ?? PermissionCoordinator(),
+        _qrImageAnalyzer = qrImageAnalyzer ?? _defaultQrImageAnalyzer;
 
   final PermissionCoordinator permissionCoordinator;
+  final QrImageAnalyzer _qrImageAnalyzer;
 
   final StateMachine stateMachine;
   final LocationService locationService;
@@ -364,6 +371,40 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  /// QRコード画像ファイルからGeoJSONを読み込みます。
+  Future<bool> reloadGeoJsonFromQrImagePicker() async {
+    await stopMonitoring();
+
+    try {
+      final file = await fileManager.pickQrImageFile();
+      if (file == null) {
+        return false;
+      }
+
+      final qrText = await _qrImageAnalyzer(file.path);
+      if (qrText == null || qrText.trim().isEmpty) {
+        _lastErrorMessage = 'QRコード画像からQRコードを読み取れませんでした。';
+        _logError('APP', _lastErrorMessage!);
+        notifyListeners();
+        return false;
+      }
+
+      return reloadGeoJsonFromQr(qrText);
+    } catch (e) {
+      final errorMessage = e.toString().toLowerCase();
+      if (errorMessage.contains('cancel') ||
+          errorMessage.contains('user') ||
+          errorMessage.contains('abort')) {
+        return false;
+      }
+      _lastErrorMessage =
+          'Unable to load GeoJSON from QR image: ${e.toString()}';
+      _logError('APP', _lastErrorMessage!);
+      notifyListeners();
+      return false;
+    }
+  }
+
   /// 一時GeoJSONファイルを削除します。
   ///
   /// アプリ終了時や新しいQRコードを読み込む際に呼び出されます。
@@ -687,5 +728,27 @@ class AppController extends ChangeNotifier {
     final normalized = (bearing % 360 + 360) % 360;
     final index = ((normalized + 22.5) ~/ 45) % labels.length;
     return labels[index];
+  }
+}
+
+Future<String?> _defaultQrImageAnalyzer(String imagePath) async {
+  final controller = MobileScannerController(
+    autoStart: false,
+    formats: const [BarcodeFormat.qrCode],
+  );
+  try {
+    final capture = await controller.analyzeImage(
+      imagePath,
+      formats: const [BarcodeFormat.qrCode],
+    );
+    for (final barcode in capture?.barcodes ?? const <Barcode>[]) {
+      final rawValue = barcode.rawValue;
+      if (rawValue != null && rawValue.trim().isNotEmpty) {
+        return rawValue;
+      }
+    }
+    return null;
+  } finally {
+    await controller.dispose();
   }
 }

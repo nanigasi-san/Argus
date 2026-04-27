@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:argus/app_controller.dart';
 import 'package:argus/geo/area_index.dart';
@@ -54,6 +55,17 @@ class FakeFileManager extends FileManager {
       utf8.encode(_squareGeoJson),
       name: 'test_square.geojson',
       mimeType: 'application/geo+json',
+      path: 'test_square.geojson',
+    );
+  }
+
+  @override
+  Future<XFile?> pickQrImageFile() async {
+    return XFile.fromData(
+      Uint8List.fromList(const <int>[0]),
+      name: 'qr.png',
+      mimeType: 'image/png',
+      path: 'qr.png',
     );
   }
 }
@@ -107,6 +119,7 @@ AppController buildTestController({
   bool? developerMode,
   MonitoringPermissionState? permissionState,
   PermissionCoordinator? permissionCoordinator,
+  QrImageAnalyzer? qrImageAnalyzer,
 }) {
   final config = createTestConfig();
   final stateMachine = StateMachine(config: config);
@@ -121,6 +134,7 @@ AppController buildTestController({
       alarmPlayer: FakeAlarmPlayer(),
     ),
     permissionCoordinator: permissionCoordinator,
+    qrImageAnalyzer: qrImageAnalyzer,
   );
 
   GeoModel? geoModel;

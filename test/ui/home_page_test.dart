@@ -159,7 +159,7 @@ void main() {
   });
 
   testWidgets(
-      'bottom actions show Load GeoJSON and Read QR code (no Start button)',
+      'bottom actions show file loader and QR camera buttons (no Start button)',
       (tester) async {
     final controller = buildTestController(
       hasGeoJson: true,
@@ -172,9 +172,66 @@ void main() {
 
     await _pumpHome(tester, controller);
 
-    expect(find.text('Load GeoJSON'), findsOneWidget);
-    expect(find.text('Read QR code'), findsOneWidget);
+    expect(find.text('ファイルを\n読み込む'), findsOneWidget);
+    expect(find.text('QRコードを\n読み込む'), findsOneWidget);
+    expect(find.text('created by Kaito YAMADA'), findsOneWidget);
     expect(find.text('Start monitoring'), findsNothing);
+  });
+
+  testWidgets('file loader opens GeoJSON and QR image choices', (tester) async {
+    final controller = buildTestController(hasGeoJson: true);
+
+    await _pumpHome(tester, controller);
+
+    await tester.ensureVisible(find.text('ファイルを\n読み込む'));
+    await tester.tap(find.text('ファイルを\n読み込む'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('GeoJSONファイルを読み込む'), findsOneWidget);
+    expect(find.text('QRコード画像を読み込む'), findsOneWidget);
+  });
+
+  testWidgets('file loader GeoJSON choice loads selected file', (tester) async {
+    final controller = buildTestController(hasGeoJson: false);
+
+    await _pumpHome(tester, controller);
+    expect(find.textContaining('ファイル名: -'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('ファイルを\n読み込む'));
+    await tester.tap(find.text('ファイルを\n読み込む'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('GeoJSONファイルを読み込む'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
+
+    expect(controller.geoJsonLoaded, isTrue);
+    expect(find.textContaining('ファイル名: test_square.geojson'), findsOneWidget);
+  });
+
+  testWidgets('file loader QR image choice decodes selected image',
+      (tester) async {
+    String? analyzedPath;
+    final controller = buildTestController(
+      hasGeoJson: false,
+      qrImageAnalyzer: (path) async {
+        analyzedPath = path;
+        return 'invalid:qr';
+      },
+    );
+
+    await _pumpHome(tester, controller);
+
+    await tester.ensureVisible(find.text('ファイルを\n読み込む'));
+    await tester.tap(find.text('ファイルを\n読み込む'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('QRコード画像を読み込む'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(analyzedPath, 'qr.png');
+    expect(controller.geoJsonLoaded, isFalse);
   });
 
   testWidgets('overflow menu opens QR generator page', (tester) async {

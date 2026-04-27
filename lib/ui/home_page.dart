@@ -11,6 +11,11 @@ import 'qr_generator_page.dart';
 import 'qr_scanner_page.dart';
 import 'settings_page.dart';
 
+enum _LoadFileAction {
+  geoJson,
+  qrImage,
+}
+
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
@@ -109,8 +114,9 @@ class HomePage extends StatelessWidget {
                                   isWaitStart: snapshot.status ==
                                       LocationStateStatus.waitStart,
                                   geoJsonReady: controller.geoJsonLoaded,
-                                  onLoadGeoJson:
-                                      controller.reloadGeoJsonFromPicker,
+                                  onLoadFile: () {
+                                    _showLoadFileSheet(context, controller);
+                                  },
                                   onOpenQr: () {
                                     Navigator.of(context).push(
                                       MaterialPageRoute(
@@ -242,6 +248,8 @@ class HomePage extends StatelessWidget {
                             ),
                           ),
                         ),
+                        const SizedBox(height: 12),
+                        const _CreditFooter(),
                       ],
                     )
                   : Column(
@@ -290,8 +298,9 @@ class HomePage extends StatelessWidget {
                                     isWaitStart: snapshot.status ==
                                         LocationStateStatus.waitStart,
                                     geoJsonReady: controller.geoJsonLoaded,
-                                    onLoadGeoJson:
-                                        controller.reloadGeoJsonFromPicker,
+                                    onLoadFile: () {
+                                      _showLoadFileSheet(context, controller);
+                                    },
                                     onOpenQr: () {
                                       Navigator.of(context).push(
                                         MaterialPageRoute(
@@ -335,7 +344,8 @@ class HomePage extends StatelessWidget {
                             ),
                           ),
                         ),
-                        // エラー表示はSnackbarに移行済み
+                        const SizedBox(height: 12),
+                        const _CreditFooter(),
                       ],
                     ),
             ),
@@ -344,6 +354,49 @@ class HomePage extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+Future<void> _showLoadFileSheet(
+  BuildContext context,
+  AppController controller,
+) async {
+  final action = await showModalBottomSheet<_LoadFileAction>(
+    context: context,
+    builder: (context) {
+      return SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.map),
+              title: const Text('GeoJSONファイルを読み込む'),
+              onTap: () {
+                Navigator.of(context).pop(_LoadFileAction.geoJson);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.image_search),
+              title: const Text('QRコード画像を読み込む'),
+              onTap: () {
+                Navigator.of(context).pop(_LoadFileAction.qrImage);
+              },
+            ),
+          ],
+        ),
+      );
+    },
+  );
+
+  switch (action) {
+    case _LoadFileAction.geoJson:
+      await controller.reloadGeoJsonFromPicker();
+      return;
+    case _LoadFileAction.qrImage:
+      await controller.reloadGeoJsonFromQrImagePicker();
+      return;
+    case null:
+      return;
   }
 }
 
@@ -430,13 +483,13 @@ class _BottomActions extends StatelessWidget {
   const _BottomActions({
     required this.isWaitStart,
     required this.geoJsonReady,
-    required this.onLoadGeoJson,
+    required this.onLoadFile,
     required this.onOpenQr,
   });
 
   final bool isWaitStart;
   final bool geoJsonReady;
-  final VoidCallback onLoadGeoJson;
+  final VoidCallback onLoadFile;
   final VoidCallback onOpenQr;
 
   @override
@@ -449,9 +502,12 @@ class _BottomActions extends StatelessWidget {
           children: [
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: onLoadGeoJson,
-                icon: const Icon(Icons.map),
-                label: const Text('Load GeoJSON'),
+                onPressed: onLoadFile,
+                icon: const Icon(Icons.folder_open),
+                label: const Text(
+                  'ファイルを\n読み込む',
+                  textAlign: TextAlign.center,
+                ),
               ),
             ),
             const SizedBox(width: 12),
@@ -459,12 +515,30 @@ class _BottomActions extends StatelessWidget {
               child: OutlinedButton.icon(
                 onPressed: onOpenQr,
                 icon: const Icon(Icons.qr_code_scanner),
-                label: const Text('Read QR code'),
+                label: const Text(
+                  'QRコードを\n読み込む',
+                  textAlign: TextAlign.center,
+                ),
               ),
             ),
           ],
         ),
       ],
+    );
+  }
+}
+
+class _CreditFooter extends StatelessWidget {
+  const _CreditFooter();
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      'created by Kaito YAMADA',
+      textAlign: TextAlign.center,
+      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
     );
   }
 }

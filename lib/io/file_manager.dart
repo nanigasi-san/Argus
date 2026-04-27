@@ -43,6 +43,19 @@ class FileManager {
     return await _pickFile();
   }
 
+  /// QRコード画像ファイルを選択するファイルピッカーを開きます。
+  Future<XFile?> pickQrImageFile() async {
+    return await _pickFile(
+      acceptedTypeGroups: const [
+        XTypeGroup(
+          label: 'QR code image',
+          extensions: ['png', 'jpg', 'jpeg', 'webp'],
+          mimeTypes: ['image/png', 'image/jpeg', 'image/webp'],
+        ),
+      ],
+    );
+  }
+
   /// 設定ファイルのパスを取得します。
   ///
   /// ファイルが存在しない場合はデフォルト設定で作成します。
