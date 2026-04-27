@@ -40,11 +40,7 @@ class FileManager {
 
   /// GeoJSONファイルを選択するファイルピッカーを開きます。
   Future<XFile?> pickGeoJsonFile() async {
-    const XTypeGroup typeGroup = XTypeGroup(
-      label: 'GeoJSON files',
-      extensions: ['geojson', 'json', 'bin'],
-    );
-    return await _pickFile(acceptedTypeGroups: [typeGroup]);
+    return await _pickFile();
   }
 
   /// 設定ファイルのパスを取得します。

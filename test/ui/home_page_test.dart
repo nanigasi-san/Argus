@@ -177,6 +177,20 @@ void main() {
     expect(find.text('Start monitoring'), findsNothing);
   });
 
+  testWidgets('overflow menu opens QR generator page', (tester) async {
+    final controller = buildTestController(hasGeoJson: true);
+
+    await _pumpHome(tester, controller);
+
+    await tester.tap(find.byType(PopupMenuButton<int>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Generate QR code'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Generate QR code'), findsOneWidget);
+    expect(find.text('GeoJSONを選択'), findsOneWidget);
+  });
+
   testWidgets(
       'tapping start opens background disclosure when always permission is missing',
       (tester) async {

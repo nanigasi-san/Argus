@@ -12,6 +12,7 @@ import 'package:qr/qr.dart';
 class GeoJsonQrEncodeInput {
   const GeoJsonQrEncodeInput({
     required this.geoJson,
+    this.scheme = GeoJsonQrScheme.gjb1,
     this.enableHash = true,
     this.maxQrTextLength = 2500,
     this.eccLevel = QrErrorCorrectionLevel.quartile,
@@ -23,6 +24,7 @@ class GeoJsonQrEncodeInput {
         assert(quietZoneModules >= 0, 'quietZoneModules must be >= 0');
 
   final String geoJson;
+  final GeoJsonQrScheme scheme;
   final bool enableHash;
   final int maxQrTextLength;
   final QrErrorCorrectionLevel eccLevel;
@@ -134,16 +136,41 @@ enum QrErrorCorrectionLevel {
   high,
 }
 
+/// GeoJSON QRで使う圧縮/ペイロードスキーム。
+enum GeoJsonQrScheme {
+  /// Brotli圧縮。既存互換だが、生成には外部Brotli CLIが必要。
+  gjb1,
+
+  /// gzip圧縮。Dart標準ライブラリのみで生成/復元できる。
+  gjz1,
+}
+
+extension GeoJsonQrSchemeName on GeoJsonQrScheme {
+  String get wireName {
+    switch (this) {
+      case GeoJsonQrScheme.gjb1:
+        return 'gjb1';
+      case GeoJsonQrScheme.gjz1:
+        return 'gjz1';
+    }
+  }
+
+  String get _singlePrefix => wireName;
+  String get _chunkPrefix => '${wireName}p';
+}
+
 /// GeoJSON文字列をQRテキスト(とPNG)へ変換する。
 Future<GeoJsonQrBundle> encodeGeoJson(GeoJsonQrEncodeInput input) async {
   final minifyResult = minifyGeoJson(input.geoJson);
   final minimizedBytes =
       Uint8List.fromList(utf8.encode(minifyResult.minimized));
-  final compressedBytes = await brotliCompress(minimizedBytes);
+  final compressedBytes =
+      await _compressForScheme(input.scheme, minimizedBytes);
   final payload = base64UrlEncodeNoPad(compressedBytes);
   final hashHex = input.enableHash ? computeSha256Hex(minimizedBytes) : null;
 
-  var qrTexts = _buildQrTexts(payload, hashHex, input.maxQrTextLength);
+  var qrTexts =
+      _buildQrTexts(input.scheme, payload, hashHex, input.maxQrTextLength);
   var pngImages = <Uint8List>[];
 
   if (input.generatePng) {
@@ -163,7 +190,8 @@ Future<GeoJsonQrBundle> encodeGeoJson(GeoJsonQrEncodeInput input) async {
       } on PayloadTooLargeException catch (e) {
         if (qrTexts.length == 1 && !retriedSplit) {
           retriedSplit = true;
-          qrTexts = buildGjB1pTexts(
+          qrTexts = _buildChunkedTexts(
+            input.scheme,
             payload,
             hash: hashHex,
             maxLength: input.maxQrTextLength,
@@ -184,6 +212,11 @@ Future<GeoJsonQrBundle> encodeGeoJson(GeoJsonQrEncodeInput input) async {
   );
 }
 
+bool isSupportedGeoJsonQrText(String text) {
+  final normalized = text.trim();
+  return normalized.startsWith('gjb1:') || normalized.startsWith('gjz1:');
+}
+
 /// QRテキストからGeoJSON文字列を復元する。
 Future<String> decodeGeoJson(GeoJsonQrDecodeInput input) async {
   final normalized = input.qrTexts
@@ -195,9 +228,9 @@ Future<String> decodeGeoJson(GeoJsonQrDecodeInput input) async {
     throw UnsupportedSchemeException('No QR text supplied');
   }
 
-  final payload = _parseGjB1Payload(normalized);
+  final payload = _parseQrPayload(normalized);
   final compressedBytes = base64UrlDecodeNoPad(payload.payload);
-  final minimizedBytes = brotliDecompress(compressedBytes);
+  final minimizedBytes = _decompressForScheme(payload.scheme, compressedBytes);
   final minimized = utf8.decode(minimizedBytes);
 
   validateGeoJsonStructure(jsonDecode(minimized));
@@ -311,6 +344,14 @@ Future<Uint8List> brotliCompress(Uint8List bytes, {int quality = 11}) async {
   }
 }
 
+Uint8List gzipCompress(Uint8List bytes, {int level = 9}) {
+  try {
+    return Uint8List.fromList(GZipCodec(level: level).encode(bytes));
+  } catch (e) {
+    throw CompressFailedException('gzip compression failed', e);
+  }
+}
+
 Uint8List brotliDecompress(Uint8List bytes) {
   try {
     const decoder = brotli.BrotliDecoder();
@@ -318,6 +359,14 @@ Uint8List brotliDecompress(Uint8List bytes) {
     return Uint8List.fromList(decompressed);
   } catch (e) {
     throw DecompressFailedException('Brotli decompression failed', e);
+  }
+}
+
+Uint8List gzipDecompress(Uint8List bytes) {
+  try {
+    return Uint8List.fromList(GZipCodec().decode(bytes));
+  } catch (e) {
+    throw DecompressFailedException('gzip decompression failed', e);
   }
 }
 
@@ -344,19 +393,51 @@ Uint8List base64UrlDecodeNoPad(String text) {
 
 String computeSha256Hex(Uint8List bytes) => sha256.convert(bytes).toString();
 
-List<String> _buildQrTexts(String payload, String? hashHex, int maxLength) {
-  final single = _buildGjB1Text(payload, hashHex);
+Future<Uint8List> _compressForScheme(
+  GeoJsonQrScheme scheme,
+  Uint8List bytes,
+) {
+  switch (scheme) {
+    case GeoJsonQrScheme.gjb1:
+      return brotliCompress(bytes);
+    case GeoJsonQrScheme.gjz1:
+      return Future.value(gzipCompress(bytes));
+  }
+}
+
+Uint8List _decompressForScheme(GeoJsonQrScheme scheme, Uint8List bytes) {
+  switch (scheme) {
+    case GeoJsonQrScheme.gjb1:
+      return brotliDecompress(bytes);
+    case GeoJsonQrScheme.gjz1:
+      return gzipDecompress(bytes);
+  }
+}
+
+List<String> _buildQrTexts(
+  GeoJsonQrScheme scheme,
+  String payload,
+  String? hashHex,
+  int maxLength,
+) {
+  final single = _buildSingleText(scheme, payload, hashHex);
   if (single.length <= maxLength) {
     return [single];
   }
-  return buildGjB1pTexts(payload, hash: hashHex, maxLength: maxLength);
+  return _buildChunkedTexts(scheme, payload,
+      hash: hashHex, maxLength: maxLength);
 }
 
-String _buildGjB1Text(String payload, String? hashHex) {
+String _buildSingleText(
+  GeoJsonQrScheme scheme,
+  String payload,
+  String? hashHex,
+) {
+  final prefix = scheme._singlePrefix;
   if (hashHex == null) {
-    return 'gjb1:$payload';
+    return '$prefix:$payload';
   }
-  return 'gjb1:$payload#$hashHex';
+  return '$prefix:$payload#$hashHex';
 }
 
 List<String> buildGjB1pTexts(
@@ -364,6 +445,34 @@ List<String> buildGjB1pTexts(
   String? hash,
   required int maxLength,
 }) {
+  return _buildChunkedTexts(
+    GeoJsonQrScheme.gjb1,
+    payload,
+    hash: hash,
+    maxLength: maxLength,
+  );
+}
+
+List<String> buildGjZ1pTexts(
+  String payload, {
+  String? hash,
+  required int maxLength,
+}) {
+  return _buildChunkedTexts(
+    GeoJsonQrScheme.gjz1,
+    payload,
+    hash: hash,
+    maxLength: maxLength,
+  );
+}
+
+List<String> _buildChunkedTexts(
+  GeoJsonQrScheme scheme,
+  String payload, {
+  String? hash,
+  required int maxLength,
+}) {
+  final chunkPrefix = scheme._chunkPrefix;
   if (maxLength <= 12) {
     throw PayloadTooLargeException(
         'maxQrTextLength too small to hold metadata');
@@ -375,7 +484,8 @@ List<String> buildGjB1pTexts(
     final digitsTotal = _digits(total);
     final maxChunkPayloadLength = maxLength - (8 + 2 * digitsTotal);
     if (maxChunkPayloadLength <= 0) {
-      throw PayloadTooLargeException('maxQrTextLength too small for gjb1p');
+      throw PayloadTooLargeException(
+          'maxQrTextLength too small for $chunkPrefix');
     }
 
     final chunks = <String>[];
@@ -411,44 +521,59 @@ List<String> buildGjB1pTexts(
     final result = <String>[];
     for (var i = 0; i < chunks.length; i++) {
       final indexStr = (i + 1).toString();
-      result.add('gjb1p:$indexStr/$totalStr:${chunks[i]}');
+      result.add('$chunkPrefix:$indexStr/$totalStr:${chunks[i]}');
     }
     return result;
   }
 }
 
-/// `gjb1` / `gjb1p`テキストを解析してペイロードとハッシュを取り出す。
-GjB1Payload _parseGjB1Payload(List<String> texts) {
-  if (texts.length == 1 && texts.first.startsWith('gjb1:')) {
-    return _parseGjB1Single(texts.first);
+/// `gjb1` / `gjb1p` / `gjz1` / `gjz1p`テキストを解析する。
+QrPayload _parseQrPayload(List<String> texts) {
+  if (texts.length == 1) {
+    final text = texts.first;
+    if (text.startsWith('gjb1:')) {
+      return _parseSinglePayload(GeoJsonQrScheme.gjb1, text);
+    }
+    if (text.startsWith('gjz1:')) {
+      return _parseSinglePayload(GeoJsonQrScheme.gjz1, text);
+    }
   }
+
   if (texts.every((element) => element.startsWith('gjb1p:'))) {
-    final merged = _mergeGjB1Chunks(texts);
-    return _parseGjB1Single('gjb1:$merged');
+    final merged = _mergeChunks(texts, GeoJsonQrScheme.gjb1);
+    return _parseSinglePayload(GeoJsonQrScheme.gjb1, 'gjb1:$merged');
+  }
+  if (texts.every((element) => element.startsWith('gjz1p:'))) {
+    final merged = _mergeChunks(texts, GeoJsonQrScheme.gjz1);
+    return _parseSinglePayload(GeoJsonQrScheme.gjz1, 'gjz1:$merged');
   }
   throw UnsupportedSchemeException('Unsupported QR scheme');
 }
 
-GjB1Payload _parseGjB1Single(String text) {
-  if (!text.startsWith('gjb1:')) {
-    throw UnsupportedSchemeException('Expected gjb1 scheme');
+QrPayload _parseSinglePayload(GeoJsonQrScheme scheme, String text) {
+  final prefix = scheme._singlePrefix;
+  if (!text.startsWith('$prefix:')) {
+    throw UnsupportedSchemeException('Expected $prefix scheme');
   }
-  final payloadWithHash = text.substring('gjb1:'.length);
+  final payloadWithHash = text.substring(prefix.length + 1);
   if (payloadWithHash.isEmpty) {
-    throw DecodeFailedException('Empty gjb1 payload');
+    throw DecodeFailedException('Empty $prefix payload');
   }
-  return _splitPayloadAndHash(payloadWithHash);
+  final split = _splitPayloadAndHash(payloadWithHash);
+  return QrPayload(scheme, split.payload, split.hashHex);
 }
 
-String _mergeGjB1Chunks(List<String> texts) {
-  final chunkRegExp = RegExp(r'^gjb1p:(\d+)/(\d+):(.*)$', dotAll: true);
+String _mergeChunks(List<String> texts, GeoJsonQrScheme scheme) {
+  final chunkPrefix = scheme._chunkPrefix;
+  final chunkRegExp =
+      RegExp('^$chunkPrefix:(\\d+)/(\\d+):(.*)\$', dotAll: true);
   final Map<int, String> chunks = {};
   int? expectedTotal;
 
   for (final text in texts) {
     final match = chunkRegExp.firstMatch(text);
     if (match == null) {
-      throw UnsupportedSchemeException('Malformed gjb1p chunk');
+      throw UnsupportedSchemeException('Malformed $chunkPrefix chunk');
     }
     final index = int.parse(match.group(1)!);
     final total = int.parse(match.group(2)!);
@@ -481,10 +606,10 @@ String _mergeGjB1Chunks(List<String> texts) {
   return buffer.toString();
 }
 
-GjB1Payload _splitPayloadAndHash(String payloadWithHash) {
+PayloadAndHash _splitPayloadAndHash(String payloadWithHash) {
   final hashIndex = payloadWithHash.lastIndexOf('#');
   if (hashIndex == -1) {
-    return GjB1Payload(payloadWithHash, null);
+    return PayloadAndHash(payloadWithHash, null);
   }
 
   final payload = payloadWithHash.substring(0, hashIndex);
@@ -494,12 +619,20 @@ GjB1Payload _splitPayloadAndHash(String payloadWithHash) {
     throw DecodeFailedException('Malformed hash suffix');
   }
 
-  return GjB1Payload(payload, hash);
+  return PayloadAndHash(payload, hash);
 }
 
-class GjB1Payload {
-  const GjB1Payload(this.payload, this.hashHex);
+class PayloadAndHash {
+  const PayloadAndHash(this.payload, this.hashHex);
 
+  final String payload;
+  final String? hashHex;
+}
+
+class QrPayload {
+  const QrPayload(this.scheme, this.payload, this.hashHex);
+
+  final GeoJsonQrScheme scheme;
   final String payload;
   final String? hashHex;
 }

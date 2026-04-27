@@ -31,7 +31,7 @@ void main() {
     }
   });
 
-  test('pickGeoJsonFile passes expected file filter', () async {
+  test('pickGeoJsonFile opens picker without file filter', () async {
     List<XTypeGroup>? capturedGroups;
     final manager = FileManager(
       filePicker: ({acceptedTypeGroups}) async {
@@ -44,10 +44,7 @@ void main() {
 
     await manager.pickGeoJsonFile();
 
-    expect(capturedGroups, isNotNull);
-    expect(capturedGroups, hasLength(1));
-    expect(capturedGroups!.single.label, 'GeoJSON files');
-    expect(capturedGroups!.single.extensions, ['geojson', 'json', 'bin']);
+    expect(capturedGroups, isNull);
   });
 
   test('getConfigFile creates config file with default config when missing',

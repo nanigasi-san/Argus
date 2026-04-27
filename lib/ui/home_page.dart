@@ -7,6 +7,7 @@ import '../io/log_entry.dart';
 import '../state_machine/state.dart';
 import 'background_location_disclosure_page.dart';
 import 'monitoring_permission_card.dart';
+import 'qr_generator_page.dart';
 import 'qr_scanner_page.dart';
 import 'settings_page.dart';
 
@@ -476,11 +477,16 @@ class _OverflowMenu extends StatelessWidget {
     return PopupMenuButton<int>(
       itemBuilder: (context) => const [
         PopupMenuItem(value: 1, child: Text('Settings')),
+        PopupMenuItem(value: 2, child: Text('Generate QR code')),
       ],
       onSelected: (value) {
         if (value == 1) {
           Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const SettingsPage()),
+          );
+        } else if (value == 2) {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const QrGeneratorPage()),
           );
         }
       },

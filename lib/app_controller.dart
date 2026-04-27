@@ -290,9 +290,10 @@ class AppController extends ChangeNotifier {
     await stopMonitoring();
 
     try {
-      // QRテキストがgjb1:で始まることを確認
-      if (!qrText.startsWith('gjb1:')) {
-        _lastErrorMessage = 'Invalid QR code format. Expected gjb1: scheme.';
+      // QRテキストが対応スキームで始まることを確認
+      if (!isSupportedGeoJsonQrText(qrText)) {
+        _lastErrorMessage =
+            'Invalid QR code format. Expected gjb1: or gjz1: scheme.';
         _logError('APP', _lastErrorMessage!);
         notifyListeners();
         return false;

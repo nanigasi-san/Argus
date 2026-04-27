@@ -109,7 +109,8 @@ class _QrScannerPageState extends State<QrScannerPage>
       });
     }
 
-    final cameraPermission = await _permissionCoordinator.ensureCameraPermission();
+    final cameraPermission =
+        await _permissionCoordinator.ensureCameraPermission();
     if (!mounted) {
       return;
     }
@@ -171,8 +172,7 @@ class _QrScannerPageState extends State<QrScannerPage>
       }
       setState(() {
         _scannerState = _QrScannerState.error;
-        _errorMessage =
-            'QR スキャナを開始できませんでした。時間をおいて再試行してください。\n$e';
+        _errorMessage = 'QR スキャナを開始できませんでした。時間をおいて再試行してください。\n$e';
       });
     } finally {
       _isStartingScanner = false;
@@ -230,7 +230,7 @@ class _QrScannerPageState extends State<QrScannerPage>
     });
 
     try {
-      if (!qrText.startsWith('gjb1:')) {
+      if (!isSupportedGeoJsonQrText(qrText)) {
         setState(() {
           _errorMessage = 'GeoJSON QR コードではありません。';
           _isProcessing = false;
@@ -245,7 +245,8 @@ class _QrScannerPageState extends State<QrScannerPage>
         Navigator.of(context).pop();
       } else if (mounted && !loaded) {
         setState(() {
-          _errorMessage = appController.lastErrorMessage ?? 'GeoJSON の読込に失敗しました。';
+          _errorMessage =
+              appController.lastErrorMessage ?? 'GeoJSON の読込に失敗しました。';
           _isProcessing = false;
         });
       }
