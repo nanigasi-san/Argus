@@ -42,8 +42,7 @@ Future<void> main(List<String> args) async {
 
     print('エンコード完了:');
     print('  - 最小化されたGeoJSONサイズ: ${bundle.minimizedGeoJson.length} bytes');
-    print('  - QRコードテキスト数: ${bundle.chunkCount}');
-    print('  - 分割QR: ${bundle.isSplit ? "はい" : "いいえ"}');
+    print('  - QRコードテキスト数: ${bundle.qrTexts.length}');
     print('  - ハッシュ: ${bundle.hashHex}');
     print('  - GeoJSONタイプ: ${bundle.info.type}');
     if (bundle.info.featureCount != null) {
@@ -55,7 +54,7 @@ Future<void> main(List<String> args) async {
     for (var i = 0; i < bundle.pngImages.length; i++) {
       final pngPath = path.join(
         outputDir,
-        bundle.chunkCount == 1 ? 'qr.png' : 'qr_${i + 1}.png',
+        'qr.png',
       );
       await File(pngPath).writeAsBytes(bundle.pngImages[i]);
       print('  保存: $pngPath (${bundle.pngImages[i].length} bytes)');

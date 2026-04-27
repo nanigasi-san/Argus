@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:brotli/brotli.dart' as brotli;
@@ -60,9 +59,6 @@ class GeoJsonQrBundle {
   final String minimizedGeoJson;
   final String? hashHex;
   final GeoJsonInfo info;
-
-  int get chunkCount => qrTexts.length;
-  bool get isSplit => qrTexts.length > 1;
 }
 
 /// GeoJSONの概要情報。
@@ -110,10 +106,6 @@ class UnsupportedSchemeException extends GeoJsonQrException {
       : super('E_UNSUPPORTED_SCHEME', message);
 }
 
-class ChunkMismatchException extends GeoJsonQrException {
-  ChunkMismatchException(String message) : super('E_CHUNK_MISMATCH', message);
-}
-
 class HashMismatchException extends GeoJsonQrException {
   HashMismatchException(String message) : super('E_HASH_MISMATCH', message);
 }
@@ -156,7 +148,6 @@ extension GeoJsonQrSchemeName on GeoJsonQrScheme {
   }
 
   String get _singlePrefix => wireName;
-  String get _chunkPrefix => '${wireName}p';
 }
 
 /// GeoJSON文字列をQRテキスト(とPNG)へ変換する。
@@ -174,32 +165,17 @@ Future<GeoJsonQrBundle> encodeGeoJson(GeoJsonQrEncodeInput input) async {
   var pngImages = <Uint8List>[];
 
   if (input.generatePng) {
-    var retriedSplit = false;
-    while (true) {
-      try {
-        pngImages = [
-          for (final text in qrTexts)
-            generateQrPng(
-              text,
-              input.eccLevel,
-              modulePixelSize: input.modulePixelSize,
-              quietZoneModules: input.quietZoneModules,
-            ),
-        ];
-        break;
-      } on PayloadTooLargeException catch (e) {
-        if (qrTexts.length == 1 && !retriedSplit) {
-          retriedSplit = true;
-          qrTexts = _buildChunkedTexts(
-            input.scheme,
-            payload,
-            hash: hashHex,
-            maxLength: input.maxQrTextLength,
-          );
-          continue;
-        }
-        throw QrGenerationException(e.message, e);
-      }
+    try {
+      pngImages = [
+        generateQrPng(
+          qrTexts.single,
+          input.eccLevel,
+          modulePixelSize: input.modulePixelSize,
+          quietZoneModules: input.quietZoneModules,
+        ),
+      ];
+    } on PayloadTooLargeException catch (e) {
+      throw QrGenerationException(e.message, e);
     }
   }
 
@@ -424,8 +400,8 @@ List<String> _buildQrTexts(
   if (single.length <= maxLength) {
     return [single];
   }
-  return _buildChunkedTexts(scheme, payload,
-      hash: hashHex, maxLength: maxLength);
+  throw PayloadTooLargeException(
+      'QR payload too large for maxQrTextLength: $maxLength');
 }
 
 String _buildSingleText(
@@ -440,94 +416,7 @@ String _buildSingleText(
   return '$prefix:$payload#$hashHex';
 }
 
-List<String> buildGjB1pTexts(
-  String payload, {
-  String? hash,
-  required int maxLength,
-}) {
-  return _buildChunkedTexts(
-    GeoJsonQrScheme.gjb1,
-    payload,
-    hash: hash,
-    maxLength: maxLength,
-  );
-}
-
-List<String> buildGjZ1pTexts(
-  String payload, {
-  String? hash,
-  required int maxLength,
-}) {
-  return _buildChunkedTexts(
-    GeoJsonQrScheme.gjz1,
-    payload,
-    hash: hash,
-    maxLength: maxLength,
-  );
-}
-
-List<String> _buildChunkedTexts(
-  GeoJsonQrScheme scheme,
-  String payload, {
-  String? hash,
-  required int maxLength,
-}) {
-  final chunkPrefix = scheme._chunkPrefix;
-  if (maxLength <= 12) {
-    throw PayloadTooLargeException(
-        'maxQrTextLength too small to hold metadata');
-  }
-  final payloadWithHash = hash == null ? payload : '$payload#$hash';
-  var total = max(1, (payloadWithHash.length / (maxLength - 12)).ceil());
-
-  while (true) {
-    final digitsTotal = _digits(total);
-    final maxChunkPayloadLength = maxLength - (8 + 2 * digitsTotal);
-    if (maxChunkPayloadLength <= 0) {
-      throw PayloadTooLargeException(
-          'maxQrTextLength too small for $chunkPrefix');
-    }
-
-    final chunks = <String>[];
-    var offset = 0;
-    while (offset < payloadWithHash.length) {
-      final end = min(offset + maxChunkPayloadLength, payloadWithHash.length);
-      chunks.add(payloadWithHash.substring(offset, end));
-      offset = end;
-    }
-
-    if (chunks.length != total) {
-      total = chunks.length;
-      continue;
-    }
-
-    final totalStr = total.toString();
-    var overflow = false;
-    for (var i = 0; i < chunks.length; i++) {
-      final indexStr = (i + 1).toString();
-      final projectedLength =
-          6 + indexStr.length + 1 + totalStr.length + 1 + chunks[i].length;
-      if (projectedLength > maxLength) {
-        overflow = true;
-        break;
-      }
-    }
-
-    if (overflow) {
-      total += 1;
-      continue;
-    }
-
-    final result = <String>[];
-    for (var i = 0; i < chunks.length; i++) {
-      final indexStr = (i + 1).toString();
-      result.add('$chunkPrefix:$indexStr/$totalStr:${chunks[i]}');
-    }
-    return result;
-  }
-}
-
-/// `gjb1` / `gjb1p` / `gjz1` / `gjz1p`テキストを解析する。
+/// `gjb1` / `gjz1`テキストを解析する。
 QrPayload _parseQrPayload(List<String> texts) {
   if (texts.length == 1) {
     final text = texts.first;
@@ -539,14 +428,6 @@ QrPayload _parseQrPayload(List<String> texts) {
     }
   }
 
-  if (texts.every((element) => element.startsWith('gjb1p:'))) {
-    final merged = _mergeChunks(texts, GeoJsonQrScheme.gjb1);
-    return _parseSinglePayload(GeoJsonQrScheme.gjb1, 'gjb1:$merged');
-  }
-  if (texts.every((element) => element.startsWith('gjz1p:'))) {
-    final merged = _mergeChunks(texts, GeoJsonQrScheme.gjz1);
-    return _parseSinglePayload(GeoJsonQrScheme.gjz1, 'gjz1:$merged');
-  }
   throw UnsupportedSchemeException('Unsupported QR scheme');
 }
 
@@ -561,49 +442,6 @@ QrPayload _parseSinglePayload(GeoJsonQrScheme scheme, String text) {
   }
   final split = _splitPayloadAndHash(payloadWithHash);
   return QrPayload(scheme, split.payload, split.hashHex);
-}
-
-String _mergeChunks(List<String> texts, GeoJsonQrScheme scheme) {
-  final chunkPrefix = scheme._chunkPrefix;
-  final chunkRegExp =
-      RegExp('^$chunkPrefix:(\\d+)/(\\d+):(.*)\$', dotAll: true);
-  final Map<int, String> chunks = {};
-  int? expectedTotal;
-
-  for (final text in texts) {
-    final match = chunkRegExp.firstMatch(text);
-    if (match == null) {
-      throw UnsupportedSchemeException('Malformed $chunkPrefix chunk');
-    }
-    final index = int.parse(match.group(1)!);
-    final total = int.parse(match.group(2)!);
-    final payload = match.group(3)!;
-
-    if (index < 1 || total < 1) {
-      throw ChunkMismatchException('Chunk index/total must be positive');
-    }
-    expectedTotal ??= total;
-    if (expectedTotal != total) {
-      throw ChunkMismatchException('Inconsistent total count in chunks');
-    }
-    if (chunks.containsKey(index)) {
-      throw ChunkMismatchException('Duplicate chunk index: $index');
-    }
-    chunks[index] = payload;
-  }
-
-  final total = expectedTotal ?? chunks.length;
-  for (var i = 1; i <= total; i++) {
-    if (!chunks.containsKey(i)) {
-      throw ChunkMismatchException('Missing chunk index: $i');
-    }
-  }
-
-  final buffer = StringBuffer();
-  for (var i = 1; i <= total; i++) {
-    buffer.write(chunks[i]);
-  }
-  return buffer.toString();
 }
 
 PayloadAndHash _splitPayloadAndHash(String payloadWithHash) {
@@ -779,8 +617,6 @@ bool _isValidHashHex(String value) {
   final hashRegExp = RegExp(r'^[0-9a-fA-F]{64}$');
   return hashRegExp.hasMatch(value);
 }
-
-int _digits(int value) => max(1, value.toString().length);
 
 bool _constantTimeEquals(String a, String b) {
   if (a.length != b.length) {

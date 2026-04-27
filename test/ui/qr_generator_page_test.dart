@@ -79,7 +79,7 @@ void main() {
     expect(shared, isTrue);
   });
 
-  testWidgets('rejects split QR output and disables generated actions',
+  testWidgets('rejects encoder output without a single PNG image',
       (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -91,8 +91,8 @@ void main() {
             path: 'large.geojson',
           ),
           encoder: (input) async => GeoJsonQrBundle(
-            qrTexts: const ['gjz1p:1/2:a', 'gjz1p:2/2:b'],
-            pngImages: [qrPng, qrPng],
+            qrTexts: const ['gjz1:test'],
+            pngImages: const [],
             minimizedGeoJson: '{"type":"FeatureCollection","features":[]}',
             hashHex: null,
             info: const GeoJsonInfo(
@@ -111,6 +111,131 @@ void main() {
     expect(find.byKey(const ValueKey('generated_qr_image')), findsNothing);
     expect(find.text('保存'), findsNothing);
     expect(find.text('共有'), findsNothing);
+  });
+
+  testWidgets('cancelled file selection clears generating state',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: QrGeneratorPage(
+          filePicker: () async => null,
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('GeoJSONを選択'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('GeoJSONを選択'), findsOneWidget);
+    expect(find.byKey(const ValueKey('generated_qr_image')), findsNothing);
+    expect(find.text('保存'), findsNothing);
+    expect(find.text('共有'), findsNothing);
+    expect(find.byIcon(Icons.error_outline), findsNothing);
+  });
+
+  testWidgets('surfaces GeoJSON QR generation errors', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: QrGeneratorPage(
+          filePicker: () async => XFile.fromData(
+            utf8.encode(_squareGeoJson),
+            name: 'course.geojson',
+            mimeType: 'application/geo+json',
+            path: 'course.geojson',
+          ),
+          encoder: (input) async => throw QrGenerationException('too large'),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('GeoJSONを選択'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('QRコードの生成に失敗しました'), findsOneWidget);
+    expect(find.textContaining('too large'), findsOneWidget);
+    expect(find.byKey(const ValueKey('generated_qr_image')), findsNothing);
+  });
+
+  testWidgets('surfaces GeoJSON format errors', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: QrGeneratorPage(
+          filePicker: () async => XFile.fromData(
+            utf8.encode(_squareGeoJson),
+            name: 'course.geojson',
+            mimeType: 'application/geo+json',
+            path: 'course.geojson',
+          ),
+          encoder: (input) async => throw const FormatException('bad json'),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('GeoJSONを選択'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('GeoJSONの形式が正しくありません'), findsOneWidget);
+    expect(find.textContaining('bad json'), findsOneWidget);
+    expect(find.byKey(const ValueKey('generated_qr_image')), findsNothing);
+  });
+
+  testWidgets('surfaces unexpected generation errors', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: QrGeneratorPage(
+          filePicker: () async => XFile.fromData(
+            utf8.encode(_squareGeoJson),
+            name: 'course.geojson',
+            mimeType: 'application/geo+json',
+            path: 'course.geojson',
+          ),
+          encoder: (input) async => throw Exception('boom'),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('GeoJSONを選択'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('QRコードの生成中にエラーが発生しました'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('boom'), findsOneWidget);
+    expect(find.byKey(const ValueKey('generated_qr_image')), findsNothing);
+  });
+
+  testWidgets('renders preview without optional hash and feature count',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: QrGeneratorPage(
+          filePicker: () async => XFile.fromData(
+            utf8.encode(_squareGeoJson),
+            name: '',
+            mimeType: 'application/geo+json',
+            path: r'C:\tmp\fallback.geojson',
+          ),
+          encoder: (input) async => GeoJsonQrBundle(
+            qrTexts: const ['payload-without-prefix'],
+            pngImages: [qrPng],
+            minimizedGeoJson: '{"type":"Point","coordinates":[0,0]}',
+            hashHex: null,
+            info: const GeoJsonInfo(type: 'Point'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('GeoJSONを選択'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('generated_qr_image')), findsOneWidget);
+    expect(find.text('fallback.geojson'), findsOneWidget);
+    expect(find.text('Point'), findsOneWidget);
+    expect(find.text('-'), findsOneWidget);
+    expect(find.text('ハッシュ'), findsNothing);
+    expect(find.text('フィーチャ数'), findsNothing);
   });
 
   testWidgets('surfaces save and share failures with SnackBars',

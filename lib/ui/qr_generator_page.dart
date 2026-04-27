@@ -85,7 +85,7 @@ class _QrGeneratorPageState extends State<QrGeneratorPage> {
         return;
       }
 
-      if (bundle.isSplit || bundle.pngImages.length != 1) {
+      if (bundle.pngImages.length != 1) {
         setState(() {
           _isGenerating = false;
           _errorMessage = '1枚のQRに収まりません。GeoJSONを簡略化してください。';

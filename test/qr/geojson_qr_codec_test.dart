@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:argus/qr/geojson_qr_codec.dart';
@@ -23,7 +24,7 @@ void main() {
     final bundle =
         await encodeGeoJson(GeoJsonQrEncodeInput(geoJson: sampleGeoJson));
 
-    expect(bundle.isSplit, isFalse);
+    expect(bundle.qrTexts, hasLength(1));
     expect(bundle.qrTexts, hasLength(1));
     expect(bundle.qrTexts.first.startsWith('gjb1:'), isTrue);
     final payloadSection =
@@ -41,23 +42,6 @@ void main() {
     expect(restored, bundle.minimizedGeoJson);
   });
 
-  test('encode triggers gjb1p split when max length is low', () async {
-    final bundle = await encodeGeoJson(
-      GeoJsonQrEncodeInput(
-        geoJson: sampleGeoJson,
-        maxQrTextLength: 80,
-      ),
-    );
-
-    expect(bundle.isSplit, isTrue);
-    expect(bundle.qrTexts.length, greaterThan(1));
-    expect(bundle.qrTexts.every((text) => text.startsWith('gjb1p:')), isTrue);
-
-    final restored =
-        await decodeGeoJson(GeoJsonQrDecodeInput(qrTexts: bundle.qrTexts));
-    expect(restored, bundle.minimizedGeoJson);
-  });
-
   test('encode and decode gjz1 round trip with hash succeeds', () async {
     final bundle = await encodeGeoJson(
       GeoJsonQrEncodeInput(
@@ -66,7 +50,7 @@ void main() {
       ),
     );
 
-    expect(bundle.isSplit, isFalse);
+    expect(bundle.qrTexts, hasLength(1));
     expect(bundle.qrTexts, hasLength(1));
     expect(bundle.qrTexts.first.startsWith('gjz1:'), isTrue);
     final payloadSection =
@@ -82,37 +66,21 @@ void main() {
     expect(restored, bundle.minimizedGeoJson);
   });
 
-  test('encode triggers gjz1p split when max length is low', () async {
-    final bundle = await encodeGeoJson(
-      GeoJsonQrEncodeInput(
-        geoJson: sampleGeoJson,
-        scheme: GeoJsonQrScheme.gjz1,
-        maxQrTextLength: 80,
-      ),
-    );
-
-    expect(bundle.isSplit, isTrue);
-    expect(bundle.qrTexts.length, greaterThan(1));
-    expect(bundle.qrTexts.every((text) => text.startsWith('gjz1p:')), isTrue);
-
-    final restored =
-        await decodeGeoJson(GeoJsonQrDecodeInput(qrTexts: bundle.qrTexts));
-    expect(restored, bundle.minimizedGeoJson);
+  test('gjz1 helper exposes wire name', () {
+    expect(GeoJsonQrScheme.gjz1.wireName, 'gjz1');
   });
 
-  test('decode fails when a gjb1p chunk is missing', () async {
-    final bundle = await encodeGeoJson(
-      GeoJsonQrEncodeInput(
-        geoJson: sampleGeoJson,
-        maxQrTextLength: 80,
-      ),
-    );
-
-    final tampered = List<String>.from(bundle.qrTexts)..removeAt(0);
-
+  test('encode rejects payloads that exceed max text length', () async {
     await expectLater(
-      decodeGeoJson(GeoJsonQrDecodeInput(qrTexts: tampered)),
-      throwsA(isA<ChunkMismatchException>()),
+      encodeGeoJson(
+        GeoJsonQrEncodeInput(
+          geoJson: sampleGeoJson,
+          scheme: GeoJsonQrScheme.gjz1,
+          maxQrTextLength: 20,
+          generatePng: false,
+        ),
+      ),
+      throwsA(isA<PayloadTooLargeException>()),
     );
   });
 
@@ -159,6 +127,28 @@ void main() {
     );
   });
 
+  test('decode gjz1 rejects empty payload and malformed hash suffix', () async {
+    await expectLater(
+      decodeGeoJson(const GeoJsonQrDecodeInput(qrTexts: ['gjz1:'])),
+      throwsA(isA<DecodeFailedException>()),
+    );
+    await expectLater(
+      decodeGeoJson(
+        const GeoJsonQrDecodeInput(qrTexts: ['gjz1:payload#xyz']),
+      ),
+      throwsA(isA<DecodeFailedException>()),
+    );
+  });
+
+  test('decode gjz1 rejects payloads that are not gzip data', () async {
+    final payload = base64UrlEncodeNoPad(utf8.encode('not gzip data'));
+
+    await expectLater(
+      decodeGeoJson(GeoJsonQrDecodeInput(qrTexts: ['gjz1:$payload'])),
+      throwsA(isA<DecompressFailedException>()),
+    );
+  });
+
   test('decode rejects unsupported scheme', () async {
     await expectLater(
       decodeGeoJson(const GeoJsonQrDecodeInput(qrTexts: ['abc1:payload'])),
@@ -179,7 +169,7 @@ void main() {
 
   test('bundle getters and exception toString expose metadata', () {
     final bundle = GeoJsonQrBundle(
-      qrTexts: const ['a', 'b'],
+      qrTexts: const ['a'],
       pngImages: const [],
       minimizedGeoJson: '{}',
       hashHex: null,
@@ -192,8 +182,7 @@ void main() {
     final payload = PayloadTooLargeException('too large');
     final qr = QrGenerationException('render failed');
 
-    expect(bundle.chunkCount, 2);
-    expect(bundle.isSplit, isTrue);
+    expect(bundle.qrTexts, const ['a']);
     expect(validation.toString(), contains('E_INVALID_GEOJSON'));
     expect(compress.toString(), contains('cli'));
     expect(decompress.code, 'E_DECOMPRESS_FAILED');
@@ -211,7 +200,7 @@ void main() {
     );
 
     expect(bundle.hashHex, isNull);
-    expect(bundle.chunkCount, 1);
+    expect(bundle.qrTexts, hasLength(1));
     expect(bundle.qrTexts.single, startsWith('gjb1:'));
     expect(bundle.qrTexts.single.contains('#'), isFalse);
   });
@@ -252,64 +241,12 @@ void main() {
     );
   });
 
-  test('buildGjB1pTexts rejects undersized limits', () {
-    expect(
-      () => buildGjB1pTexts('payload', maxLength: 12),
-      throwsA(isA<PayloadTooLargeException>()),
-    );
-    expect(
-      () => buildGjB1pTexts('x' * 1000, maxLength: 13),
-      throwsA(isA<PayloadTooLargeException>()),
-    );
-  });
-
-  test('decode rejects malformed gjb1p metadata and malformed hash suffix',
-      () async {
-    await expectLater(
-      decodeGeoJson(const GeoJsonQrDecodeInput(qrTexts: ['gjb1p:abc'])),
-      throwsA(isA<UnsupportedSchemeException>()),
-    );
-    await expectLater(
-      decodeGeoJson(
-        const GeoJsonQrDecodeInput(
-          qrTexts: ['gjb1p:0/2:a', 'gjb1p:2/2:b'],
-        ),
-      ),
-      throwsA(isA<ChunkMismatchException>()),
-    );
-    await expectLater(
-      decodeGeoJson(
-        const GeoJsonQrDecodeInput(
-          qrTexts: ['gjb1p:1/2:a', 'gjb1p:2/3:b'],
-        ),
-      ),
-      throwsA(isA<ChunkMismatchException>()),
-    );
-    await expectLater(
-      decodeGeoJson(
-        const GeoJsonQrDecodeInput(
-          qrTexts: ['gjb1p:1/2:a', 'gjb1p:1/2:b'],
-        ),
-      ),
-      throwsA(isA<ChunkMismatchException>()),
-    );
+  test('decode rejects malformed hash suffix', () async {
     await expectLater(
       decodeGeoJson(
         const GeoJsonQrDecodeInput(qrTexts: ['gjb1:payload#xyz']),
       ),
       throwsA(isA<DecodeFailedException>()),
-    );
-    await expectLater(
-      decodeGeoJson(const GeoJsonQrDecodeInput(qrTexts: ['gjz1p:abc'])),
-      throwsA(isA<UnsupportedSchemeException>()),
-    );
-    await expectLater(
-      decodeGeoJson(
-        const GeoJsonQrDecodeInput(
-          qrTexts: ['gjz1p:0/2:a', 'gjz1p:2/2:b'],
-        ),
-      ),
-      throwsA(isA<ChunkMismatchException>()),
     );
     await expectLater(
       decodeGeoJson(
