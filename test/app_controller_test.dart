@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -16,6 +17,7 @@ import 'package:argus/qr/geojson_qr_codec.dart';
 import 'package:argus/state_machine/state.dart';
 import 'package:argus/state_machine/state_machine.dart';
 import 'package:file_selector/file_selector.dart';
+import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'support/notifier_fakes.dart';
@@ -216,8 +218,7 @@ void main() {
       expect(controller.config!.alarmVolume, 0.8);
     });
 
-    test('refreshMonitoringPermissionState updates permission state',
-        () async {
+    test('refreshMonitoringPermissionState updates permission state', () async {
       final coordinator = _TrackingPermissionCoordinator(
         refreshState: const MonitoringPermissionState(
           notificationStatus: PermissionStatus.granted,
@@ -240,7 +241,8 @@ void main() {
 
       await controller.refreshMonitoringPermissionState();
 
-      expect(controller.monitoringPermissionState.locationAlwaysGranted, isFalse);
+      expect(
+          controller.monitoringPermissionState.locationAlwaysGranted, isFalse);
       expect(coordinator.refreshCount, 1);
     });
 
@@ -757,6 +759,82 @@ void main() {
       expect(controller.geoJsonLoaded, isFalse);
     });
 
+    test('reloadGeoJsonFromQrImagePicker loads QR image selection', () async {
+      final tempDir =
+          await Directory.systemTemp.createTemp('argus_qr_image_test_');
+      PathProviderPlatform.instance = _FakePathProviderPlatform(tempDir.path);
+      final bundle = await encodeGeoJson(
+        const GeoJsonQrEncodeInput(
+          geoJson: _squareGeoJson,
+          scheme: GeoJsonQrScheme.gjz1,
+          generatePng: false,
+        ),
+      );
+      String? analyzedPath;
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: FakeLocationService(),
+        fileManager: _QrImageFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+        qrImageAnalyzer: (path) async {
+          analyzedPath = path;
+          return bundle.qrTexts.single;
+        },
+      );
+
+      final loaded = await controller.reloadGeoJsonFromQrImagePicker();
+
+      expect(loaded, isTrue);
+      expect(analyzedPath, 'selected_qr.png');
+      expect(controller.geoJsonLoaded, isTrue);
+      expect(controller.snapshot.notes, 'GeoJSON loaded from QR code');
+      expect(controller.lastErrorMessage, isNull);
+    });
+
+    test('reloadGeoJsonFromQrImagePicker reports images without QR', () async {
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: FakeLocationService(),
+        fileManager: _QrImageFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+        qrImageAnalyzer: (_) async => null,
+      );
+
+      final loaded = await controller.reloadGeoJsonFromQrImagePicker();
+
+      expect(loaded, isFalse);
+      expect(controller.lastErrorMessage, 'QRコード画像からQRコードを読み取れませんでした。');
+      expect(controller.geoJsonLoaded, isFalse);
+    });
+
+    test('reloadGeoJsonFromQrImagePicker ignores picker cancellation',
+        () async {
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: FakeLocationService(),
+        fileManager: _QrImageCancelFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+        qrImageAnalyzer: (_) async => fail('analyzer should not be called'),
+      );
+
+      final loaded = await controller.reloadGeoJsonFromQrImagePicker();
+
+      expect(loaded, isFalse);
+      expect(controller.lastErrorMessage, isNull);
+    });
+
     test('cleanupTempGeoJsonFile deletes temporary file', () async {
       await _ensureBrotliCli();
 
@@ -997,6 +1075,29 @@ class FakeFileManager extends FileManager {
       mimeType: 'application/geo+json',
     );
   }
+
+  @override
+  Future<XFile?> pickQrImageFile() async {
+    return XFile.fromData(
+      Uint8List.fromList(const <int>[0]),
+      name: 'selected_qr.png',
+      mimeType: 'image/png',
+      path: 'selected_qr.png',
+    );
+  }
+}
+
+class _QrImageFileManager extends FakeFileManager {
+  _QrImageFileManager({required super.config});
+}
+
+class _QrImageCancelFileManager extends FakeFileManager {
+  _QrImageCancelFileManager({required super.config});
+
+  @override
+  Future<XFile?> pickQrImageFile() async {
+    return null;
+  }
 }
 
 class _SavingFileManager extends FakeFileManager {
@@ -1035,6 +1136,15 @@ class _ThrowingGeoJsonFileManager extends FakeFileManager {
   Future<XFile?> pickGeoJsonFile() async {
     throw error;
   }
+}
+
+class _FakePathProviderPlatform extends PathProviderPlatform {
+  _FakePathProviderPlatform(this.temporaryPath);
+
+  final String temporaryPath;
+
+  @override
+  Future<String?> getTemporaryPath() async => temporaryPath;
 }
 
 class FakeEventLogger extends EventLogger {

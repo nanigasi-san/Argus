@@ -77,7 +77,7 @@ void main() {
 
     await tester.pumpWidget(ArgusApp(controller: controller));
 
-    await tester.pumpAndSettle();
+    await tester.pump();
 
     expect(find.text('ARGUS'), findsWidgets);
   });

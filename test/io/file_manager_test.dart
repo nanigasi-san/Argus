@@ -31,7 +31,7 @@ void main() {
     }
   });
 
-  test('pickGeoJsonFile passes expected file filter', () async {
+  test('pickGeoJsonFile opens picker without file filter', () async {
     List<XTypeGroup>? capturedGroups;
     final manager = FileManager(
       filePicker: ({acceptedTypeGroups}) async {
@@ -44,10 +44,29 @@ void main() {
 
     await manager.pickGeoJsonFile();
 
+    expect(capturedGroups, isNull);
+  });
+
+  test('pickQrImageFile opens picker with image filter', () async {
+    List<XTypeGroup>? capturedGroups;
+    final manager = FileManager(
+      filePicker: ({acceptedTypeGroups}) async {
+        capturedGroups = acceptedTypeGroups;
+        return null;
+      },
+      documentsDirectoryProvider: () async => tempDir,
+      defaultConfigLoader: () async => defaultConfig,
+    );
+
+    await manager.pickQrImageFile();
+
     expect(capturedGroups, isNotNull);
     expect(capturedGroups, hasLength(1));
-    expect(capturedGroups!.single.label, 'GeoJSON files');
-    expect(capturedGroups!.single.extensions, ['geojson', 'json', 'bin']);
+    expect(capturedGroups!.single.label, 'QR code image');
+    expect(capturedGroups!.single.extensions,
+        containsAll(<String>['png', 'jpg', 'jpeg', 'webp']));
+    expect(capturedGroups!.single.mimeTypes,
+        containsAll(<String>['image/png', 'image/jpeg', 'image/webp']));
   });
 
   test('getConfigFile creates config file with default config when missing',

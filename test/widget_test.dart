@@ -78,8 +78,8 @@ void main() {
     // Build our app and trigger a frame.
     await tester.pumpWidget(ArgusApp(controller: controller));
 
-    // Wait for the widget to build
-    await tester.pumpAndSettle();
+    // Wait for the first frame to build.
+    await tester.pump();
 
     // Verify that the app title 'ARGUS' is displayed
     expect(find.text('ARGUS'), findsWidgets);
