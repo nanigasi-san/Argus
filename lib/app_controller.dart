@@ -63,6 +63,7 @@ class AppController extends ChangeNotifier {
   String? _tempGeoJsonFilePath;
   Timer? _alarmSnoozeTimer;
   bool _isAlarmSnoozed = false;
+  bool _isDisposed = false;
   final List<AppLogEntry> _logs = <AppLogEntry>[];
   MonitoringPermissionState _monitoringPermissionState =
       const MonitoringPermissionState.unknown();
@@ -93,7 +94,7 @@ class AppController extends ChangeNotifier {
     await notifier.initialize();
     _monitoringPermissionState =
         await permissionCoordinator.refreshMonitoringPermissionState();
-    _config ??= await fileManager.readConfig();
+    _config ??= (await fileManager.readConfig()).normalized();
     stateMachine.updateConfig(_config!);
 
     // アラーム音量を設定
@@ -203,20 +204,21 @@ class AppController extends ChangeNotifier {
     }
 
     // 設定を更新
-    _config = newConfig;
-    stateMachine.updateConfig(newConfig);
+    final normalizedConfig = newConfig.normalized();
+    _config = normalizedConfig;
+    stateMachine.updateConfig(normalizedConfig);
 
     // アラーム音量を設定
-    notifier.setAlarmVolume(newConfig.alarmVolume);
+    notifier.setAlarmVolume(normalizedConfig.alarmVolume);
 
     // 設定をファイルに保存
-    await fileManager.saveConfig(newConfig);
+    await fileManager.saveConfig(normalizedConfig);
 
     _logInfo(
       'APP',
-      'Config updated: innerBuffer=${newConfig.innerBufferM}m, '
-          'polling=${newConfig.sampleIntervalS['fast']}s, '
-          'gpsThreshold=${newConfig.gpsAccuracyBadMeters}m',
+      'Config updated: innerBuffer=${normalizedConfig.innerBufferM}m, '
+          'polling=${normalizedConfig.effectiveFastSampleIntervalS}s, '
+          'gpsThreshold=${normalizedConfig.gpsAccuracyBadMeters}m',
     );
 
     // 監視中だった場合は新しい設定で再開
@@ -540,8 +542,8 @@ class AppController extends ChangeNotifier {
     MonitoringPermissionState? permissionState,
   }) {
     if (config != null) {
-      _config = config;
-      stateMachine.updateConfig(config);
+      _config = config.normalized();
+      stateMachine.updateConfig(_config!);
     }
 
     if (geoJson != null) {
@@ -583,11 +585,19 @@ class AppController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _isDisposed = true;
     _clearAlarmSnooze();
     _subscription?.cancel();
     // dispose()は同期メソッドなので、非同期処理は実行しない
     // アプリ終了時のクリーンアップはmain.dartのWidgetsBindingObserverで処理
     super.dispose();
+  }
+
+  @override
+  void notifyListeners() {
+    if (!_isDisposed) {
+      super.notifyListeners();
+    }
   }
 
   void _addLogEntry(AppLogEntry entry) {
@@ -599,7 +609,7 @@ class AppController extends ChangeNotifier {
 
   static Future<AppController> bootstrap() async {
     final fileManager = FileManager();
-    final config = await fileManager.readConfig();
+    final config = (await fileManager.readConfig()).normalized();
     final stateMachine = StateMachine(config: config);
     final locationService = GeolocatorLocationService();
     final logger = EventLogger();

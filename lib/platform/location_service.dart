@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math' as math;
 
 import 'package:geolocator/geolocator.dart';
 
@@ -55,7 +54,11 @@ class LocationServiceStartResult {
 
 /// Geolocatorパッケージを使用した位置情報サービスの実装。
 class GeolocatorLocationService implements LocationService {
-  GeolocatorLocationService();
+  GeolocatorLocationService({
+    RuntimePlatform? runtimePlatform,
+  }) : _runtimePlatform = runtimePlatform ?? RuntimePlatform.current();
+
+  final RuntimePlatform _runtimePlatform;
 
   final StreamController<LocationFix> _controller =
       StreamController<LocationFix>.broadcast();
@@ -81,15 +84,13 @@ class GeolocatorLocationService implements LocationService {
       );
     }
 
-    final intervalSeconds = config.sampleIntervalS['fast'] ??
-        (config.sampleIntervalS.values.isNotEmpty
-            ? config.sampleIntervalS.values.reduce(math.min)
-            : 3);
-    final interval = Duration(seconds: intervalSeconds);
-    const distanceFilter = 0;
+    final normalizedConfig = config.normalized();
+    final interval =
+        Duration(seconds: normalizedConfig.effectiveFastSampleIntervalS);
+    final distanceFilter = normalizedConfig.effectiveFastSampleDistanceM;
 
     final LocationSettings settings;
-    if (Platform.isAndroid) {
+    if (_runtimePlatform.isAndroid) {
       settings = AndroidSettings(
         accuracy: LocationAccuracy.best,
         distanceFilter: distanceFilter,
@@ -99,11 +100,11 @@ class GeolocatorLocationService implements LocationService {
           notificationTitle: 'Argusが位置情報を監視中です',
           notificationText: '画面を消しても位置情報の追跡は継続されます。',
           notificationChannelName: 'Argusバックグラウンド監視',
-          enableWakeLock: true,
+          enableWakeLock: false,
           setOngoing: true,
         ),
       );
-    } else if (Platform.isIOS || Platform.isMacOS) {
+    } else if (_runtimePlatform.isApple) {
       settings = AppleSettings(
         accuracy: LocationAccuracy.best,
         distanceFilter: distanceFilter,
@@ -111,7 +112,7 @@ class GeolocatorLocationService implements LocationService {
         showBackgroundLocationIndicator: true,
       );
     } else {
-      settings = const LocationSettings(
+      settings = LocationSettings(
         accuracy: LocationAccuracy.best,
         distanceFilter: distanceFilter,
       );
@@ -145,6 +146,28 @@ class GeolocatorLocationService implements LocationService {
     await _subscription?.cancel();
     _subscription = null;
   }
+}
+
+class RuntimePlatform {
+  const RuntimePlatform({
+    required this.isAndroid,
+    required this.isIOS,
+    required this.isMacOS,
+  });
+
+  factory RuntimePlatform.current() {
+    return RuntimePlatform(
+      isAndroid: Platform.isAndroid,
+      isIOS: Platform.isIOS,
+      isMacOS: Platform.isMacOS,
+    );
+  }
+
+  final bool isAndroid;
+  final bool isIOS;
+  final bool isMacOS;
+
+  bool get isApple => isIOS || isMacOS;
 }
 
 class FakeLocationService implements LocationService {

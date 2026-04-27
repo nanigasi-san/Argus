@@ -56,3 +56,39 @@
 - 次にやること:
   - 管理ファイルをコミットする。
   - platform / 設定値 / バッテリー関連の修正から着手する。
+
+### platform / 設定値 / バッテリー改善
+- 実行したこと:
+  - `AppConfig` に実用範囲、デフォルト値、`normalized()`、実効 GPS 間隔 / 距離 getter を追加。
+  - 保存済み config と保存前 config を正規化するよう `FileManager` と `AppController` を更新。
+  - `LocationService` に `RuntimePlatform` を追加し、`Platform.isAndroid` / `Platform.isIOS` 判定を実装詳細から差し替え可能にした。
+  - 位置情報更新で `sample_distance_m.fast` を `distanceFilter` に使うようにし、0m 固定更新をやめた。
+  - Android foreground location の `enableWakeLock` を `false` に変更し、通知維持のためだけの wakelock を避けた。
+  - `AppController.notifyListeners()` を dispose 後に無視するようにし、async 完了後の通知クラッシュを防止。
+  - Android release signing は `key.properties` がない場合 debug signing にフォールバックし、Gradle 評価時の null cast を避けるよう変更。
+  - 振動ループ停止時にループの終了を短時間待つようにして、停止直後の再開で状態が残る可能性を下げた。
+- 変更したファイル:
+  - `lib/io/config.dart`
+  - `lib/io/file_manager.dart`
+  - `lib/platform/location_service.dart`
+  - `lib/platform/notifier.dart`
+  - `lib/app_controller.dart`
+  - `android/app/build.gradle.kts`
+  - `test/io/config_test.dart`
+  - `tasks.md`
+  - `WORK_LOG.md`
+- 実行したコマンド:
+  - `dart format lib\io\config.dart lib\io\file_manager.dart lib\platform\location_service.dart lib\platform\notifier.dart lib\app_controller.dart`
+  - `flutter analyze`
+  - `flutter test test\io\config_test.dart test\platform\location_service_test.dart test\platform\notifier_test.dart test\app_controller_test.dart`
+- 成功 / 失敗:
+  - `flutter analyze`: 最初は `LocationSettings` の `const` で失敗。`distanceFilter` が実行時値になったため `const` を外して解決。再実行は成功。
+  - 部分 test: `config_test` が旧仕様の `fast: 2` を期待して一度失敗。実用範囲の最小 3 秒へ補正する仕様に合わせてテストを更新し、再実行で成功。
+- 改善理由:
+  - GPS 更新間隔の最小値と distanceFilter をモデル側で保証することで、UI 以外から不正値が入っても過度な位置情報更新を避けられる。
+  - Android wakelock を固定で使わないことで、バックグラウンド監視中の不要な電力消費を抑えられる。
+- 置いた仮定:
+  - 競技用途でも 1 秒未満または 1 秒間隔の常時 GPS 更新はバッテリー負荷が高いため、ユーザー設定の最小値は 3 秒が妥当。
+  - release 署名ファイルがない開発環境では release build より debug build 検証を優先し、署名情報の表示や生成は行わない。
+- 次にやること:
+  - このタスク範囲をコミットする。

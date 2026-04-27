@@ -229,6 +229,7 @@ class RepeatingVibrationPlayer implements VibrationPlayer {
 
   bool _shouldContinue = false;
   bool _isRunning = false;
+  Future<void>? _loopFuture;
 
   @override
   Future<void> start() async {
@@ -240,7 +241,7 @@ class RepeatingVibrationPlayer implements VibrationPlayer {
     if (hasVibrator == true) {
       _shouldContinue = true;
       _isRunning = true;
-      _vibrationLoop();
+      _loopFuture = _vibrationLoop();
     }
   }
 
@@ -262,6 +263,7 @@ class RepeatingVibrationPlayer implements VibrationPlayer {
       }
     } finally {
       _isRunning = false;
+      _loopFuture = null;
     }
   }
 
@@ -269,6 +271,12 @@ class RepeatingVibrationPlayer implements VibrationPlayer {
   Future<void> stop() async {
     _shouldContinue = false;
     await Vibration.cancel();
-    // _isRunningは_vibrationLoop()のfinallyブロックでリセットされる
+    final loopFuture = _loopFuture;
+    if (loopFuture != null) {
+      await loopFuture.timeout(
+        const Duration(milliseconds: 250),
+        onTimeout: () {},
+      );
+    }
   }
 }

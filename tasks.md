@@ -13,19 +13,19 @@
 - [x] パフォーマンス・バッテリー消費リスクの列挙
 
 ## 1. 大規模リファクタリング
-- [ ] Android 専用前提の実装を洗い出す
-- [ ] iOS 対応を見据えた platform 抽象化方針を決める
-- [ ] platform 判定や権限周りを整理する
-- [ ] Android release signing 設定の安全性を改善する
-- [ ] 設定値モデルに安全な範囲と補正処理を追加する
+- [x] Android 専用前提の実装を洗い出す
+- [x] iOS 対応を見据えた platform 抽象化方針を決める
+- [x] platform 判定や権限周りを整理する
+- [x] Android release signing 設定の安全性を改善する
+- [x] 設定値モデルに安全な範囲と補正処理を追加する
 - [ ] 状態管理・ビジネスロジック・UI の責務を整理する
-- [ ] dispose 後の非同期更新・通知を防ぐ
+- [x] dispose 後の非同期更新・通知を防ぐ
 - [ ] permission denied / service disabled 時の処理を改善する
-- [ ] ファイル読み書き・設定読み込み失敗時の復旧性を改善する
+- [x] ファイル読み書き・設定読み込み失敗時の復旧性を改善する
 - [ ] バグ原因になりうる箇所を優先度順に修正する
 - [ ] 不要な rebuild や build 内処理を減らす
 - [ ] const constructor 化と不要なオブジェクト生成削減を行う
-- [ ] 高頻度 location / vibration / alarm 処理のバッテリー影響を改善する
+- [x] 高頻度 location / vibration / alarm 処理のバッテリー影響を改善する
 - [ ] ライフサイクルに応じた停止・再開処理を改善する
 - [ ] emulator で起動と主要導線を確認する
 
