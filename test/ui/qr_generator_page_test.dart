@@ -214,7 +214,7 @@ void main() {
             utf8.encode(_squareGeoJson),
             name: '',
             mimeType: 'application/geo+json',
-            path: r'C:\tmp\fallback.geojson',
+            path: 'fallback.geojson',
           ),
           encoder: (input) async => GeoJsonQrBundle(
             qrTexts: const ['payload-without-prefix'],
