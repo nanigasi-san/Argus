@@ -4,6 +4,10 @@
 [![codecov](https://codecov.io/gh/nanigasi-san/Argus/branch/main/graph/badge.svg)](https://codecov.io/gh/YOUR_USERNAME/Argus)
 [![CI](https://github.com/nanigasi-san/Argus/workflows/CI/badge.svg)](https://github.com/YOUR_USERNAME/Argus/actions)
 
+## リリース運用
+
+Android AAB のproduction / closed test配信とバージョン更新オプションは [docs/release.md](docs/release.md) を参照してください。
+
 ## テストカバレッジ
 
 ```bash
