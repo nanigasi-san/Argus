@@ -836,18 +836,18 @@ class _LogCard extends StatelessWidget {
 
 String _formatBearing(double bearing) {
   const labels = <String>[
-    'N',
-    'NE',
-    'E',
-    'SE',
-    'S',
-    'SW',
-    'W',
-    'NW',
+    '北',
+    '北東',
+    '東',
+    '南東',
+    '南',
+    '南西',
+    '西',
+    '北西',
   ];
   final normalized = (bearing % 360 + 360) % 360;
   final index = ((normalized + 22.5) ~/ 45) % labels.length;
-  return '${normalized.toStringAsFixed(0)}deg (${labels[index]})';
+  return '${normalized.toStringAsFixed(0)}度 (${labels[index]})';
 }
 
 String _formatLatLng(LatLng point) {

@@ -79,7 +79,7 @@ void main() {
     await _pumpHome(tester, controller);
 
     expect(find.textContaining('境界までの距離'), findsOneWidget);
-    expect(find.textContaining('方角'), findsOneWidget);
+    expect(find.text('方角: 180度 (南)'), findsOneWidget);
   });
 
   testWidgets('shows snooze button only while OUTER', (tester) async {
