@@ -871,7 +871,6 @@ AppConfig _testConfig() {
     leaveConfirmSeconds: 1,
     gpsAccuracyBadMeters: 50,
     sampleIntervalS: {'fast': 1},
-    screenWakeOnLeave: false,
     alarmVolume: 1.0,
   );
 }

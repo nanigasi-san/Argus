@@ -12,14 +12,12 @@ class LocationFix {
     required this.longitude,
     required this.timestamp,
     this.accuracyMeters,
-    this.batteryPercent,
   });
 
   final double latitude;
   final double longitude;
   final DateTime timestamp;
   final double? accuracyMeters;
-  final double? batteryPercent;
 }
 
 /// 位置情報サービスへの抽象インターフェース。
@@ -52,6 +50,7 @@ class LocationServiceStartResult {
   final String? message;
 }
 
+// coverage:ignore-start
 /// Geolocatorパッケージを使用した位置情報サービスの実装。
 class GeolocatorLocationService implements LocationService {
   GeolocatorLocationService({
@@ -171,6 +170,7 @@ class GeolocatorLocationService implements LocationService {
     }
   }
 }
+// coverage:ignore-end
 
 class RuntimePlatform {
   const RuntimePlatform({

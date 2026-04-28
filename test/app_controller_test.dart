@@ -204,7 +204,6 @@ void main() {
         leaveConfirmSeconds: 5,
         gpsAccuracyBadMeters: 20,
         sampleIntervalS: const {'fast': 2},
-        screenWakeOnLeave: false,
         alarmVolume: 0.8,
       );
 
@@ -954,7 +953,6 @@ AppConfig _testConfig() {
     leaveConfirmSeconds: 1,
     gpsAccuracyBadMeters: 50,
     sampleIntervalS: {'fast': 1},
-    screenWakeOnLeave: false,
     alarmVolume: 1.0,
   );
 }

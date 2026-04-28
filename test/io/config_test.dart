@@ -20,7 +20,6 @@ void main() {
       'leave_confirm_seconds': 8,
       'gps_accuracy_bad_m': 33.3,
       'sample_interval_s': <String, dynamic>{'fast': 2, 'slow': 5},
-      'screen_wake_on_leave': true,
       'alarm_volume': 0.8,
     });
 
@@ -29,7 +28,6 @@ void main() {
     expect(config.leaveConfirmSeconds, 8);
     expect(config.gpsAccuracyBadMeters, 33.3);
     expect(config.sampleIntervalS, {'fast': 2, 'slow': 5});
-    expect(config.screenWakeOnLeave, isTrue);
     expect(config.alarmVolume, 0.8);
     expect(config.toJson(), <String, dynamic>{
       'inner_buffer_m': 12.5,
@@ -37,12 +35,11 @@ void main() {
       'leave_confirm_seconds': 8,
       'gps_accuracy_bad_m': 33.3,
       'sample_interval_s': <String, int>{'fast': 2, 'slow': 5},
-      'screen_wake_on_leave': true,
       'alarm_volume': 0.8,
     });
   });
 
-  test('fromJson falls back to default wake and volume values', () {
+  test('fromJson falls back to default volume value', () {
     final config = AppConfig.fromJson(<String, dynamic>{
       'inner_buffer_m': 5,
       'leave_confirm_samples': 1,
@@ -51,7 +48,6 @@ void main() {
       'sample_interval_s': <String, dynamic>{'fast': 3},
     });
 
-    expect(config.screenWakeOnLeave, isFalse);
     expect(config.alarmVolume, 0.5);
   });
 

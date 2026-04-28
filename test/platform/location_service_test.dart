@@ -10,27 +10,23 @@ void main() {
     leaveConfirmSeconds: 1,
     gpsAccuracyBadMeters: 10,
     sampleIntervalS: const {'fast': 3},
-    screenWakeOnLeave: false,
     alarmVolume: 0.5,
   );
 
   test('LocationFix stores provided values', () {
     final timestamp = DateTime.utc(2024, 1, 1);
     const accuracy = 4.2;
-    const battery = 0.75;
     final fix = LocationFix(
       latitude: 35.0,
       longitude: 139.0,
       timestamp: timestamp,
       accuracyMeters: accuracy,
-      batteryPercent: battery,
     );
 
     expect(fix.latitude, 35.0);
     expect(fix.longitude, 139.0);
     expect(fix.timestamp, timestamp);
     expect(fix.accuracyMeters, accuracy);
-    expect(fix.batteryPercent, battery);
   });
 
   test('LocationServiceStartResult.started has started status and no message',
@@ -39,6 +35,28 @@ void main() {
 
     expect(result.status, LocationServiceStartStatus.started);
     expect(result.message, isNull);
+  });
+
+  test('RuntimePlatform exposes apple platform grouping', () {
+    const android = RuntimePlatform(
+      isAndroid: true,
+      isIOS: false,
+      isMacOS: false,
+    );
+    const ios = RuntimePlatform(
+      isAndroid: false,
+      isIOS: true,
+      isMacOS: false,
+    );
+    const macos = RuntimePlatform(
+      isAndroid: false,
+      isIOS: false,
+      isMacOS: true,
+    );
+
+    expect(android.isApple, isFalse);
+    expect(ios.isApple, isTrue);
+    expect(macos.isApple, isTrue);
   });
 
   test('FakeLocationService emits updates and tracks lifecycle', () async {

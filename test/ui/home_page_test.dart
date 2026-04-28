@@ -8,6 +8,7 @@ import 'package:argus/state_machine/state.dart';
 import 'package:argus/ui/home_page.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../support/platform_mocks.dart';
 import '../support/test_doubles.dart';
 
 Future<void> _pumpHome(
@@ -24,6 +25,10 @@ Future<void> _pumpHome(
 }
 
 void main() {
+  tearDown(() async {
+    await clearUrlLauncherMock();
+  });
+
   testWidgets('hides navigation details when not developer and not outer',
       (tester) async {
     final controller = buildTestController(
@@ -180,6 +185,18 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Start monitoring'), findsNothing);
+  });
+
+  testWidgets('contact link shows snackbar when mail app cannot open',
+      (tester) async {
+    await mockUrlLauncher(launchResult: false);
+    final controller = buildTestController(hasGeoJson: true);
+
+    await _pumpHome(tester, controller);
+    await tester.tap(find.text('お問い合わせ: yamada.orien@gmail.com'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('メールアプリを開けませんでした。'), findsOneWidget);
   });
 
   testWidgets('file loader opens GeoJSON and QR image choices', (tester) async {

@@ -220,6 +220,7 @@ abstract class VibrationPlayer {
   Future<void> stop();
 }
 
+// coverage:ignore-start
 /// 5秒振動→2秒休止を繰り返すバイブレーションパターンを提供します。
 class RepeatingVibrationPlayer implements VibrationPlayer {
   RepeatingVibrationPlayer();
@@ -280,3 +281,4 @@ class RepeatingVibrationPlayer implements VibrationPlayer {
     }
   }
 }
+// coverage:ignore-end

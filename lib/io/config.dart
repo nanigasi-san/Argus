@@ -9,7 +9,6 @@ class AppConfig {
     required this.leaveConfirmSeconds,
     required this.gpsAccuracyBadMeters,
     required this.sampleIntervalS,
-    required this.screenWakeOnLeave,
     required this.alarmVolume,
   });
 
@@ -42,7 +41,6 @@ class AppConfig {
   final int leaveConfirmSeconds;
   final double gpsAccuracyBadMeters;
   final Map<String, int> sampleIntervalS;
-  final bool screenWakeOnLeave;
   final double alarmVolume;
 
   factory AppConfig.fromJson(Map<String, dynamic> json) {
@@ -71,7 +69,6 @@ class AppConfig {
         json['sample_interval_s'],
         fallback: const <String, int>{'fast': defaultFastSampleIntervalS},
       ),
-      screenWakeOnLeave: json['screen_wake_on_leave'] as bool? ?? false,
       alarmVolume: _readDouble(json, 'alarm_volume', defaultAlarmVolume),
     ).normalized();
   }
@@ -82,7 +79,6 @@ class AppConfig {
         'leave_confirm_seconds': leaveConfirmSeconds,
         'gps_accuracy_bad_m': gpsAccuracyBadMeters,
         'sample_interval_s': sampleIntervalS,
-        'screen_wake_on_leave': screenWakeOnLeave,
         'alarm_volume': alarmVolume,
       };
 
@@ -114,7 +110,6 @@ class AppConfig {
         minSampleIntervalS,
         maxSampleIntervalS,
       ),
-      screenWakeOnLeave: screenWakeOnLeave,
       alarmVolume: _clampDouble(
         alarmVolume,
         minAlarmVolume,

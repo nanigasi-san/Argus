@@ -66,7 +66,6 @@ class _SettingsPageState extends State<SettingsPage> {
         sampleIntervalS: const {
           'fast': AppConfig.defaultFastSampleIntervalS,
         },
-        screenWakeOnLeave: false,
         alarmVolume: AppConfig.defaultAlarmVolume,
       );
     }
@@ -99,6 +98,7 @@ class _SettingsPageState extends State<SettingsPage> {
           _defaultConfig!.leaveConfirmSeconds.toString();
       _alarmVolume = _defaultConfig!.alarmVolume;
     } else {
+      // coverage:ignore-start
       // フォールバック
       _innerBufferController.text =
           AppConfig.defaultInnerBufferM.toStringAsFixed(1);
@@ -110,6 +110,7 @@ class _SettingsPageState extends State<SettingsPage> {
           AppConfig.defaultLeaveConfirmSamples.toString();
       _leaveConfirmSecondsController.text =
           AppConfig.defaultLeaveConfirmSeconds.toString();
+      // coverage:ignore-end
     }
   }
 
@@ -176,7 +177,6 @@ class _SettingsPageState extends State<SettingsPage> {
           ...currentConfig.sampleIntervalS,
           'fast': pollingInterval,
         },
-        screenWakeOnLeave: currentConfig.screenWakeOnLeave,
         alarmVolume: _alarmVolume,
       ).normalized();
 

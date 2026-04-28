@@ -56,7 +56,6 @@ class EventLogger {
       'lon': fix.longitude,
       'status': 'GPS_FIX',
       'accuracyM': fix.accuracyMeters,
-      'batteryPct': fix.batteryPercent,
     };
     _records.add(record);
     _events.add(record);
