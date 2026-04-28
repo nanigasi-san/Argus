@@ -114,6 +114,10 @@ class HomePage extends StatelessWidget {
                                   isWaitStart: snapshot.status ==
                                       LocationStateStatus.waitStart,
                                   geoJsonReady: controller.geoJsonLoaded,
+                                  showStopAction: snapshot.status !=
+                                          LocationStateStatus.waitGeoJson &&
+                                      snapshot.status !=
+                                          LocationStateStatus.waitStart,
                                   onLoadFile: () {
                                     _showLoadFileSheet(context, controller);
                                   },
@@ -124,6 +128,7 @@ class HomePage extends StatelessWidget {
                                       ),
                                     );
                                   },
+                                  onStopMonitoring: controller.stopMonitoring,
                                 ),
                                 // developerモードでは常に方角と距離を表示
                                 if (showNav) ...[
@@ -298,6 +303,10 @@ class HomePage extends StatelessWidget {
                                     isWaitStart: snapshot.status ==
                                         LocationStateStatus.waitStart,
                                     geoJsonReady: controller.geoJsonLoaded,
+                                    showStopAction: snapshot.status !=
+                                            LocationStateStatus.waitGeoJson &&
+                                        snapshot.status !=
+                                            LocationStateStatus.waitStart,
                                     onLoadFile: () {
                                       _showLoadFileSheet(context, controller);
                                     },
@@ -308,6 +317,8 @@ class HomePage extends StatelessWidget {
                                                 const QrScannerPage()),
                                       );
                                     },
+                                    onStopMonitoring:
+                                        controller.stopMonitoring,
                                   ),
                                   // outerの時に方角と距離を表示
                                   if (showNav &&
@@ -483,14 +494,18 @@ class _BottomActions extends StatelessWidget {
   const _BottomActions({
     required this.isWaitStart,
     required this.geoJsonReady,
+    required this.showStopAction,
     required this.onLoadFile,
     required this.onOpenQr,
+    required this.onStopMonitoring,
   });
 
   final bool isWaitStart;
   final bool geoJsonReady;
+  final bool showStopAction;
   final VoidCallback onLoadFile;
   final VoidCallback onOpenQr;
+  final Future<void> Function() onStopMonitoring;
 
   @override
   Widget build(BuildContext context) {
@@ -523,7 +538,102 @@ class _BottomActions extends StatelessWidget {
             ),
           ],
         ),
+        if (showStopAction) ...[
+          const SizedBox(height: 12),
+          _StopMonitoringAction(onConfirmStop: onStopMonitoring),
+        ],
       ],
+    );
+  }
+}
+
+class _StopMonitoringAction extends StatefulWidget {
+  const _StopMonitoringAction({required this.onConfirmStop});
+
+  final Future<void> Function() onConfirmStop;
+
+  @override
+  State<_StopMonitoringAction> createState() => _StopMonitoringActionState();
+}
+
+class _StopMonitoringActionState extends State<_StopMonitoringAction> {
+  bool isStopConfirmOpen = false;
+  bool _isStopping = false;
+
+  Future<void> _openStopConfirmDialog() async {
+    if (isStopConfirmOpen || _isStopping) {
+      return;
+    }
+
+    setState(() {
+      isStopConfirmOpen = true;
+    });
+
+    final shouldStop = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('停止の確認'),
+        content: const Text('進行中の処理を停止します。よろしいですか？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('キャンセル'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('終了する'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      isStopConfirmOpen = false;
+    });
+
+    if (shouldStop != true) {
+      return;
+    }
+
+    setState(() {
+      _isStopping = true;
+    });
+    await widget.onConfirmStop();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isStopping = false;
+    });
+  }
+
+  void _showLongPressHint() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('停止するには長押ししてください。')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton.tonalIcon(
+        key: const Key('stopMonitoringLongPressButton'),
+        onPressed: _isStopping ? null : _showLongPressHint,
+        onLongPress: _isStopping ? null : _openStopConfirmDialog,
+        icon: _isStopping
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.stop_circle_outlined),
+        label: Text(_isStopping ? '停止中...' : '長押しで停止'),
+      ),
     );
   }
 }

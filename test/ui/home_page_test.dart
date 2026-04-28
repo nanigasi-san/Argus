@@ -248,6 +248,61 @@ void main() {
     expect(find.text('GeoJSONを選択'), findsOneWidget);
   });
 
+  testWidgets('長押し成立で停止確認ダイアログを表示し、キャンセルで継続する',
+      (tester) async {
+    final controller = buildTestController(
+      hasGeoJson: true,
+      snapshot: StateSnapshot(
+        status: LocationStateStatus.outer,
+        timestamp: DateTime.utc(2024, 1, 1),
+        geoJsonLoaded: true,
+      ),
+    );
+    final locationService = controller.locationService as FakeLocationService;
+
+    await _pumpHome(tester, controller);
+
+    final stopButton = find.byKey(const Key('stopMonitoringLongPressButton'));
+    expect(stopButton, findsOneWidget);
+
+    await tester.longPress(stopButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('停止の確認'), findsOneWidget);
+    expect(find.text('進行中の処理を停止します。よろしいですか？'), findsOneWidget);
+
+    await tester.tap(find.text('ファイルを\n読み込む'));
+    await tester.pumpAndSettle();
+    expect(find.text('GeoJSONファイルを読み込む'), findsNothing);
+
+    await tester.tap(find.text('キャンセル'));
+    await tester.pumpAndSettle();
+
+    expect(locationService.hasStopped, isFalse);
+  });
+
+  testWidgets('長押し成立後に終了するを選ぶと停止処理を実行する', (tester) async {
+    final controller = buildTestController(
+      hasGeoJson: true,
+      snapshot: StateSnapshot(
+        status: LocationStateStatus.outer,
+        timestamp: DateTime.utc(2024, 1, 1),
+        geoJsonLoaded: true,
+      ),
+    );
+    final locationService = controller.locationService as FakeLocationService;
+
+    await _pumpHome(tester, controller);
+
+    await tester.longPress(find.byKey(const Key('stopMonitoringLongPressButton')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('終了する'));
+    await tester.pumpAndSettle();
+
+    expect(locationService.hasStopped, isTrue);
+    expect(find.text('停止の確認'), findsNothing);
+  });
+
   testWidgets(
       'tapping start opens background disclosure when always permission is missing',
       (tester) async {
