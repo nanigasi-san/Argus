@@ -67,7 +67,6 @@ class HomePage extends StatelessWidget {
           ),
           body: SafeArea(
             top: false,
-            bottom: false,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
               child: _HomeScrollableContent(
