@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:path_provider/path_provider.dart';
@@ -309,12 +310,7 @@ class AppController extends ChangeNotifier {
       }
 
       // QRテキストからGeoJSONを復元
-      final restoredGeoJson = await decodeGeoJson(
-        GeoJsonQrDecodeInput(
-          qrTexts: [qrText],
-          verifyHash: true,
-        ),
-      );
+      final restoredGeoJson = await compute(_decodeGeoJsonQrText, qrText);
 
       // 一時ディレクトリに保存
       final tempDir = await getTemporaryDirectory();
@@ -739,6 +735,15 @@ class AppController extends ChangeNotifier {
     final index = ((normalized + 22.5) ~/ 45) % labels.length;
     return labels[index];
   }
+}
+
+Future<String> _decodeGeoJsonQrText(String qrText) {
+  return decodeGeoJson(
+    GeoJsonQrDecodeInput(
+      qrTexts: [qrText],
+      verifyHash: true,
+    ),
+  );
 }
 
 Future<String?> _defaultQrImageAnalyzer(String imagePath) async {

@@ -63,6 +63,7 @@ class GeolocatorLocationService implements LocationService {
   final StreamController<LocationFix> _controller =
       StreamController<LocationFix>.broadcast();
   StreamSubscription<Position>? _subscription;
+  Timer? _pollTimer;
 
   @override
   Stream<LocationFix> get stream => _controller.stream;
@@ -87,51 +88,50 @@ class GeolocatorLocationService implements LocationService {
     final normalizedConfig = config.normalized();
     final interval =
         Duration(seconds: normalizedConfig.effectiveFastSampleIntervalS);
-    final distanceFilter = normalizedConfig.effectiveFastSampleDistanceM;
 
     final LocationSettings settings;
     if (_runtimePlatform.isAndroid) {
       settings = AndroidSettings(
         accuracy: LocationAccuracy.best,
-        distanceFilter: distanceFilter,
+        distanceFilter: 0,
         intervalDuration: interval,
         forceLocationManager: false,
         foregroundNotificationConfig: const ForegroundNotificationConfig(
           notificationTitle: 'Argusが位置情報を監視中です',
           notificationText: '画面を消しても位置情報の追跡は継続されます。',
           notificationChannelName: 'Argusバックグラウンド監視',
-          enableWakeLock: false,
+          enableWakeLock: true,
           setOngoing: true,
         ),
       );
     } else if (_runtimePlatform.isApple) {
       settings = AppleSettings(
         accuracy: LocationAccuracy.best,
-        distanceFilter: distanceFilter,
+        distanceFilter: 0,
         pauseLocationUpdatesAutomatically: false,
         showBackgroundLocationIndicator: true,
       );
     } else {
-      settings = LocationSettings(
+      settings = const LocationSettings(
         accuracy: LocationAccuracy.best,
-        distanceFilter: distanceFilter,
+        distanceFilter: 0,
       );
     }
+    const pollSettings = LocationSettings(
+      accuracy: LocationAccuracy.best,
+      distanceFilter: 0,
+    );
 
     try {
-      _subscription?.cancel();
+      await _subscription?.cancel();
+      _pollTimer?.cancel();
       _subscription = Geolocator.getPositionStream(
         locationSettings: settings,
-      ).listen((position) {
-        _controller.add(
-          LocationFix(
-            latitude: position.latitude,
-            longitude: position.longitude,
-            accuracyMeters: position.accuracy,
-            timestamp: position.timestamp,
-          ),
-        );
+      ).listen(_emitPosition);
+      _pollTimer = Timer.periodic(interval, (_) {
+        unawaited(_pollCurrentPosition(pollSettings));
       });
+      unawaited(_pollCurrentPosition(pollSettings));
       return const LocationServiceStartResult.started();
     } catch (e) {
       return LocationServiceStartResult(
@@ -143,8 +143,32 @@ class GeolocatorLocationService implements LocationService {
 
   @override
   Future<void> stop() async {
+    _pollTimer?.cancel();
+    _pollTimer = null;
     await _subscription?.cancel();
     _subscription = null;
+  }
+
+  void _emitPosition(Position position) {
+    _controller.add(
+      LocationFix(
+        latitude: position.latitude,
+        longitude: position.longitude,
+        accuracyMeters: position.accuracy,
+        timestamp: position.timestamp,
+      ),
+    );
+  }
+
+  Future<void> _pollCurrentPosition(LocationSettings settings) async {
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: settings,
+      );
+      _emitPosition(position);
+    } catch (_) {
+      // The stream remains active even if one explicit poll fails.
+    }
   }
 }
 

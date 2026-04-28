@@ -224,10 +224,13 @@ class _QrScannerPageState extends State<QrScannerPage>
       return;
     }
 
+    final appController = Provider.of<AppController>(context, listen: false);
+
     setState(() {
       _isProcessing = true;
       _errorMessage = null;
     });
+    await _stopScanner();
 
     try {
       if (!isSupportedGeoJsonQrText(qrText)) {
@@ -235,10 +238,10 @@ class _QrScannerPageState extends State<QrScannerPage>
           _errorMessage = 'GeoJSON QR コードではありません。';
           _isProcessing = false;
         });
+        unawaited(_resumeScanner());
         return;
       }
 
-      final appController = Provider.of<AppController>(context, listen: false);
       final loaded = await appController.reloadGeoJsonFromQr(qrText);
 
       if (mounted && loaded) {
@@ -249,17 +252,20 @@ class _QrScannerPageState extends State<QrScannerPage>
               appController.lastErrorMessage ?? 'GeoJSON の読込に失敗しました。';
           _isProcessing = false;
         });
+        unawaited(_resumeScanner());
       }
     } on GeoJsonQrException catch (e) {
       setState(() {
         _errorMessage = 'QR コードの復元に失敗しました: ${e.message}';
         _isProcessing = false;
       });
+      unawaited(_resumeScanner());
     } catch (e) {
       setState(() {
         _errorMessage = 'QR コードの処理中にエラーが発生しました: $e';
         _isProcessing = false;
       });
+      unawaited(_resumeScanner());
     }
   }
 

@@ -66,9 +66,6 @@ class _SettingsPageState extends State<SettingsPage> {
         sampleIntervalS: const {
           'fast': AppConfig.defaultFastSampleIntervalS,
         },
-        sampleDistanceM: const {
-          'fast': AppConfig.defaultFastSampleDistanceM,
-        },
         screenWakeOnLeave: false,
         alarmVolume: AppConfig.defaultAlarmVolume,
       );
@@ -179,7 +176,6 @@ class _SettingsPageState extends State<SettingsPage> {
           ...currentConfig.sampleIntervalS,
           'fast': pollingInterval,
         },
-        sampleDistanceM: currentConfig.sampleDistanceM,
         screenWakeOnLeave: currentConfig.screenWakeOnLeave,
         alarmVolume: _alarmVolume,
       ).normalized();
@@ -288,7 +284,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         decoration: InputDecoration(
                           labelText: 'GPS取得間隔',
                           helperText:
-                              '位置情報を取得する間隔です。短すぎるとバッテリー消費が増えます。範囲: ${AppConfig.minSampleIntervalS}-${AppConfig.maxSampleIntervalS} 秒\nデフォルト: ${_defaultConfig?.sampleIntervalS['fast'] ?? AppConfig.defaultFastSampleIntervalS} 秒（空欄でデフォルト値）',
+                              '位置情報を継続取得する間隔です。範囲: ${AppConfig.minSampleIntervalS}-${AppConfig.maxSampleIntervalS} 秒\nデフォルト: ${_defaultConfig?.sampleIntervalS['fast'] ?? AppConfig.defaultFastSampleIntervalS} 秒（空欄でデフォルト値）',
                           border: const OutlineInputBorder(),
                         ),
                         keyboardType: TextInputType.number,

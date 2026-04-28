@@ -28,7 +28,6 @@ class HarnessBuilder {
       leaveConfirmSeconds: 1,
       gpsAccuracyBadMeters: 50,
       sampleIntervalS: const {'fast': 1},
-      sampleDistanceM: const {'fast': 1},
       screenWakeOnLeave: false,
       alarmVolume: 1.0,
     );

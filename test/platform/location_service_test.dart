@@ -10,7 +10,6 @@ void main() {
     leaveConfirmSeconds: 1,
     gpsAccuracyBadMeters: 10,
     sampleIntervalS: const {'fast': 3},
-    sampleDistanceM: const {'fast': 5},
     screenWakeOnLeave: false,
     alarmVolume: 0.5,
   );

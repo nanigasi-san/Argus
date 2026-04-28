@@ -20,7 +20,6 @@ void main() {
       'leave_confirm_seconds': 8,
       'gps_accuracy_bad_m': 33.3,
       'sample_interval_s': <String, dynamic>{'fast': 2, 'slow': 5},
-      'sample_distance_m': <String, dynamic>{'fast': 10, 'slow': 20},
       'screen_wake_on_leave': true,
       'alarm_volume': 0.8,
     });
@@ -29,8 +28,7 @@ void main() {
     expect(config.leaveConfirmSamples, 4);
     expect(config.leaveConfirmSeconds, 8);
     expect(config.gpsAccuracyBadMeters, 33.3);
-    expect(config.sampleIntervalS, {'fast': 3, 'slow': 5});
-    expect(config.sampleDistanceM, {'fast': 10, 'slow': 20});
+    expect(config.sampleIntervalS, {'fast': 2, 'slow': 5});
     expect(config.screenWakeOnLeave, isTrue);
     expect(config.alarmVolume, 0.8);
     expect(config.toJson(), <String, dynamic>{
@@ -38,8 +36,7 @@ void main() {
       'leave_confirm_samples': 4,
       'leave_confirm_seconds': 8,
       'gps_accuracy_bad_m': 33.3,
-      'sample_interval_s': <String, int>{'fast': 3, 'slow': 5},
-      'sample_distance_m': <String, int>{'fast': 10, 'slow': 20},
+      'sample_interval_s': <String, int>{'fast': 2, 'slow': 5},
       'screen_wake_on_leave': true,
       'alarm_volume': 0.8,
     });
@@ -52,7 +49,6 @@ void main() {
       'leave_confirm_seconds': 2,
       'gps_accuracy_bad_m': 10,
       'sample_interval_s': <String, dynamic>{'fast': 3},
-      'sample_distance_m': <String, dynamic>{'fast': 15},
     });
 
     expect(config.screenWakeOnLeave, isFalse);
@@ -65,8 +61,7 @@ void main() {
       'leave_confirm_samples': 99,
       'leave_confirm_seconds': 0,
       'gps_accuracy_bad_m': 1000,
-      'sample_interval_s': <String, dynamic>{'fast': 1},
-      'sample_distance_m': <String, dynamic>{'fast': 500},
+      'sample_interval_s': <String, dynamic>{'fast': 0},
       'alarm_volume': 9,
     });
 
@@ -75,7 +70,6 @@ void main() {
     expect(config.leaveConfirmSeconds, AppConfig.minLeaveConfirmSeconds);
     expect(config.gpsAccuracyBadMeters, AppConfig.maxGpsAccuracyBadMeters);
     expect(config.sampleIntervalS['fast'], AppConfig.minSampleIntervalS);
-    expect(config.sampleDistanceM['fast'], AppConfig.maxSampleDistanceM);
     expect(config.alarmVolume, AppConfig.maxAlarmVolume);
   });
 
@@ -86,6 +80,5 @@ void main() {
     expect(config.leaveConfirmSamples, greaterThan(0));
     expect(config.leaveConfirmSeconds, greaterThan(0));
     expect(config.sampleIntervalS, isNotEmpty);
-    expect(config.sampleDistanceM, isNotEmpty);
   });
 }
