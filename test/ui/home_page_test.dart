@@ -193,6 +193,8 @@ void main() {
     final controller = buildTestController(hasGeoJson: true);
 
     await _pumpHome(tester, controller);
+    await tester.ensureVisible(find.text('お問い合わせ: yamada.orien@gmail.com'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('お問い合わせ: yamada.orien@gmail.com'));
     await tester.pumpAndSettle();
 
