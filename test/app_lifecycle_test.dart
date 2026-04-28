@@ -33,6 +33,18 @@ void main() {
     expect(controller.terminationCount, 1);
   });
 
+  testWidgets('ArgusApp does not terminate monitoring on pause or hidden',
+      (tester) async {
+    final controller = _LifecycleController();
+
+    await tester.pumpWidget(ArgusApp(controller: controller));
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    await tester.pump();
+
+    expect(controller.terminationCount, 0);
+  });
+
   testWidgets('ArgusApp removes lifecycle observer on dispose', (tester) async {
     final controller = _LifecycleController();
 

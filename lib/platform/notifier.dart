@@ -111,11 +111,9 @@ class Notifier {
   }
 
   Future<void> stopAlarm() async {
-    if (_isAlarming) {
-      await _alarmPlayer.stop();
-      await _vibrationPlayer.stop();
-      _isAlarming = false;
-    }
+    await _alarmPlayer.stop();
+    await _vibrationPlayer.stop();
+    _isAlarming = false;
   }
 
   Future<void> resumeAlarm() async {
