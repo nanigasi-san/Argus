@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -100,6 +102,7 @@ class _HomeScrollableContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDeveloperMode = controller.developerMode;
+    final isMonitoring = _isMonitoringStatus(snapshot.status);
     return LayoutBuilder(
       builder: (context, constraints) {
         return SingleChildScrollView(
@@ -125,7 +128,14 @@ class _HomeScrollableContent extends StatelessWidget {
                           fileName: controller.geoJsonFileName,
                           loaded: controller.geoJsonLoaded,
                         ),
-                        const SizedBox(height: 12),
+                        if (isMonitoring) ...[
+                          const SizedBox(height: 24),
+                          _HoldToFinishRaceButton(
+                            duration: const Duration(seconds: 5),
+                            onCompleted: controller.stopMonitoring,
+                          ),
+                        ],
+                        const SizedBox(height: 20),
                         _LargeStatusDisplay(
                           status: snapshot.status,
                           onTap: snapshot.status ==
@@ -141,9 +151,7 @@ class _HomeScrollableContent extends StatelessWidget {
                         ),
                         const SizedBox(height: 12),
                         _BottomActions(
-                          isWaitStart:
-                              snapshot.status == LocationStateStatus.waitStart,
-                          geoJsonReady: controller.geoJsonLoaded,
+                          status: snapshot.status,
                           onLoadFile: () {
                             _showLoadFileSheet(context, controller);
                           },
@@ -421,23 +429,28 @@ class _FileNameInfo extends StatelessWidget {
 
 class _BottomActions extends StatelessWidget {
   const _BottomActions({
-    required this.isWaitStart,
-    required this.geoJsonReady,
+    required this.status,
     required this.onLoadFile,
     required this.onOpenQr,
   });
 
-  final bool isWaitStart;
-  final bool geoJsonReady;
+  final LocationStateStatus status;
   final VoidCallback onLoadFile;
   final VoidCallback onOpenQr;
 
+  bool get _isWaiting =>
+      status == LocationStateStatus.waitStart ||
+      status == LocationStateStatus.waitGeoJson;
+
   @override
   Widget build(BuildContext context) {
+    if (!_isWaiting) {
+      return const SizedBox.shrink();
+    }
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // 中央円タップで開始に統一（ボタンは出さない）
         Row(
           children: [
             Expanded(
@@ -464,6 +477,153 @@ class _BottomActions extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+bool _isMonitoringStatus(LocationStateStatus status) {
+  return status == LocationStateStatus.inner ||
+      status == LocationStateStatus.near ||
+      status == LocationStateStatus.outerPending ||
+      status == LocationStateStatus.outer ||
+      status == LocationStateStatus.gpsBad;
+}
+
+class _HoldToFinishRaceButton extends StatefulWidget {
+  const _HoldToFinishRaceButton({
+    required this.duration,
+    required this.onCompleted,
+  });
+
+  final Duration duration;
+  final Future<void> Function() onCompleted;
+
+  @override
+  State<_HoldToFinishRaceButton> createState() =>
+      _HoldToFinishRaceButtonState();
+}
+
+class _HoldToFinishRaceButtonState extends State<_HoldToFinishRaceButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  Timer? _finishTimer;
+  bool _completed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: widget.duration,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _HoldToFinishRaceButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.duration != widget.duration) {
+      _controller.duration = widget.duration;
+    }
+  }
+
+  @override
+  void dispose() {
+    _finishTimer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _startHold() {
+    if (_completed) {
+      return;
+    }
+    _finishTimer?.cancel();
+    _finishTimer = Timer(widget.duration, () {
+      if (_completed) {
+        return;
+      }
+      _completed = true;
+      unawaited(widget.onCompleted());
+    });
+    _controller.forward(from: 0);
+  }
+
+  void _cancelHold() {
+    if (_completed) {
+      return;
+    }
+    _finishTimer?.cancel();
+    _finishTimer = null;
+    _controller.reverse();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final baseColor = colorScheme.surfaceContainerHighest;
+    final fillColor = theme.colorScheme.error;
+    final textColor = colorScheme.onSurface;
+    final radius = BorderRadius.circular(8);
+
+    return Semantics(
+      key: const Key('finish-race-button'),
+      button: true,
+      label: '長押しでレース終了',
+      child: Material(
+        color: baseColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: radius,
+          side: BorderSide(color: colorScheme.outlineVariant),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Listener(
+          behavior: HitTestBehavior.opaque,
+          onPointerDown: (_) => _startHold(),
+          onPointerUp: (_) => _cancelHold(),
+          onPointerCancel: (_) => _cancelHold(),
+          child: InkWell(
+            splashColor: fillColor.withValues(alpha: 0.12),
+            highlightColor: fillColor.withValues(alpha: 0.08),
+            child: AnimatedBuilder(
+              animation: _controller,
+              builder: (context, child) {
+                return Stack(
+                  children: [
+                    FractionallySizedBox(
+                      key: const Key('finish-race-progress-fill'),
+                      widthFactor: _controller.value,
+                      alignment: Alignment.centerLeft,
+                      child: Container(
+                        height: 52,
+                        color: fillColor.withValues(alpha: 0.86),
+                      ),
+                    ),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.stop_circle_outlined, color: textColor),
+                          const SizedBox(width: 8),
+                          Text(
+                            '長押しでレース終了',
+                            style: theme.textTheme.labelLarge?.copyWith(
+                              color: textColor,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

@@ -169,6 +169,17 @@ class AppController extends ChangeNotifier {
     await _subscription?.cancel();
     _subscription = null;
     await locationService.stop();
+    stateMachine.updateGeometry(_geoModel, _areaIndex);
+    _snapshot = StateSnapshot(
+      status: geoJsonLoaded
+          ? LocationStateStatus.waitStart
+          : LocationStateStatus.waitGeoJson,
+      timestamp: DateTime.now(),
+      geoJsonLoaded: geoJsonLoaded,
+      notes: geoJsonLoaded
+          ? 'Monitoring stopped. Ready to restart.'
+          : 'Monitoring stopped. Load GeoJSON to start monitoring.',
+    );
     _logInfo('APP', 'Monitoring stopped.');
     notifyListeners();
   }
