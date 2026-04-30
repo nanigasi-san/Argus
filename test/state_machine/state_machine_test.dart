@@ -302,6 +302,114 @@ void main() {
     expect(snapshot.horizontalAccuracyM, 50);
   });
 
+  test('maintains OUTER with bad GPS inside bounds but outside polygon', () {
+    final concave = GeoPolygon(
+      points: const [
+        LatLng(0, 0),
+        LatLng(0, 2),
+        LatLng(0.75, 2),
+        LatLng(0.75, 0.75),
+        LatLng(2, 0.75),
+        LatLng(2, 0),
+      ],
+      name: 'L',
+    );
+    final model = GeoModel([concave]);
+    final localMachine = StateMachine(config: config)
+      ..updateGeometry(model, AreaIndex.build(model.polygons));
+    final base = DateTime.utc(2024, 1, 1);
+
+    var snapshot = localMachine.evaluate(
+      LocationFix(
+        latitude: 1.5,
+        longitude: 1.5,
+        accuracyMeters: 5,
+        timestamp: base,
+      ),
+    );
+    for (var i = 0; i < config.leaveConfirmSamples; i++) {
+      snapshot = localMachine.evaluate(
+        LocationFix(
+          latitude: 1.5,
+          longitude: 1.5,
+          accuracyMeters: 5,
+          timestamp: base.add(Duration(seconds: 20 + i)),
+        ),
+      );
+    }
+    expect(snapshot.status, LocationStateStatus.outer);
+
+    snapshot = localMachine.evaluate(
+      LocationFix(
+        latitude: 1.5,
+        longitude: 1.5,
+        accuracyMeters: 80,
+        timestamp: base.add(const Duration(seconds: 40)),
+      ),
+    );
+
+    expect(snapshot.status, LocationStateStatus.outer);
+    expect(snapshot.notes, contains('maintaining OUTER'));
+  });
+
+  test('confirms OUTER using bounds distance when no polygon is nearby', () {
+    final base = DateTime.utc(2024, 1, 1);
+    late StateSnapshot snapshot;
+
+    for (var i = 0; i <= config.leaveConfirmSamples; i++) {
+      snapshot = machine.evaluate(
+        LocationFix(
+          latitude: 35.5,
+          longitude: 139.5,
+          accuracyMeters: 5,
+          timestamp: base.add(Duration(seconds: 20 * i)),
+        ),
+      );
+    }
+
+    expect(snapshot.status, LocationStateStatus.outer);
+    expect(snapshot.distanceToBoundaryM, isNotNull);
+    expect(snapshot.nearestBoundaryPoint, isNotNull);
+    expect(snapshot.bearingToBoundaryDeg, isNotNull);
+    expect(snapshot.notes, 'Confirmed exit');
+  });
+
+  test('chooses nearest evaluation when multiple polygons contain point', () {
+    final broad = GeoPolygon(
+      points: const [
+        LatLng(0, 0),
+        LatLng(0, 10),
+        LatLng(10, 10),
+        LatLng(10, 0),
+      ],
+      name: 'broad',
+    );
+    final tight = GeoPolygon(
+      points: const [
+        LatLng(4.9999, 4.9999),
+        LatLng(4.9999, 5.0001),
+        LatLng(5.0001, 5.0001),
+        LatLng(5.0001, 4.9999),
+      ],
+      name: 'tight',
+    );
+    final model = GeoModel([broad, tight]);
+    final localMachine = StateMachine(config: config)
+      ..updateGeometry(model, AreaIndex.build(model.polygons));
+
+    final snapshot = localMachine.evaluate(
+      LocationFix(
+        latitude: 5,
+        longitude: 5,
+        accuracyMeters: 5,
+        timestamp: DateTime.utc(2024, 1, 1),
+      ),
+    );
+
+    expect(snapshot.status, LocationStateStatus.inner);
+    expect(snapshot.distanceToBoundaryM, greaterThan(20000));
+  });
+
   test('skips polygon vertex evaluation when outside all bounds', () {
     final polygons = <GeoPolygon>[
       GeoPolygon(

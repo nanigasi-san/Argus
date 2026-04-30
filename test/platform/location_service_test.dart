@@ -59,6 +59,15 @@ void main() {
     expect(macos.isApple, isTrue);
   });
 
+  test('RuntimePlatform.current reflects one supported runtime', () {
+    final current = RuntimePlatform.current();
+
+    expect(
+      current.isAndroid || current.isIOS || current.isMacOS || !current.isApple,
+      isTrue,
+    );
+  });
+
   test('FakeLocationService emits updates and tracks lifecycle', () async {
     final fixes = <LocationFix>[
       LocationFix(

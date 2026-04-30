@@ -19,10 +19,12 @@ Future<void> _pumpSettings(
   AppController controller, {
   bool settle = true,
 }) async {
+  await tester.pumpWidget(const SizedBox.shrink());
+  await tester.pump();
   await tester.pumpWidget(
     ChangeNotifierProvider.value(
       value: controller,
-      child: const MaterialApp(home: SettingsPage()),
+      child: MaterialApp(home: SettingsPage(key: UniqueKey())),
     ),
   );
   if (settle) {
@@ -61,6 +63,7 @@ Future<void> _invokeSaveButton(WidgetTester tester) async {
   expect(button.onPressed, isNotNull);
   button.onPressed!.call();
   await tester.pump();
+  await tester.pump(const Duration(milliseconds: 300));
 }
 
 void main() {
@@ -70,6 +73,7 @@ void main() {
 
   tearDown(() async {
     await clearUrlLauncherMock();
+    await mockDefaultConfigAsset();
   });
 
   testWidgets('shows progress indicator when config is null', (tester) async {
@@ -98,6 +102,18 @@ void main() {
 
     expect(find.text('境界バッファ距離'), findsOneWidget);
     expect(find.text('プライバシーポリシー'), findsOneWidget);
+    expect(find.textContaining('デフォルト:'), findsWidgets);
+  });
+
+  testWidgets('falls back when default config asset cannot load',
+      (tester) async {
+    await clearDefaultConfigAssetMock();
+    addTearDown(mockDefaultConfigAsset);
+    final controller = buildTestController(hasGeoJson: true);
+
+    await _pumpSettings(tester, controller);
+
+    expect(find.text('境界バッファ距離'), findsOneWidget);
     expect(find.textContaining('デフォルト:'), findsWidgets);
   });
 

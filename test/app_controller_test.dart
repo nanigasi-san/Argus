@@ -852,6 +852,32 @@ void main() {
       expect(controller.geoJsonLoaded, isFalse);
     });
 
+    test('reloadGeoJsonFromQr handles parsed invalid GeoJSON gracefully',
+        () async {
+      final payload = base64Url
+          .encode(
+            gzip.encode(
+              utf8.encode('{"type":"FeatureCollection","features":"bad"}'),
+            ),
+          )
+          .replaceAll('=', '');
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: FakeLocationService(),
+        fileManager: FakeFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+      );
+
+      final loaded = await controller.reloadGeoJsonFromQr('gjz1:$payload');
+
+      expect(loaded, isFalse);
+      expect(controller.lastErrorMessage, contains('Failed to decode QR code'));
+    });
+
     test('reloadGeoJsonFromQrImagePicker loads QR image selection', () async {
       final tempDir =
           await Directory.systemTemp.createTemp('argus_qr_image_test_');
@@ -926,6 +952,55 @@ void main() {
 
       expect(loaded, isFalse);
       expect(controller.lastErrorMessage, isNull);
+    });
+
+    test('reloadGeoJsonFromQrImagePicker ignores analyzer cancellation',
+        () async {
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: FakeLocationService(),
+        fileManager: _QrImageFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+        qrImageAnalyzer: (_) async => throw Exception('user abort'),
+      );
+
+      final loaded = await controller.reloadGeoJsonFromQrImagePicker();
+
+      expect(loaded, isFalse);
+      expect(controller.lastErrorMessage, isNull);
+    });
+
+    test('reloadGeoJsonFromQrImagePicker reports analyzer errors', () async {
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: FakeLocationService(),
+        fileManager: _QrImageFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+        qrImageAnalyzer: (_) async => throw Exception('decoder exploded'),
+      );
+
+      final loaded = await controller.reloadGeoJsonFromQrImagePicker();
+
+      expect(loaded, isFalse);
+      expect(controller.lastErrorMessage, contains('Unable to load GeoJSON'));
+    });
+
+    test('log list is capped at 200 entries', () {
+      final controller = _buildController();
+
+      for (var i = 0; i < 205; i++) {
+        controller.setDeveloperMode(i.isEven);
+      }
+
+      expect(controller.logs.length, 200);
     });
 
     test('cleanupTempGeoJsonFile deletes temporary file', () async {

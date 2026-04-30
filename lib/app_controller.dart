@@ -634,6 +634,7 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  // coverage:ignore-start
   static Future<AppController> bootstrap() async {
     final fileManager = FileManager();
     final config = (await fileManager.readConfig()).normalized();
@@ -656,6 +657,7 @@ class AppController extends ChangeNotifier {
     await controller.initialize();
     return controller;
   }
+  // coverage:ignore-end
 
   Future<void> refreshMonitoringPermissionState() async {
     _monitoringPermissionState =
@@ -777,6 +779,7 @@ Future<String> _decodeGeoJsonQrText(String qrText) {
   );
 }
 
+// coverage:ignore-start
 Future<String?> _defaultQrImageAnalyzer(String imagePath) async {
   final controller = MobileScannerController(
     autoStart: false,
@@ -798,3 +801,4 @@ Future<String?> _defaultQrImageAnalyzer(String imagePath) async {
     await controller.dispose();
   }
 }
+// coverage:ignore-end

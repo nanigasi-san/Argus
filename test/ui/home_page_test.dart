@@ -3,11 +3,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'package:argus/app_controller.dart';
+import 'package:argus/geo/geo_model.dart';
+import 'package:argus/io/log_entry.dart';
+import 'package:argus/platform/notifier.dart';
 import 'package:argus/platform/permission_coordinator.dart';
 import 'package:argus/state_machine/state.dart';
+import 'package:argus/state_machine/state_machine.dart';
 import 'package:argus/ui/home_page.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../support/notifier_fakes.dart';
 import '../support/platform_mocks.dart';
 import '../support/test_doubles.dart';
 
@@ -318,4 +323,172 @@ void main() {
 
     expect(find.text('バックグラウンド位置情報の開示'), findsNothing);
   });
+
+  testWidgets('permission card setup action opens disclosure', (tester) async {
+    final controller = buildTestController(
+      hasGeoJson: true,
+      permissionState: const MonitoringPermissionState(
+        notificationStatus: PermissionStatus.denied,
+        locationWhenInUseStatus: PermissionStatus.granted,
+        locationAlwaysStatus: PermissionStatus.denied,
+        locationServicesEnabled: true,
+      ),
+    );
+
+    await _pumpHome(tester, controller);
+    await tester.tap(find.text('監視開始前に設定する'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('バックグラウンド位置情報の開示'), findsOneWidget);
+  });
+
+  testWidgets('tapping wait-start status starts monitoring when permitted',
+      (tester) async {
+    final controller = buildTestController(
+      hasGeoJson: true,
+      permissionCoordinator: _GrantedPermissionCoordinator(),
+      snapshot: StateSnapshot(
+        status: LocationStateStatus.waitStart,
+        timestamp: DateTime.utc(2024, 1, 1),
+        geoJsonLoaded: true,
+      ),
+    );
+    final locationService = controller.locationService as FakeLocationService;
+
+    await _pumpHome(tester, controller);
+    final statusTapTarget = find.ancestor(
+      of: find.text('スタート待機'),
+      matching: find.byType(InkWell),
+    );
+    await tester.tap(statusTapTarget.first);
+    await tester.pumpAndSettle();
+
+    expect(locationService.hasStarted, isTrue);
+  });
+
+  testWidgets('QR action opens scanner page', (tester) async {
+    final controller = buildTestController(hasGeoJson: true);
+
+    await _pumpHome(tester, controller);
+    await tester.ensureVisible(find.text('QRコードを\n読み込む'));
+    await tester.tap(find.text('QRコードを\n読み込む'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('QRコードを読み込む'), findsOneWidget);
+  });
+
+  testWidgets('overflow menu opens settings page', (tester) async {
+    final controller = buildTestController(hasGeoJson: true);
+
+    await _pumpHome(tester, controller);
+    await tester.tap(find.byType(PopupMenuButton<int>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('設定'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('設定'), findsWidgets);
+    expect(find.text('プライバシーポリシー'), findsOneWidget);
+  });
+
+  testWidgets('developer details render logs and nearest boundary point',
+      (tester) async {
+    final controller = _DisplayOnlyHomeController(
+      logs: [
+        AppLogEntry.warning(tag: 'WARN', message: 'warn'),
+        AppLogEntry.error(tag: 'ERR', message: 'err'),
+        AppLogEntry.debug(tag: 'DBG', message: ''),
+      ],
+      snapshot: StateSnapshot(
+        status: LocationStateStatus.inner,
+        timestamp: DateTime.utc(2024, 1, 1),
+        distanceToBoundaryM: 12,
+        horizontalAccuracyM: 3,
+        bearingToBoundaryDeg: 45,
+        nearestBoundaryPoint: const LatLng(35.123456, 139.654321),
+        geoJsonLoaded: true,
+        notes: 'note',
+      ),
+    );
+
+    await _pumpHome(tester, controller);
+
+    expect(find.textContaining('35.12346, 139.65432'), findsOneWidget);
+    expect(find.text('(no message)'), findsOneWidget);
+    expect(find.text('WARN'), findsOneWidget);
+    expect(find.text('ERR'), findsOneWidget);
+    expect(find.text('DBG'), findsOneWidget);
+  });
+
+  testWidgets('renders remaining status display variants', (tester) async {
+    for (final status in <LocationStateStatus>[
+      LocationStateStatus.outerPending,
+      LocationStateStatus.gpsBad,
+      LocationStateStatus.waitGeoJson,
+    ]) {
+      final controller = buildTestController(
+        hasGeoJson: status != LocationStateStatus.waitGeoJson,
+        snapshot: StateSnapshot(
+          status: status,
+          timestamp: DateTime.utc(2024, 1, 1),
+          geoJsonLoaded: status != LocationStateStatus.waitGeoJson,
+        ),
+      );
+
+      await _pumpHome(tester, controller);
+      expect(find.text(status.name), findsNothing);
+    }
+  });
+}
+
+class _DisplayOnlyHomeController extends AppController {
+  _DisplayOnlyHomeController({
+    required List<AppLogEntry> logs,
+    required StateSnapshot snapshot,
+  })  : _logs = logs,
+        _snapshot = snapshot,
+        super(
+          stateMachine: StateMachine(config: createTestConfig()),
+          locationService: FakeLocationService(),
+          fileManager: FakeFileManager(config: createTestConfig()),
+          logger: FakeEventLogger(),
+          notifier: Notifier(
+            notificationsClient: FakeLocalNotificationsClient(),
+            alarmPlayer: FakeAlarmPlayer(),
+            vibrationPlayer: FakeVibrationPlayer(),
+          ),
+        ) {
+    debugSeed(config: createTestConfig(), geoJson: createSquareModel());
+  }
+
+  final List<AppLogEntry> _logs;
+  final StateSnapshot _snapshot;
+
+  @override
+  StateSnapshot get snapshot => _snapshot;
+
+  @override
+  bool get developerMode => true;
+
+  @override
+  bool get navigationEnabled => true;
+
+  @override
+  bool get geoJsonLoaded => true;
+
+  @override
+  List<AppLogEntry> get logs => _logs;
+}
+
+class _GrantedPermissionCoordinator extends PermissionCoordinator {
+  @override
+  Future<MonitoringPermissionState> refreshMonitoringPermissionState() async {
+    return const MonitoringPermissionState(
+      notificationStatus: PermissionStatus.granted,
+      locationWhenInUseStatus: PermissionStatus.granted,
+      locationAlwaysStatus: PermissionStatus.granted,
+      locationServicesEnabled: true,
+    );
+  }
 }

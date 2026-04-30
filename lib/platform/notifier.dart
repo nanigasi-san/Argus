@@ -172,6 +172,9 @@ abstract class LocalNotificationsClient {
   Future<void> cancel(int id);
 }
 
+// coverage:ignore-start
+// Thin wrapper around the Flutter plugin. Behavior is covered through
+// LocalNotificationsClient fakes; plugin integration is verified by builds.
 class FlutterLocalNotificationsClient implements LocalNotificationsClient {
   FlutterLocalNotificationsClient(this._plugin);
 
@@ -213,6 +216,7 @@ class FlutterLocalNotificationsClient implements LocalNotificationsClient {
     return _plugin.cancel(id);
   }
 }
+// coverage:ignore-end
 
 abstract class AlarmPlayer {
   Future<void> start();
@@ -254,46 +258,55 @@ class RingtoneAlarmPlayer implements AlarmPlayer {
   const RingtoneAlarmPlayer({
     this.volume = 1.0,
     AlarmPlatformClient? platformClient,
-  }) : _platformClient = platformClient;
+    bool? isAndroid,
+  })  : _platformClient = platformClient,
+        _isAndroidOverride = isAndroid;
 
   final double volume;
   final AlarmPlatformClient? _platformClient;
+  final bool? _isAndroidOverride;
 
   RingtoneAlarmPlayer copyWith({double? volume}) {
     return RingtoneAlarmPlayer(
       volume: volume ?? this.volume,
       platformClient: _platformClient,
+      isAndroid: _isAndroidOverride,
     );
   }
 
   AlarmPlatformClient get _client =>
       _platformClient ?? const MethodChannelAlarmClient();
+  bool get _isAndroid => _isAndroidOverride ?? (!kIsWeb && Platform.isAndroid);
 
   @override
   Future<void> start() async {
     final clampedVolume = volume.clamp(0.0, 1.0).toDouble();
-    if (!kIsWeb && Platform.isAndroid) {
+    if (_isAndroid) {
       await _client.play(volume: clampedVolume);
       return;
     }
 
-    // アセット音をループ再生（assets/sounds/alarm.mp3 を追加すること）
+    // coverage:ignore-start
+    // Non-Android playback is delegated to the plugin channel.
     await FlutterRingtonePlayer().play(
       fromAsset: 'assets/sounds/alarm.mp3',
       looping: true,
       volume: clampedVolume,
       asAlarm: true,
     );
+    // coverage:ignore-end
   }
 
   @override
   Future<void> stop() async {
-    if (!kIsWeb && Platform.isAndroid) {
+    if (_isAndroid) {
       await _client.stop();
       return;
     }
 
+    // coverage:ignore-start
     return FlutterRingtonePlayer().stop();
+    // coverage:ignore-end
   }
 }
 

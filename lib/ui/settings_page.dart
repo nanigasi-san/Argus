@@ -141,7 +141,13 @@ class _SettingsPageState extends State<SettingsPage> {
       }
 
       // デフォルト値を取得（まだ読み込まれていない場合）
-      _defaultConfig ??= await AppConfig.loadDefault();
+      if (_defaultConfig == null) {
+        try {
+          _defaultConfig = await AppConfig.loadDefault();
+        } catch (_) {
+          _defaultConfig = null;
+        }
+      }
 
       final innerBuffer = _readDouble(
         _innerBufferController,

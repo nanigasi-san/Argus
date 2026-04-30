@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  const AppTheme._();
+  const AppTheme._(); // coverage:ignore-line
 
   static const _fontFamily = 'BIZ UDPGothic';
   static const _fontFallback = <String>[
