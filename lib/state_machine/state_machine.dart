@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import '../geo/area_index.dart';
 import '../geo/geo_model.dart';
 import '../geo/point_in_polygon.dart';
@@ -87,14 +89,24 @@ class StateMachine {
       // ただし、実際に内側に戻ったかどうかはチェックする必要がある
       if (_current == LocationStateStatus.outer) {
         // OUTER状態の場合、精度が悪くても内側に戻ったかどうかをチェック
-        final candidatePolys = _areaIndex
-            .lookup(
-              fix.latitude,
-              fix.longitude,
-            )
-            .toList();
-        final searchPolys =
-            candidatePolys.isEmpty ? _geoModel.polygons : candidatePolys;
+        final searchPolys = _candidatePolygons(fix.latitude, fix.longitude);
+        if (searchPolys.isEmpty) {
+          final boundsEval = _nearestBoundsEvaluation(
+            fix.latitude,
+            fix.longitude,
+          );
+          return StateSnapshot(
+            status: LocationStateStatus.outer,
+            timestamp: fix.timestamp,
+            horizontalAccuracyM: fix.accuracyMeters,
+            distanceToBoundaryM: boundsEval?.distanceToBoundaryM,
+            geoJsonLoaded: true,
+            nearestBoundaryPoint: boundsEval?.nearestPoint,
+            bearingToBoundaryDeg: boundsEval?.bearingToBoundaryDeg,
+            notes:
+                'Low accuracy ${fix.accuracyMeters?.toStringAsFixed(1) ?? '-'}m, but maintaining OUTER state',
+          );
+        }
 
         final polygonEval = _evaluatePolygons(
           fix.latitude,
@@ -151,14 +163,28 @@ class StateMachine {
       );
     }
 
-    final candidatePolys = _areaIndex
-        .lookup(
-          fix.latitude,
-          fix.longitude,
-        )
-        .toList();
-    final searchPolys =
-        candidatePolys.isEmpty ? _geoModel.polygons : candidatePolys;
+    final searchPolys = _candidatePolygons(fix.latitude, fix.longitude);
+    if (searchPolys.isEmpty) {
+      final boundsEval = _nearestBoundsEvaluation(
+        fix.latitude,
+        fix.longitude,
+      );
+      final distance = boundsEval?.distanceToBoundaryM;
+      final reached = _hysteresis.addSample(fix.timestamp) && distance != null;
+
+      return StateSnapshot(
+        status: reached
+            ? LocationStateStatus.outer
+            : LocationStateStatus.outerPending,
+        timestamp: fix.timestamp,
+        horizontalAccuracyM: fix.accuracyMeters,
+        distanceToBoundaryM: distance,
+        geoJsonLoaded: true,
+        nearestBoundaryPoint: boundsEval?.nearestPoint,
+        bearingToBoundaryDeg: boundsEval?.bearingToBoundaryDeg,
+        notes: reached ? 'Confirmed exit' : 'Monitoring exit hysteresis',
+      );
+    }
 
     final polygonEval = _evaluatePolygons(
       fix.latitude,
@@ -183,10 +209,8 @@ class StateMachine {
       );
     }
 
-    final nearest = polygonEval.nearest;
-
-    final distance = nearest?.distanceToBoundaryM;
-    final reached = _hysteresis.addSample(fix.timestamp) && distance != null;
+    final distance = polygonEval.nearest?.distanceToBoundaryM;
+    final reached = _hysteresis.addSample(fix.timestamp);
 
     if (!reached) {
       return StateSnapshot(
@@ -195,8 +219,8 @@ class StateMachine {
         horizontalAccuracyM: fix.accuracyMeters,
         distanceToBoundaryM: distance,
         geoJsonLoaded: true,
-        nearestBoundaryPoint: nearest?.nearestPoint,
-        bearingToBoundaryDeg: nearest?.bearingToBoundaryDeg,
+        nearestBoundaryPoint: polygonEval.nearest?.nearestPoint,
+        bearingToBoundaryDeg: polygonEval.nearest?.bearingToBoundaryDeg,
         notes: 'Monitoring exit hysteresis',
       );
     }
@@ -207,13 +231,78 @@ class StateMachine {
       horizontalAccuracyM: fix.accuracyMeters,
       distanceToBoundaryM: distance,
       geoJsonLoaded: true,
-      nearestBoundaryPoint: nearest?.nearestPoint,
-      bearingToBoundaryDeg: nearest?.bearingToBoundaryDeg,
+      nearestBoundaryPoint: polygonEval.nearest?.nearestPoint,
+      bearingToBoundaryDeg: polygonEval.nearest?.bearingToBoundaryDeg,
       notes: 'Confirmed exit',
     );
 
     // outer になった場合は GPS_BAD の精度チェックでは取り消さない。
     return outerSnapshot;
+  }
+
+  List<GeoPolygon> _candidatePolygons(double latitude, double longitude) {
+    return _areaIndex.lookup(latitude, longitude).toList();
+  }
+
+  _BoundsEvaluation? _nearestBoundsEvaluation(
+    double latitude,
+    double longitude,
+  ) {
+    GeoPolygon? nearestPolygon;
+    var nearestDistanceSquared = double.infinity;
+    for (final polygon in _geoModel.polygons) {
+      final distanceSquared = _distanceToBoundsSquared(
+        latitude,
+        longitude,
+        polygon,
+      );
+      if (distanceSquared < nearestDistanceSquared) {
+        nearestDistanceSquared = distanceSquared;
+        nearestPolygon = polygon;
+      }
+    }
+    if (nearestPolygon == null) {
+      return null;
+    }
+
+    final nearestPoint = LatLng(
+      latitude.clamp(nearestPolygon.minLat, nearestPolygon.maxLat),
+      longitude.clamp(nearestPolygon.minLon, nearestPolygon.maxLon),
+    );
+    final distance = _haversine(
+      latitude,
+      longitude,
+      nearestPoint.latitude,
+      nearestPoint.longitude,
+    );
+    return _BoundsEvaluation(
+      distanceToBoundaryM: distance,
+      nearestPoint: nearestPoint,
+      bearingToBoundaryDeg: _bearingDegrees(
+        latitude,
+        longitude,
+        nearestPoint.latitude,
+        nearestPoint.longitude,
+      ),
+    );
+  }
+
+  double _distanceToBoundsSquared(
+    double latitude,
+    double longitude,
+    GeoPolygon polygon,
+  ) {
+    final latDelta = latitude < polygon.minLat
+        ? polygon.minLat - latitude
+        : latitude > polygon.maxLat
+            ? latitude - polygon.maxLat
+            : 0.0;
+    final lonDelta = longitude < polygon.minLon
+        ? polygon.minLon - longitude
+        : longitude > polygon.maxLon
+            ? longitude - polygon.maxLon
+            : 0.0;
+    return (latDelta * latDelta) + (lonDelta * lonDelta);
   }
 
   _PolygonEvaluationResult _evaluatePolygons(
@@ -224,21 +313,58 @@ class StateMachine {
     PointInPolygonEvaluation? inside;
     PointInPolygonEvaluation? nearest;
     for (final polygon in polygons) {
-      final evaluation = _pip.evaluatePoint(
-        latitude,
-        longitude,
-        polygon,
-      );
+      if (!_pip.containsPoint(latitude, longitude, polygon)) {
+        continue;
+      }
+      final evaluation = _pip.evaluatePoint(latitude, longitude, polygon);
       if (nearest == null ||
           evaluation.distanceToBoundaryM < nearest.distanceToBoundaryM) {
         nearest = evaluation;
       }
-      if (inside == null && evaluation.contains) {
-        inside = evaluation;
-      }
+      inside ??= evaluation;
     }
+
     return _PolygonEvaluationResult(inside: inside, nearest: nearest);
   }
+
+  double _haversine(
+    double lat1,
+    double lon1,
+    double lat2,
+    double lon2,
+  ) {
+    const earthRadius = 6371000.0;
+    final dLat = _degToRad(lat2 - lat1);
+    final dLon = _degToRad(lon2 - lon1);
+    final a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(_degToRad(lat1)) *
+            cos(_degToRad(lat2)) *
+            sin(dLon / 2) *
+            sin(dLon / 2);
+    final c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    return earthRadius * c;
+  }
+
+  double _bearingDegrees(
+    double lat1,
+    double lon1,
+    double lat2,
+    double lon2,
+  ) {
+    final lat1Rad = _degToRad(lat1);
+    final lat2Rad = _degToRad(lat2);
+    final dLon = _degToRad(lon2 - lon1);
+
+    final y = sin(dLon) * cos(lat2Rad);
+    final x =
+        cos(lat1Rad) * sin(lat2Rad) - sin(lat1Rad) * cos(lat2Rad) * cos(dLon);
+    final bearingRad = atan2(y, x);
+    final bearingDeg = _radToDeg(bearingRad);
+    return (bearingDeg + 360) % 360;
+  }
+
+  double _degToRad(double deg) => deg * pi / 180;
+  double _radToDeg(double rad) => rad * 180 / pi;
 }
 
 class _PolygonEvaluationResult {
@@ -249,4 +375,16 @@ class _PolygonEvaluationResult {
 
   final PointInPolygonEvaluation? inside;
   final PointInPolygonEvaluation? nearest;
+}
+
+class _BoundsEvaluation {
+  const _BoundsEvaluation({
+    required this.distanceToBoundaryM,
+    required this.nearestPoint,
+    required this.bearingToBoundaryDeg,
+  });
+
+  final double distanceToBoundaryM;
+  final LatLng nearestPoint;
+  final double bearingToBoundaryDeg;
 }

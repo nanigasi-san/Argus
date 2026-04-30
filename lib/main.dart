@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'app_controller.dart';
+import 'theme/app_theme.dart';
 import 'ui/home_page.dart';
 
 Future<void> main() async {
@@ -51,10 +52,7 @@ class _ArgusAppState extends State<ArgusApp> with WidgetsBindingObserver {
       value: widget.controller,
       child: MaterialApp(
         title: 'Argus',
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-          useMaterial3: true,
-        ),
+        theme: AppTheme.light(),
         home: const HomePage(),
       ),
     );

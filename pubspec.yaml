@@ -1,22 +1,22 @@
 name: argus
 description: Geo-fence monitoring app per spec.md
-publish_to: 'none'
-version: 0.2.5+10
+publish_to: "none"
+version: 0.3.1
 environment:
-  sdk: '>=3.2.0 <4.0.0'
+  sdk: ">=3.2.0 <4.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
-  cupertino_icons: ^1.0.6
+  cupertino_icons: ^1.0.9
   brotli: ^0.6.0
-  crypto: ^3.0.3
+  crypto: ^3.0.7
   geolocator: ^14.0.2
   path: ^1.9.0
-  file_selector: ^1.0.1
-  image: ^4.5.4
+  file_selector: ^1.1.0
+  image: ^4.8.0
   path_provider: ^2.1.1
-  json_annotation: ^4.8.1
+  json_annotation: ^4.11.0
   collection: ^1.17.2
   qr: ^3.0.1
   meta: ^1.10.0
@@ -36,9 +36,13 @@ dev_dependencies:
   integration_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  build_runner: ^2.4.6
-  json_serializable: ^6.7.1
+  build_runner: ^2.14.1
+  json_serializable: ^6.13.1
   path_provider_platform_interface: ^2.1.2
+
+dependency_overrides:
+  geolocator_linux: 0.2.3
+  package_info_plus: 8.3.1
 
 flutter:
   uses-material-design: true
@@ -47,3 +51,10 @@ flutter:
     - assets/geojson/
     - icon.png
     - assets/sounds/alarm.mp3
+  fonts:
+    - family: BIZ UDPGothic
+      fonts:
+        - asset: assets/fonts/BIZUDPGothic-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/BIZUDPGothic-Bold.ttf
+          weight: 700

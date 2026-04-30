@@ -19,10 +19,12 @@ Future<void> _pumpSettings(
   AppController controller, {
   bool settle = true,
 }) async {
+  await tester.pumpWidget(const SizedBox.shrink());
+  await tester.pump();
   await tester.pumpWidget(
     ChangeNotifierProvider.value(
       value: controller,
-      child: const MaterialApp(home: SettingsPage()),
+      child: MaterialApp(home: SettingsPage(key: UniqueKey())),
     ),
   );
   if (settle) {
@@ -61,6 +63,7 @@ Future<void> _invokeSaveButton(WidgetTester tester) async {
   expect(button.onPressed, isNotNull);
   button.onPressed!.call();
   await tester.pump();
+  await tester.pump(const Duration(milliseconds: 300));
 }
 
 void main() {
@@ -70,6 +73,7 @@ void main() {
 
   tearDown(() async {
     await clearUrlLauncherMock();
+    await mockDefaultConfigAsset();
   });
 
   testWidgets('shows progress indicator when config is null', (tester) async {
@@ -96,8 +100,20 @@ void main() {
 
     await _pumpSettings(tester, controller);
 
-    expect(find.text('反応距離 (Inner buffer)'), findsOneWidget);
-    expect(find.text('Privacy Policy'), findsOneWidget);
+    expect(find.text('境界バッファ距離'), findsOneWidget);
+    expect(find.text('プライバシーポリシー'), findsOneWidget);
+    expect(find.textContaining('デフォルト:'), findsWidgets);
+  });
+
+  testWidgets('falls back when default config asset cannot load',
+      (tester) async {
+    await clearDefaultConfigAssetMock();
+    addTearDown(mockDefaultConfigAsset);
+    final controller = buildTestController(hasGeoJson: true);
+
+    await _pumpSettings(tester, controller);
+
+    expect(find.text('境界バッファ距離'), findsOneWidget);
     expect(find.textContaining('デフォルト:'), findsWidgets);
   });
 
@@ -143,7 +159,7 @@ void main() {
 
     expect(find.text('バックグラウンド位置情報の開示'), findsOneWidget);
     expect(
-      find.textContaining('closed or not in use'),
+      find.textContaining('アプリを閉じているときや使用していないとき'),
       findsWidgets,
     );
   });
@@ -169,13 +185,13 @@ void main() {
     await tester.tap(find.byKey(const Key('exportLogsButton')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Export (JSONL)'), findsOneWidget);
-    expect(find.text('Close'), findsOneWidget);
+    expect(find.text('ログ出力 (JSONL)'), findsOneWidget);
+    expect(find.text('閉じる'), findsOneWidget);
 
-    await tester.tap(find.text('Close'));
+    await tester.tap(find.text('閉じる'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Export (JSONL)'), findsNothing);
+    expect(find.text('ログ出力 (JSONL)'), findsNothing);
   });
 
   testWidgets('invalid values block save and show validation errors',
@@ -201,7 +217,7 @@ void main() {
     await _invokeSaveButton(tester);
     await tester.pumpAndSettle();
 
-    expect(find.text('1以上の整数を入力してください'), findsWidgets);
+    expect(find.textContaining('範囲で入力してください'), findsWidgets);
     expect(controller.updateConfigCalls, 0);
   });
 }

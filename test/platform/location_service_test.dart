@@ -10,28 +10,23 @@ void main() {
     leaveConfirmSeconds: 1,
     gpsAccuracyBadMeters: 10,
     sampleIntervalS: const {'fast': 3},
-    sampleDistanceM: const {'fast': 5},
-    screenWakeOnLeave: false,
     alarmVolume: 0.5,
   );
 
   test('LocationFix stores provided values', () {
     final timestamp = DateTime.utc(2024, 1, 1);
     const accuracy = 4.2;
-    const battery = 0.75;
     final fix = LocationFix(
       latitude: 35.0,
       longitude: 139.0,
       timestamp: timestamp,
       accuracyMeters: accuracy,
-      batteryPercent: battery,
     );
 
     expect(fix.latitude, 35.0);
     expect(fix.longitude, 139.0);
     expect(fix.timestamp, timestamp);
     expect(fix.accuracyMeters, accuracy);
-    expect(fix.batteryPercent, battery);
   });
 
   test('LocationServiceStartResult.started has started status and no message',
@@ -42,6 +37,37 @@ void main() {
     expect(result.message, isNull);
   });
 
+  test('RuntimePlatform exposes apple platform grouping', () {
+    const android = RuntimePlatform(
+      isAndroid: true,
+      isIOS: false,
+      isMacOS: false,
+    );
+    const ios = RuntimePlatform(
+      isAndroid: false,
+      isIOS: true,
+      isMacOS: false,
+    );
+    const macos = RuntimePlatform(
+      isAndroid: false,
+      isIOS: false,
+      isMacOS: true,
+    );
+
+    expect(android.isApple, isFalse);
+    expect(ios.isApple, isTrue);
+    expect(macos.isApple, isTrue);
+  });
+
+  test('RuntimePlatform.current reflects one supported runtime', () {
+    final current = RuntimePlatform.current();
+
+    expect(
+      current.isAndroid || current.isIOS || current.isMacOS || !current.isApple,
+      isTrue,
+    );
+  });
+
   test('FakeLocationService emits updates and tracks lifecycle', () async {
     final fixes = <LocationFix>[
       LocationFix(
@@ -50,7 +76,8 @@ void main() {
         timestamp: DateTime.utc(2024, 1, 1),
       ),
     ];
-    final service = FakeLocationService(Stream<LocationFix>.fromIterable(fixes));
+    final service =
+        FakeLocationService(Stream<LocationFix>.fromIterable(fixes));
 
     final received = await service.stream.toList();
     final result = await service.start(config);

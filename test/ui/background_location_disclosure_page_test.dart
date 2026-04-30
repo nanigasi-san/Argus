@@ -93,9 +93,9 @@ void main() {
       ),
     );
 
-    await tester.ensureVisible(find.text('Privacy Policy を開く'));
+    await tester.ensureVisible(find.text('プライバシーポリシーを開く'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Privacy Policy を開く'));
+    await tester.tap(find.text('プライバシーポリシーを開く'));
     await tester.pumpAndSettle();
 
     expect(find.text('プライバシーポリシーを開けませんでした。'), findsOneWidget);

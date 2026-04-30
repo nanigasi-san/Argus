@@ -97,14 +97,14 @@ class _BackgroundLocationDisclosurePageState
                           ),
                           const SizedBox(height: 12),
                           Text(
-                            'ARGUS は geofence 監視機能のために location data を使用します。',
+                            'ARGUS はジオフェンス監視機能のために位置情報を使用します。',
                             style: theme.textTheme.titleMedium?.copyWith(
                               fontWeight: FontWeight.w700,
                             ),
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            '監視開始後は、アプリが closed or not in use の状態でも位置情報を使って競技エリアからの離脱を検知し、通知します。',
+                            '監視開始後は、アプリを閉じているときや使用していないときも位置情報を使って競技エリアからの離脱を検知し、通知します。',
                             style: theme.textTheme.bodyLarge,
                           ),
                           const SizedBox(height: 12),
@@ -129,7 +129,7 @@ class _BackgroundLocationDisclosurePageState
                                     '・位置情報は GeoJSON で設定した競技エリアの離脱検知に使います。'),
                                 const SizedBox(height: 6),
                                 const Text(
-                                    '・位置情報は app is closed or not in use でも使われます。'),
+                                    '・位置情報はアプリを閉じているときや使用していないときも使われます。'),
                                 const SizedBox(height: 6),
                                 const Text(
                                     '・位置情報データは端末内でのみ処理し、開発者のサーバーへ送信しません。'),
@@ -140,7 +140,7 @@ class _BackgroundLocationDisclosurePageState
                           TextButton.icon(
                             onPressed: () => _openPrivacyPolicy(context),
                             icon: const Icon(Icons.privacy_tip_outlined),
-                            label: const Text('Privacy Policy を開く'),
+                            label: const Text('プライバシーポリシーを開く'),
                           ),
                         ],
                       ),

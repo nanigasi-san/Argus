@@ -19,8 +19,6 @@ void main() {
       leaveConfirmSeconds: 10,
       gpsAccuracyBadMeters: 40,
       sampleIntervalS: const {'normal': 8},
-      sampleDistanceM: const {'normal': 15},
-      screenWakeOnLeave: true,
       alarmVolume: 1.0,
     );
 

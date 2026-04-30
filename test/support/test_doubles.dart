@@ -25,8 +25,6 @@ AppConfig createTestConfig() {
     leaveConfirmSeconds: 1,
     gpsAccuracyBadMeters: 50,
     sampleIntervalS: const {'fast': 1},
-    sampleDistanceM: const {'fast': 1},
-    screenWakeOnLeave: false,
     alarmVolume: 1.0,
   );
 }
@@ -132,6 +130,7 @@ AppController buildTestController({
     notifier: Notifier(
       notificationsClient: FakeLocalNotificationsClient(),
       alarmPlayer: FakeAlarmPlayer(),
+      vibrationPlayer: FakeVibrationPlayer(),
     ),
     permissionCoordinator: permissionCoordinator,
     qrImageAnalyzer: qrImageAnalyzer,

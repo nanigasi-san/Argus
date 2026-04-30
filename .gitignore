@@ -7,7 +7,9 @@
 .buildlog/
 .history
 
-
+# 自走用
+codex-logs/
+tasks.md
 
 # Flutter repo-specific
 /bin/cache/

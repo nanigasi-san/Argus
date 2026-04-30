@@ -72,7 +72,7 @@ class FileManager {
   /// 設定をファイルに保存します。
   Future<void> saveConfig(AppConfig config) async {
     final file = await getConfigFile();
-    await file.writeAsString(jsonEncode(config.toJson()));
+    await file.writeAsString(jsonEncode(config.normalized().toJson()));
   }
 
   /// 設定ファイルを読み込みます。
@@ -83,9 +83,9 @@ class FileManager {
       final file = await getConfigFile();
       final raw = await file.readAsString();
       final decoded = jsonDecode(raw) as Map<String, dynamic>;
-      return AppConfig.fromJson(decoded);
+      return AppConfig.fromJson(decoded).normalized();
     } catch (_) {
-      return _loadDefaultConfig();
+      return (await _loadDefaultConfig()).normalized();
     }
   }
 

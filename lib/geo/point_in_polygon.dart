@@ -43,6 +43,14 @@ class PointInPolygon {
     );
   }
 
+  bool containsPoint(
+    double lat,
+    double lon,
+    GeoPolygon polygon,
+  ) {
+    return _rayCast(lat, lon, polygon.points);
+  }
+
   bool _rayCast(double lat, double lon, List<LatLng> points) {
     var inside = false;
     for (var i = 0, j = points.length - 1; i < points.length; j = i++) {

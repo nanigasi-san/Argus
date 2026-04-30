@@ -143,7 +143,10 @@ class _StatusChip extends StatelessWidget {
         color: foregroundColor,
       ),
       label: Text(label),
-      labelStyle: TextStyle(color: foregroundColor),
+      labelStyle: TextStyle(
+        color: foregroundColor,
+        fontWeight: FontWeight.w700,
+      ),
       backgroundColor: backgroundColor,
       side: BorderSide.none,
     );

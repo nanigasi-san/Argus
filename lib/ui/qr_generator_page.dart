@@ -204,7 +204,7 @@ class _QrGeneratorPageState extends State<QrGeneratorPage> {
     final generated = _generatedQr;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Generate QR code'),
+        title: const Text('QRコードを生成'),
       ),
       body: SafeArea(
         child: ListView(
@@ -310,8 +310,8 @@ class _QrPreview extends StatelessWidget {
             label: 'フィーチャ数',
             value: generated.info.featureCount.toString(),
           ),
-        _InfoRow(label: '最小化サイズ', value: '${generated.minimizedBytes} bytes'),
-        _InfoRow(label: 'QRテキスト長', value: '${generated.qrTextBytes} chars'),
+        _InfoRow(label: '最小化サイズ', value: '${generated.minimizedBytes} バイト'),
+        _InfoRow(label: 'QRテキスト長', value: '${generated.qrTextBytes} 文字'),
         if (hash != null)
           _InfoRow(
             label: 'ハッシュ',
@@ -458,7 +458,7 @@ Future<void> _shareQrImage(
 
   await SharePlus.instance.share(
     ShareParams(
-      title: 'ARGUS GeoJSON QR code',
+      title: 'ARGUS GeoJSON QRコード',
       files: [XFile(file.path, mimeType: 'image/png')],
       sharePositionOrigin:
           box == null ? null : box.localToGlobal(Offset.zero) & box.size,

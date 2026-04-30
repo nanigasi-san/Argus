@@ -19,8 +19,6 @@ void main() {
       leaveConfirmSeconds: 4,
       gpsAccuracyBadMeters: 30,
       sampleIntervalS: const {'fast': 3},
-      sampleDistanceM: const {'fast': 15},
-      screenWakeOnLeave: false,
       alarmVolume: 0.4,
     );
   });
@@ -96,8 +94,6 @@ void main() {
       leaveConfirmSeconds: 6,
       gpsAccuracyBadMeters: 22,
       sampleIntervalS: const {'fast': 1},
-      sampleDistanceM: const {'fast': 5},
-      screenWakeOnLeave: true,
       alarmVolume: 0.9,
     );
 
@@ -107,7 +103,6 @@ void main() {
     final decoded =
         jsonDecode(await file.readAsString()) as Map<String, dynamic>;
     expect(decoded['inner_buffer_m'], 12.0);
-    expect(decoded['screen_wake_on_leave'], isTrue);
     expect(decoded['alarm_volume'], 0.9);
   });
 
@@ -122,8 +117,6 @@ void main() {
         leaveConfirmSeconds: 1,
         gpsAccuracyBadMeters: 1,
         sampleIntervalS: const {'fast': 1},
-        sampleDistanceM: const {'fast': 1},
-        screenWakeOnLeave: false,
         alarmVolume: 0.1,
       ),
     );

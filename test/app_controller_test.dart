@@ -204,8 +204,6 @@ void main() {
         leaveConfirmSeconds: 5,
         gpsAccuracyBadMeters: 20,
         sampleIntervalS: const {'fast': 2},
-        sampleDistanceM: const {'fast': 1},
-        screenWakeOnLeave: false,
         alarmVolume: 0.8,
       );
 
@@ -502,6 +500,98 @@ void main() {
       expect(vibration.startCount, 1);
     });
 
+    test('stopMonitoring dismisses active outer alert', () async {
+      final config = _testConfig();
+      final stateMachine = StateMachine(config: config);
+      final locationService = FakeLocationService();
+      final fileManager = FakeFileManager(config: config);
+      final logger = FakeEventLogger();
+      final notifications = FakeLocalNotificationsClient();
+      final alarm = FakeAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: notifications,
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+      final controller = AppController(
+        stateMachine: stateMachine,
+        locationService: locationService,
+        fileManager: fileManager,
+        logger: logger,
+        notifier: notifier,
+      );
+
+      controller.debugSeed(
+        snapshot: StateSnapshot(
+          status: LocationStateStatus.outer,
+          timestamp: DateTime.utc(2024, 1, 1),
+          geoJsonLoaded: true,
+        ),
+      );
+
+      await notifier.notifyOuter();
+      expect(alarm.playCount, 1);
+
+      await controller.stopMonitoring();
+
+      expect(notifications.cancelledIds, [1001]);
+      expect(alarm.stopCount, 1);
+      expect(vibration.stopCount, 1);
+      expect(locationService.stopped, isTrue);
+    });
+
+    test('stopMonitoring suppresses an in-flight outer location fix', () async {
+      final config = _testConfig();
+      final stateMachine = StateMachine(config: config);
+      final locationService = FakeLocationService();
+      final fileManager = FakeFileManager(config: config);
+      final logger = _BlockingLocationLogger();
+      final notifications = FakeLocalNotificationsClient();
+      final alarm = FakeAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: notifications,
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+      final controller = AppController(
+        stateMachine: stateMachine,
+        locationService: locationService,
+        fileManager: fileManager,
+        logger: logger,
+        notifier: notifier,
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+      );
+
+      controller.debugSeed(
+        config: config,
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+      await controller.startMonitoring();
+
+      locationService.add(
+        LocationFix(
+          latitude: 2,
+          longitude: 2,
+          accuracyMeters: 5,
+          timestamp: DateTime.utc(2024, 1, 1),
+        ),
+      );
+      await logger.locationLogEntered.future;
+
+      await controller.stopMonitoring();
+      logger.allowLocationLog.complete();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(notifications.shownIds, isEmpty);
+      expect(alarm.playCount, 0);
+      expect(vibration.startCount, 0);
+      expect(alarm.stopCount, 1);
+      expect(vibration.stopCount, 1);
+    });
+
     testWidgets('stopMonitoring clears pending alarm snooze', (tester) async {
       final config = _testConfig();
       final stateMachine = StateMachine(config: config);
@@ -538,6 +628,9 @@ void main() {
 
       await controller.stopMonitoring();
       expect(controller.isAlarmSnoozed, isFalse);
+      expect(notifications.cancelledIds, [1001]);
+      expect(alarm.stopCount, 2);
+      expect(vibration.stopCount, 2);
 
       await tester.pump(const Duration(minutes: 1));
       await tester.pump();
@@ -759,6 +852,32 @@ void main() {
       expect(controller.geoJsonLoaded, isFalse);
     });
 
+    test('reloadGeoJsonFromQr handles parsed invalid GeoJSON gracefully',
+        () async {
+      final payload = base64Url
+          .encode(
+            gzip.encode(
+              utf8.encode('{"type":"FeatureCollection","features":"bad"}'),
+            ),
+          )
+          .replaceAll('=', '');
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: FakeLocationService(),
+        fileManager: FakeFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+      );
+
+      final loaded = await controller.reloadGeoJsonFromQr('gjz1:$payload');
+
+      expect(loaded, isFalse);
+      expect(controller.lastErrorMessage, contains('Failed to decode QR code'));
+    });
+
     test('reloadGeoJsonFromQrImagePicker loads QR image selection', () async {
       final tempDir =
           await Directory.systemTemp.createTemp('argus_qr_image_test_');
@@ -833,6 +952,55 @@ void main() {
 
       expect(loaded, isFalse);
       expect(controller.lastErrorMessage, isNull);
+    });
+
+    test('reloadGeoJsonFromQrImagePicker ignores analyzer cancellation',
+        () async {
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: FakeLocationService(),
+        fileManager: _QrImageFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+        qrImageAnalyzer: (_) async => throw Exception('user abort'),
+      );
+
+      final loaded = await controller.reloadGeoJsonFromQrImagePicker();
+
+      expect(loaded, isFalse);
+      expect(controller.lastErrorMessage, isNull);
+    });
+
+    test('reloadGeoJsonFromQrImagePicker reports analyzer errors', () async {
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: FakeLocationService(),
+        fileManager: _QrImageFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+        qrImageAnalyzer: (_) async => throw Exception('decoder exploded'),
+      );
+
+      final loaded = await controller.reloadGeoJsonFromQrImagePicker();
+
+      expect(loaded, isFalse);
+      expect(controller.lastErrorMessage, contains('Unable to load GeoJSON'));
+    });
+
+    test('log list is capped at 200 entries', () {
+      final controller = _buildController();
+
+      for (var i = 0; i < 205; i++) {
+        controller.setDeveloperMode(i.isEven);
+      }
+
+      expect(controller.logs.length, 200);
     });
 
     test('cleanupTempGeoJsonFile deletes temporary file', () async {
@@ -955,8 +1123,6 @@ AppConfig _testConfig() {
     leaveConfirmSeconds: 1,
     gpsAccuracyBadMeters: 50,
     sampleIntervalS: {'fast': 1},
-    sampleDistanceM: {'fast': 1},
-    screenWakeOnLeave: false,
     alarmVolume: 1.0,
   );
 }
@@ -1159,6 +1325,20 @@ class FakeEventLogger extends EventLogger {
   @override
   Future<String> logLocationFix(LocationFix fix) async {
     return 'logged';
+  }
+}
+
+class _BlockingLocationLogger extends FakeEventLogger {
+  final Completer<void> locationLogEntered = Completer<void>();
+  final Completer<void> allowLocationLog = Completer<void>();
+
+  @override
+  Future<String> logLocationFix(LocationFix fix) async {
+    if (!locationLogEntered.isCompleted) {
+      locationLogEntered.complete();
+    }
+    await allowLocationLog.future;
+    return super.logLocationFix(fix);
   }
 }
 
