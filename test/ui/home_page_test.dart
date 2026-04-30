@@ -190,6 +190,88 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Start monitoring'), findsNothing);
+    expect(find.text('長押しでレース終了'), findsNothing);
+  });
+
+  testWidgets('bottom actions show file loaders while waiting for GeoJSON',
+      (tester) async {
+    final controller = buildTestController(
+      hasGeoJson: false,
+      snapshot: StateSnapshot(
+        status: LocationStateStatus.waitGeoJson,
+        timestamp: DateTime.fromMillisecondsSinceEpoch(0),
+      ),
+    );
+
+    await _pumpHome(tester, controller);
+
+    expect(find.text('ファイルを\n読み込む'), findsOneWidget);
+    expect(find.text('QRコードを\n読み込む'), findsOneWidget);
+    expect(find.text('長押しでレース終了'), findsNothing);
+  });
+
+  testWidgets('bottom actions show only finish button while monitoring',
+      (tester) async {
+    final controller = buildTestController(
+      hasGeoJson: true,
+      snapshot: StateSnapshot(
+        status: LocationStateStatus.inner,
+        timestamp: DateTime.utc(2024, 1, 1),
+        geoJsonLoaded: true,
+      ),
+    );
+
+    await _pumpHome(tester, controller);
+
+    expect(find.text('ファイルを\n読み込む'), findsNothing);
+    expect(find.text('QRコードを\n読み込む'), findsNothing);
+    expect(find.text('長押しでレース終了'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.byKey(const Key('finish-race-button'))).dy,
+      lessThan(tester.getTopLeft(find.text('内側')).dy),
+    );
+  });
+
+  testWidgets('finish button requires a full 5 second hold', (tester) async {
+    final controller = buildTestController(
+      hasGeoJson: true,
+      snapshot: StateSnapshot(
+        status: LocationStateStatus.inner,
+        timestamp: DateTime.utc(2024, 1, 1),
+        geoJsonLoaded: true,
+      ),
+    );
+    final locationService = controller.locationService as FakeLocationService;
+
+    await _pumpHome(tester, controller);
+    await tester.ensureVisible(find.text('長押しでレース終了'));
+    final finishButton = find.byKey(const Key('finish-race-button'));
+
+    final shortPress = await tester.startGesture(
+      tester.getCenter(finishButton),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.byKey(const Key('finish-race-progress-fill')), findsOneWidget);
+    await shortPress.up();
+    await tester.pumpAndSettle();
+
+    expect(locationService.hasStopped, isFalse);
+    expect(find.text('長押しでレース終了'), findsOneWidget);
+
+    final fullHold = await tester.startGesture(
+      tester.getCenter(finishButton),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump();
+    await fullHold.up();
+    await tester.pumpAndSettle();
+
+    expect(locationService.hasStopped, isTrue);
+    expect(find.text('スタート待機'), findsOneWidget);
+    expect(find.text('ファイルを\n読み込む'), findsOneWidget);
+    expect(find.text('QRコードを\n読み込む'), findsOneWidget);
   });
 
   testWidgets('contact link shows snackbar when mail app cannot open',

@@ -541,6 +541,34 @@ void main() {
       expect(locationService.stopped, isTrue);
     });
 
+    test('stopMonitoring returns loaded race to waitStart and clears fix data',
+        () async {
+      final controller = _buildController();
+      controller.debugSeed(
+        config: _testConfig(),
+        geoJson: _squareModel(),
+        snapshot: StateSnapshot(
+          status: LocationStateStatus.outer,
+          timestamp: DateTime.utc(2024, 1, 1),
+          geoJsonLoaded: true,
+          distanceToBoundaryM: 12,
+          horizontalAccuracyM: 4,
+          bearingToBoundaryDeg: 90,
+          nearestBoundaryPoint: const LatLng(1, 1),
+        ),
+      );
+
+      await controller.stopMonitoring();
+
+      expect(controller.snapshot.status, LocationStateStatus.waitStart);
+      expect(controller.stateMachine.current, LocationStateStatus.waitStart);
+      expect(controller.snapshot.geoJsonLoaded, isTrue);
+      expect(controller.snapshot.distanceToBoundaryM, isNull);
+      expect(controller.snapshot.horizontalAccuracyM, isNull);
+      expect(controller.snapshot.bearingToBoundaryDeg, isNull);
+      expect(controller.snapshot.nearestBoundaryPoint, isNull);
+    });
+
     test('stopMonitoring suppresses an in-flight outer location fix', () async {
       final config = _testConfig();
       final stateMachine = StateMachine(config: config);
