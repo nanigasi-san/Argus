@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter/services.dart';
 import 'package:vibration/vibration.dart';
 import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 
@@ -36,11 +38,15 @@ class Notifier {
 
   bool _initialized = false;
   bool _isAlarming = false;
+  int _generation = 0;
 
   /// アラーム音量を設定します（0.0～1.0）。
   void setAlarmVolume(double volume) {
     if (_alarmPlayer is RingtoneAlarmPlayer) {
-      _alarmPlayer = RingtoneAlarmPlayer(volume: volume.clamp(0.0, 1.0));
+      final player = _alarmPlayer as RingtoneAlarmPlayer;
+      _alarmPlayer = player.copyWith(
+        volume: volume.clamp(0.0, 1.0).toDouble(),
+      );
     }
   }
 
@@ -69,6 +75,7 @@ class Notifier {
 
   Future<void> notifyOuter() async {
     await initialize();
+    final generation = _generation;
     const androidDetails = AndroidNotificationDetails(
       _channelId,
       _channelName,
@@ -98,7 +105,10 @@ class Notifier {
       '競技エリアから離れています。',
       notificationDetails,
     );
-    await resumeAlarm();
+    if (generation != _generation) {
+      return;
+    }
+    await _resumeAlarm(generation);
   }
 
   Future<void> notifyRecover() async {
@@ -111,24 +121,42 @@ class Notifier {
   }
 
   Future<void> stopAlarm() async {
+    _generation += 1;
+    _isAlarming = false;
     await _alarmPlayer.stop();
     await _vibrationPlayer.stop();
-    _isAlarming = false;
   }
 
   Future<void> resumeAlarm() async {
-    if (!_isAlarming) {
-      // アセット音＋バイブの開始
-      await _alarmPlayer.start();
-      await _vibrationPlayer.start();
-      _isAlarming = true;
+    await _resumeAlarm(_generation);
+  }
+
+  Future<void> _resumeAlarm(int generation) async {
+    if (_isAlarming || generation != _generation) {
+      return;
+    }
+    _isAlarming = true;
+    await _alarmPlayer.start();
+    if (generation != _generation) {
+      await _alarmPlayer.stop();
+      _isAlarming = false;
+      return;
+    }
+    await _vibrationPlayer.start();
+    if (generation != _generation) {
+      await _alarmPlayer.stop();
+      await _vibrationPlayer.stop();
+      _isAlarming = false;
     }
   }
 
   Future<void> dismissOuterAlert() async {
+    _generation += 1;
+    _isAlarming = false;
     await initialize();
     await _notifications.cancel(_outerNotificationId);
-    await stopAlarm();
+    await _alarmPlayer.stop();
+    await _vibrationPlayer.stop();
   }
 }
 
@@ -191,24 +219,80 @@ abstract class AlarmPlayer {
   Future<void> stop();
 }
 
-class RingtoneAlarmPlayer implements AlarmPlayer {
-  const RingtoneAlarmPlayer({this.volume = 1.0});
+abstract class AlarmPlatformClient {
+  Future<void> play({
+    required double volume,
+  });
 
-  final double volume;
+  Future<void> stop();
+}
+
+class MethodChannelAlarmClient implements AlarmPlatformClient {
+  const MethodChannelAlarmClient();
+
+  static const MethodChannel _channel = MethodChannel('argus/alarm');
 
   @override
-  Future<void> start() async {
-    // アセット音をループ再生（assets/sounds/alarm.mp3 を追加すること）
-    await FlutterRingtonePlayer().play(
-      fromAsset: 'assets/sounds/alarm.mp3',
-      looping: true,
-      volume: volume.clamp(0.0, 1.0),
-      asAlarm: true,
+  Future<void> play({
+    required double volume,
+  }) {
+    return _channel.invokeMethod<void>(
+      'play',
+      <String, Object?>{
+        'volume': volume,
+      },
     );
   }
 
   @override
   Future<void> stop() {
+    return _channel.invokeMethod<void>('stop');
+  }
+}
+
+class RingtoneAlarmPlayer implements AlarmPlayer {
+  const RingtoneAlarmPlayer({
+    this.volume = 1.0,
+    AlarmPlatformClient? platformClient,
+  }) : _platformClient = platformClient;
+
+  final double volume;
+  final AlarmPlatformClient? _platformClient;
+
+  RingtoneAlarmPlayer copyWith({double? volume}) {
+    return RingtoneAlarmPlayer(
+      volume: volume ?? this.volume,
+      platformClient: _platformClient,
+    );
+  }
+
+  AlarmPlatformClient get _client =>
+      _platformClient ?? const MethodChannelAlarmClient();
+
+  @override
+  Future<void> start() async {
+    final clampedVolume = volume.clamp(0.0, 1.0).toDouble();
+    if (!kIsWeb && Platform.isAndroid) {
+      await _client.play(volume: clampedVolume);
+      return;
+    }
+
+    // アセット音をループ再生（assets/sounds/alarm.mp3 を追加すること）
+    await FlutterRingtonePlayer().play(
+      fromAsset: 'assets/sounds/alarm.mp3',
+      looping: true,
+      volume: clampedVolume,
+      asAlarm: true,
+    );
+  }
+
+  @override
+  Future<void> stop() async {
+    if (!kIsWeb && Platform.isAndroid) {
+      await _client.stop();
+      return;
+    }
+
     return FlutterRingtonePlayer().stop();
   }
 }
@@ -236,7 +320,13 @@ class RepeatingVibrationPlayer implements VibrationPlayer {
       return;
     }
 
-    final hasVibrator = await Vibration.hasVibrator();
+    final bool hasVibrator;
+    try {
+      hasVibrator = await Vibration.hasVibrator() == true;
+    } on MissingPluginException {
+      return;
+    }
+
     if (hasVibrator == true) {
       _shouldContinue = true;
       _isRunning = true;
@@ -269,7 +359,11 @@ class RepeatingVibrationPlayer implements VibrationPlayer {
   @override
   Future<void> stop() async {
     _shouldContinue = false;
-    await Vibration.cancel();
+    try {
+      await Vibration.cancel();
+    } on MissingPluginException {
+      return;
+    }
     final loopFuture = _loopFuture;
     if (loopFuture != null) {
       await loopFuture.timeout(

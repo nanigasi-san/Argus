@@ -500,6 +500,98 @@ void main() {
       expect(vibration.startCount, 1);
     });
 
+    test('stopMonitoring dismisses active outer alert', () async {
+      final config = _testConfig();
+      final stateMachine = StateMachine(config: config);
+      final locationService = FakeLocationService();
+      final fileManager = FakeFileManager(config: config);
+      final logger = FakeEventLogger();
+      final notifications = FakeLocalNotificationsClient();
+      final alarm = FakeAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: notifications,
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+      final controller = AppController(
+        stateMachine: stateMachine,
+        locationService: locationService,
+        fileManager: fileManager,
+        logger: logger,
+        notifier: notifier,
+      );
+
+      controller.debugSeed(
+        snapshot: StateSnapshot(
+          status: LocationStateStatus.outer,
+          timestamp: DateTime.utc(2024, 1, 1),
+          geoJsonLoaded: true,
+        ),
+      );
+
+      await notifier.notifyOuter();
+      expect(alarm.playCount, 1);
+
+      await controller.stopMonitoring();
+
+      expect(notifications.cancelledIds, [1001]);
+      expect(alarm.stopCount, 1);
+      expect(vibration.stopCount, 1);
+      expect(locationService.stopped, isTrue);
+    });
+
+    test('stopMonitoring suppresses an in-flight outer location fix', () async {
+      final config = _testConfig();
+      final stateMachine = StateMachine(config: config);
+      final locationService = FakeLocationService();
+      final fileManager = FakeFileManager(config: config);
+      final logger = _BlockingLocationLogger();
+      final notifications = FakeLocalNotificationsClient();
+      final alarm = FakeAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: notifications,
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+      final controller = AppController(
+        stateMachine: stateMachine,
+        locationService: locationService,
+        fileManager: fileManager,
+        logger: logger,
+        notifier: notifier,
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+      );
+
+      controller.debugSeed(
+        config: config,
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+      await controller.startMonitoring();
+
+      locationService.add(
+        LocationFix(
+          latitude: 2,
+          longitude: 2,
+          accuracyMeters: 5,
+          timestamp: DateTime.utc(2024, 1, 1),
+        ),
+      );
+      await logger.locationLogEntered.future;
+
+      await controller.stopMonitoring();
+      logger.allowLocationLog.complete();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(notifications.shownIds, isEmpty);
+      expect(alarm.playCount, 0);
+      expect(vibration.startCount, 0);
+      expect(alarm.stopCount, 1);
+      expect(vibration.stopCount, 1);
+    });
+
     testWidgets('stopMonitoring clears pending alarm snooze', (tester) async {
       final config = _testConfig();
       final stateMachine = StateMachine(config: config);
@@ -536,6 +628,9 @@ void main() {
 
       await controller.stopMonitoring();
       expect(controller.isAlarmSnoozed, isFalse);
+      expect(notifications.cancelledIds, [1001]);
+      expect(alarm.stopCount, 2);
+      expect(vibration.stopCount, 2);
 
       await tester.pump(const Duration(minutes: 1));
       await tester.pump();
@@ -1155,6 +1250,20 @@ class FakeEventLogger extends EventLogger {
   @override
   Future<String> logLocationFix(LocationFix fix) async {
     return 'logged';
+  }
+}
+
+class _BlockingLocationLogger extends FakeEventLogger {
+  final Completer<void> locationLogEntered = Completer<void>();
+  final Completer<void> allowLocationLog = Completer<void>();
+
+  @override
+  Future<String> logLocationFix(LocationFix fix) async {
+    if (!locationLogEntered.isCompleted) {
+      locationLogEntered.complete();
+    }
+    await allowLocationLog.future;
+    return super.logLocationFix(fix);
   }
 }
 

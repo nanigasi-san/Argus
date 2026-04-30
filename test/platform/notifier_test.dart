@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:argus/platform/notifier.dart';
 import 'package:argus/state_machine/state.dart';
@@ -176,5 +179,92 @@ void main() {
       expect(alarm.stopCount, 1);
       expect(vibration.stopCount, 1);
     });
+
+    test('stopAlarm suppresses an in-flight resumeAlarm', () async {
+      final alarm = _BlockingAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+
+      final resumeFuture = notifier.resumeAlarm();
+      await alarm.startEntered.future;
+
+      final stopFuture = notifier.stopAlarm();
+      alarm.allowStart.complete();
+      await resumeFuture;
+      await stopFuture;
+
+      expect(alarm.playCount, 1);
+      expect(alarm.stopCount, greaterThanOrEqualTo(1));
+      expect(vibration.startCount, 0);
+      expect(vibration.stopCount, 1);
+
+      await notifier.resumeAlarm();
+
+      expect(alarm.playCount, 2);
+      expect(vibration.startCount, 1);
+    });
+
+    test('dismissOuterAlert suppresses notifyOuter alarm resume', () async {
+      final notifications = _BlockingLocalNotificationsClient();
+      final alarm = FakeAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: notifications,
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+
+      final notifyFuture = notifier.notifyOuter();
+      await notifications.showEntered.future;
+
+      final dismissFuture = notifier.dismissOuterAlert();
+      notifications.allowShow.complete();
+      await notifyFuture;
+      await dismissFuture;
+
+      expect(notifications.shownIds, [1001]);
+      expect(notifications.cancelledIds, [1001]);
+      expect(alarm.playCount, 0);
+      expect(alarm.stopCount, 1);
+      expect(vibration.startCount, 0);
+      expect(vibration.stopCount, 1);
+    });
   });
+}
+
+class _BlockingAlarmPlayer extends FakeAlarmPlayer {
+  final Completer<void> startEntered = Completer<void>();
+  final Completer<void> allowStart = Completer<void>();
+
+  @override
+  Future<void> start() async {
+    playCount += 1;
+    if (!startEntered.isCompleted) {
+      startEntered.complete();
+    }
+    await allowStart.future;
+  }
+}
+
+class _BlockingLocalNotificationsClient extends FakeLocalNotificationsClient {
+  final Completer<void> showEntered = Completer<void>();
+  final Completer<void> allowShow = Completer<void>();
+
+  @override
+  Future<void> show(
+    int id,
+    String? title,
+    String? body,
+    NotificationDetails details,
+  ) async {
+    shownIds.add(id);
+    if (!showEntered.isCompleted) {
+      showEntered.complete();
+    }
+    await allowShow.future;
+  }
 }

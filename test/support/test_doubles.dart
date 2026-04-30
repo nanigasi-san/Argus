@@ -130,6 +130,7 @@ AppController buildTestController({
     notifier: Notifier(
       notificationsClient: FakeLocalNotificationsClient(),
       alarmPlayer: FakeAlarmPlayer(),
+      vibrationPlayer: FakeVibrationPlayer(),
     ),
     permissionCoordinator: permissionCoordinator,
     qrImageAnalyzer: qrImageAnalyzer,

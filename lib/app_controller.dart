@@ -64,6 +64,7 @@ class AppController extends ChangeNotifier {
   String? _tempGeoJsonFilePath;
   Timer? _alarmSnoozeTimer;
   bool _isAlarmSnoozed = false;
+  int _monitoringRunId = 0;
   bool _isDisposed = false;
   final List<AppLogEntry> _logs = <AppLogEntry>[];
   MonitoringPermissionState _monitoringPermissionState =
@@ -151,7 +152,10 @@ class AppController extends ChangeNotifier {
     }
 
     await _subscription?.cancel();
-    _subscription = locationService.stream.listen(_handleFix);
+    final runId = ++_monitoringRunId;
+    _subscription = locationService.stream.listen(
+      (fix) => unawaited(_handleFix(fix, runId)),
+    );
     _lastErrorMessage = null;
     _logInfo('APP', 'Monitoring started.');
     notifyListeners();
@@ -159,7 +163,9 @@ class AppController extends ChangeNotifier {
 
   /// 位置情報の監視を停止します。
   Future<void> stopMonitoring() async {
+    _monitoringRunId += 1;
     _clearAlarmSnooze();
+    await notifier.dismissOuterAlert();
     await _subscription?.cancel();
     _subscription = null;
     await locationService.stop();
@@ -168,11 +174,12 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> handleAppTermination() async {
+    _monitoringRunId += 1;
     _clearAlarmSnooze();
+    await notifier.dismissOuterAlert();
     await _subscription?.cancel();
     _subscription = null;
     await locationService.stop();
-    await notifier.dismissOuterAlert();
     await cleanupTempGeoJsonFile();
     _logInfo('APP', 'Application terminated. Monitoring and alert stopped.');
   }
@@ -268,7 +275,6 @@ class AppController extends ChangeNotifier {
       );
       // 新しいファイルをセットしたらナビゲーション表示を一旦オフ
       _navigationEnabled = false;
-      await notifier.stopAlarm();
       _lastErrorMessage = null;
       _logInfo('APP', 'GeoJSON loaded.', timestamp: _snapshot.timestamp);
       notifyListeners();
@@ -344,7 +350,6 @@ class AppController extends ChangeNotifier {
       );
       // 新しいファイルをセットしたらナビゲーション表示を一旦オフ
       _navigationEnabled = false;
-      await notifier.stopAlarm();
       _lastErrorMessage = null;
       _logInfo('APP', 'GeoJSON loaded from QR code.',
           timestamp: _snapshot.timestamp);
@@ -441,9 +446,21 @@ class AppController extends ChangeNotifier {
     return '$nameWithoutExt.geojson';
   }
 
-  Future<void> _handleFix(LocationFix fix) async {
+  bool _isCurrentMonitoringRun(int runId) {
+    return _subscription != null && runId == _monitoringRunId;
+  }
+
+  Future<void> _handleFix(LocationFix fix, int runId) async {
+    if (!_isCurrentMonitoringRun(runId)) {
+      return;
+    }
+
     final previous = _snapshot.status;
     await logger.logLocationFix(fix);
+    if (!_isCurrentMonitoringRun(runId)) {
+      return;
+    }
+
     _logDebug(
       'GPS',
       'lat=${fix.latitude.toStringAsFixed(6)} '
@@ -460,15 +477,26 @@ class AppController extends ChangeNotifier {
       _navigationEnabled = true;
     }
     await logger.logStateChange(_snapshot);
+    if (!_isCurrentMonitoringRun(runId)) {
+      return;
+    }
+
     _logInfo(
       'STATE',
       describeSnapshot(_snapshot),
       timestamp: _snapshot.timestamp,
     );
     await notifier.updateBadge(_snapshot.status);
+    if (!_isCurrentMonitoringRun(runId)) {
+      return;
+    }
+
     if (previous != LocationStateStatus.outer &&
         _snapshot.status == LocationStateStatus.outer) {
       await notifier.notifyOuter();
+      if (!_isCurrentMonitoringRun(runId)) {
+        return;
+      }
       _logWarning(
         'ALERT',
         'Safe zone exited.${_buildNavHint(_snapshot)}',
@@ -478,6 +506,9 @@ class AppController extends ChangeNotifier {
         _snapshot.status != LocationStateStatus.outer) {
       _clearAlarmSnooze();
       await notifier.notifyRecover();
+      if (!_isCurrentMonitoringRun(runId)) {
+        return;
+      }
       _logInfo(
         'ALERT',
         'Returned to safe zone.',
