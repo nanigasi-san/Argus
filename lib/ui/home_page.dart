@@ -128,13 +128,6 @@ class _HomeScrollableContent extends StatelessWidget {
                           fileName: controller.geoJsonFileName,
                           loaded: controller.geoJsonLoaded,
                         ),
-                        if (isMonitoring) ...[
-                          const SizedBox(height: 24),
-                          _HoldToFinishRaceButton(
-                            duration: const Duration(seconds: 5),
-                            onCompleted: controller.stopMonitoring,
-                          ),
-                        ],
                         const SizedBox(height: 20),
                         _LargeStatusDisplay(
                           status: snapshot.status,
@@ -150,19 +143,25 @@ class _HomeScrollableContent extends StatelessWidget {
                               : null,
                         ),
                         const SizedBox(height: 12),
-                        _BottomActions(
-                          status: snapshot.status,
-                          onLoadFile: () {
-                            _showLoadFileSheet(context, controller);
-                          },
-                          onOpenQr: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => const QrScannerPage(),
-                              ),
-                            );
-                          },
-                        ),
+                        if (isMonitoring)
+                          _HoldToFinishRaceButton(
+                            duration: const Duration(seconds: 5),
+                            onCompleted: controller.stopMonitoring,
+                          )
+                        else
+                          _BottomActions(
+                            status: snapshot.status,
+                            onLoadFile: () {
+                              _showLoadFileSheet(context, controller);
+                            },
+                            onOpenQr: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const QrScannerPage(),
+                                ),
+                              );
+                            },
+                          ),
                         if (showNavigationDetails) ...[
                           const SizedBox(height: 24),
                           Text(
