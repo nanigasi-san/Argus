@@ -562,7 +562,7 @@ class _HoldToFinishRaceButtonState extends State<_HoldToFinishRaceButton>
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final baseColor = colorScheme.surfaceContainerHighest;
-    final fillColor = theme.colorScheme.error;
+    final fillColor = Colors.green;
     final textColor = colorScheme.onSurface;
     final radius = BorderRadius.circular(8);
 
