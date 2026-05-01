@@ -279,7 +279,7 @@ class _QrScannerPageState extends State<QrScannerPage>
         message.contains('barcode') ||
         message.contains('download') ||
         message.contains('google play')) {
-      return 'QR スキャナの準備中です。ネットワークに接続した状態で、しばらくしてから再試行してください。';
+      return 'QR スキャナを初期化できませんでした。アプリを再起動して再試行してください。';
     }
     return 'QR スキャナを開始できませんでした。再試行してください。';
   }

@@ -574,7 +574,7 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('ネットワークに接続した状態'), findsOneWidget);
+      expect(find.textContaining('アプリを再起動して再試行'), findsOneWidget);
     });
 
     testWidgets('scanner barcode start error shows retry guidance',
@@ -604,7 +604,7 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('ネットワークに接続した状態'), findsOneWidget);
+      expect(find.textContaining('アプリを再起動して再試行'), findsOneWidget);
     });
 
     testWidgets('scanner download start error shows retry guidance',
@@ -634,7 +634,7 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('ネットワークに接続した状態'), findsOneWidget);
+      expect(find.textContaining('アプリを再起動して再試行'), findsOneWidget);
     });
 
     testWidgets('scanner google play start error shows retry guidance',
@@ -664,7 +664,7 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('ネットワークに接続した状態'), findsOneWidget);
+      expect(find.textContaining('アプリを再起動して再試行'), findsOneWidget);
     });
 
     testWidgets('scanner generic start error shows generic failure message',

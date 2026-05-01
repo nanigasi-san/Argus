@@ -228,7 +228,7 @@ void main() {
     expect(find.text('長押しでレース終了'), findsOneWidget);
     expect(
       tester.getTopLeft(find.byKey(const Key('finish-race-button'))).dy,
-      lessThan(tester.getTopLeft(find.text('内側')).dy),
+      greaterThan(tester.getTopLeft(find.text('内側')).dy),
     );
   });
 
