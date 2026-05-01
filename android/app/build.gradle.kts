@@ -79,8 +79,5 @@ dependencies {
         implementation("androidx.camera:camera-lifecycle:1.5.3") {
             because("Align CameraX with the 16 KB page-size compatible release line.")
         }
-        implementation("com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.1") {
-            because("Use the Play Services barcode scanner package required by the unbundled QR scanner setup.")
-        }
     }
 }

@@ -1,7 +1,9 @@
 # ARGUS
-![App icon](./icon.png)
 
-[![CI](https://github.com/nanigasi-san/Argus/workflows/CI/badge.svg)](https://github.com/YOUR_USERNAME/Argus/actions)
+[![CI](https://github.com/nanigasi-san/Argus/actions/workflows/ci.yml/badge.svg)](https://github.com/nanigasi-san/Argus/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/nanigasi-san/Argus/branch/main/graph/badge.svg)](https://codecov.io/gh/nanigasi-san/Argus)
+
+![App icon](./icon.png)
 
 ## リリース運用
 

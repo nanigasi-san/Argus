@@ -32,7 +32,7 @@ class Notifier {
   );
 
   static const _channelId = 'argus_alerts';
-  static const _channelName = 'Argus警告';
+  static const _channelName = 'ARGUS警告';
   static const _channelDescription = 'ジオフェンスの安全エリアから離れたときに通知します。';
   static const int _outerNotificationId = 1001;
 
@@ -87,7 +87,7 @@ class Notifier {
       enableVibration: true,
       category: AndroidNotificationCategory.alarm,
       audioAttributesUsage: AudioAttributesUsage.alarm,
-      ticker: 'Argus警告',
+      ticker: 'ARGUS警告',
     );
     const iosDetails = DarwinNotificationDetails(
       presentAlert: true,
@@ -101,7 +101,7 @@ class Notifier {
     );
     await _notifications.show(
       _outerNotificationId,
-      'Argus警告',
+      'ARGUS警告',
       '競技エリアから離れています。',
       notificationDetails,
     );
