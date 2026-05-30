@@ -1,12 +1,12 @@
 # Google Play Background Location Declaration
 
-Last updated: 2026-04-13
+Last updated: 2026-05-31
 
 ## Privacy Policy URL
 
 Use this public URL in Play Console and in the app:
 
-- https://github.com/nanigasi-san/Argus/blob/main/privacy.md
+- https://argus-lp.vercel.app/privacy.html
 
 ## Core functionality description
 

@@ -5,6 +5,15 @@ import 'package:argus/app_links.dart';
 import 'support/platform_mocks.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('privacy policy uses the public non-editable URL', () {
+    expect(
+      privacyPolicyUrl,
+      'https://argus-lp.vercel.app/privacy.html',
+    );
+  });
+
   tearDown(() async {
     await clearUrlLauncherMock();
   });
