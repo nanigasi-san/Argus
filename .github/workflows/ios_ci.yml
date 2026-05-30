@@ -6,9 +6,14 @@ on:
   pull_request:
     branches: ["*"]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   ios-simulator-build:
     runs-on: macos-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repository
