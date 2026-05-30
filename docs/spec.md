@@ -73,7 +73,7 @@
 ### 1.5 バックグラウンド動作
 
 - **Android**: 位置サービスは Foreground Service として継続。`WAKE_LOCK` / `FOREGROUND_SERVICE_LOCATION` 権限を要求。
-- **iOS**: Info.plist で `location` 背景モードを有効化し、Always 許可を促す文言を日本語で表示。
+- **iOS**: Info.plist で `location` / `audio` 背景モードを有効化し、Always 許可を促す文言を日本語で表示。
 
 ### 1.6 通知とアラーム
 
@@ -81,12 +81,12 @@
 - **通知内容**: OUTER 状態への遷移時に通知を表示
   - タイトル: `Argus警告`
   - 本文: `競技エリアから離れています。`（実装では「競技エリア」と記載）
-  - Android: `Importance.max`, `Priority.max`, `fullScreenIntent: true`, `category: AndroidNotificationCategory.alarm`
-  - iOS: `interruptionLevel: InterruptionLevel.critical`
+  - Android: `Importance.max`, `Priority.max`, `category: AndroidNotificationCategory.alarm`
+  - iOS: 視覚通知は `interruptionLevel: InterruptionLevel.timeSensitive`。音は `AVAudioPlayer` のネイティブループ再生に一本化。
 - **Foreground Service 通知**: Android 背景計測用に「Argusが位置情報を監視中です」「画面を消しても位置情報の追跡は継続されます。」を表示。
-- **アラーム音**: `flutter_ringtone_player` によるループ再生（`looping: true`, `volume: 1.0`, `asAlarm: true`）。`Notifier.stopAlarm()` で停止。
+- **アラーム音**: Android / iOS は `argus/alarm` MethodChannel のネイティブループ再生を使用。その他の対応プラットフォームでは `flutter_ringtone_player` を使用。`Notifier.stopAlarm()` で停止。
 - **復帰通知**: INNER/NEAR 復帰時に通知をキャンセルし、アラームを停止。
-- **権限要求**: 初期化時に通知権限を要求（`alert`, `badge`, `sound`, `critical`）。
+- **権限要求**: 初期化時には権限ダイアログを出さず、セットアップカードの操作時に `PermissionCoordinator` から通知権限を要求。
 
 ### 1.7 退避ナビゲーション
 
@@ -582,8 +582,8 @@ stateDiagram-v2
 - **通知ID**: `1001`
 - **タイトル**: `Argus警告`
 - **本文**: `競技エリアから離れています。`（実装では「競技エリア」と記載）
-- **Android**: `fullScreenIntent: true`, `category: AndroidNotificationCategory.alarm`
-- **iOS**: `interruptionLevel: InterruptionLevel.critical`
+- **Android**: `category: AndroidNotificationCategory.alarm`
+- **iOS**: 視覚通知は `interruptionLevel: InterruptionLevel.timeSensitive`。音は `AVAudioPlayer` のネイティブループ再生に一本化。
 - **アラーム**: 通知と同時にアラーム音をループ再生開始。
 
 ### 7.3 復帰通知

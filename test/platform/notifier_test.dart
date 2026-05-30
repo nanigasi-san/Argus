@@ -145,7 +145,40 @@ void main() {
 
       expect(notifications.initializeCount, 1);
       expect(notifications.ensureChannelCount, 1);
+      expect(notifications.lastInitializationSettings?.iOS, isNotNull);
+      expect(
+        notifications.lastInitializationSettings?.iOS?.requestAlertPermission,
+        isFalse,
+      );
+      expect(
+        notifications.lastInitializationSettings?.iOS?.requestBadgePermission,
+        isFalse,
+      );
+      expect(
+        notifications.lastInitializationSettings?.iOS?.requestSoundPermission,
+        isFalse,
+      );
+      expect(notifications.lastChannel?.sound, isNull);
       expect(notifier.badgeState.value, LocationStateStatus.near);
+    });
+
+    test('notifyOuter uses visual time-sensitive iOS notification', () async {
+      final notifications = FakeLocalNotificationsClient();
+      final notifier = Notifier(
+        notificationsClient: notifications,
+        alarmPlayer: FakeAlarmPlayer(),
+        vibrationPlayer: FakeVibrationPlayer(),
+      );
+
+      await notifier.notifyOuter();
+
+      expect(notifications.lastShownDetails?.android?.sound, isNull);
+      expect(notifications.lastShownDetails?.iOS?.presentSound, isFalse);
+      expect(notifications.lastShownDetails?.iOS?.sound, isNull);
+      expect(
+        notifications.lastShownDetails?.iOS?.interruptionLevel,
+        InterruptionLevel.timeSensitive,
+      );
     });
 
     test('stopAlarm always asks native players to stop', () async {
@@ -200,6 +233,27 @@ void main() {
 
       expect(alarm.playCount, 1);
       expect(alarm.stopCount, greaterThanOrEqualTo(1));
+      expect(vibration.startCount, 0);
+      expect(vibration.stopCount, 1);
+
+      await notifier.resumeAlarm();
+
+      expect(alarm.playCount, 2);
+      expect(vibration.startCount, 1);
+    });
+
+    test('resumeAlarm can retry after playback start fails', () async {
+      final alarm = _FailOnceAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+
+      await expectLater(notifier.resumeAlarm(), throwsStateError);
+      expect(alarm.playCount, 1);
+      expect(alarm.stopCount, 1);
       expect(vibration.startCount, 0);
       expect(vibration.stopCount, 1);
 
@@ -268,6 +322,22 @@ void main() {
       expect(platform.stopCount, 1);
     });
 
+    test('RingtoneAlarmPlayer uses injected iOS platform client', () async {
+      final platform = _RecordingAlarmPlatformClient();
+      final player = RingtoneAlarmPlayer(
+        volume: 0.4,
+        platformClient: platform,
+        isAndroid: false,
+        isIOS: true,
+      );
+
+      await player.start();
+      await player.stop();
+
+      expect(platform.playVolumes, [0.4]);
+      expect(platform.stopCount, 1);
+    });
+
     test('MethodChannelAlarmClient sends play and stop methods', () async {
       final calls = <MethodCall>[];
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -304,6 +374,19 @@ class _BlockingAlarmPlayer extends FakeAlarmPlayer {
       startEntered.complete();
     }
     await allowStart.future;
+  }
+}
+
+class _FailOnceAlarmPlayer extends FakeAlarmPlayer {
+  bool _shouldFail = true;
+
+  @override
+  Future<void> start() async {
+    playCount += 1;
+    if (_shouldFail) {
+      _shouldFail = false;
+      throw StateError('playback failed');
+    }
   }
 }
 

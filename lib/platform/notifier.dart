@@ -56,7 +56,15 @@ class Notifier {
     }
 
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const initSettings = InitializationSettings(android: androidInit);
+    const iosInit = DarwinInitializationSettings(
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
+    );
+    const initSettings = InitializationSettings(
+      android: androidInit,
+      iOS: iosInit,
+    );
     await _notifications.initialize(initSettings);
     await _notifications.ensureAndroidChannel(
       const AndroidNotificationChannel(
@@ -83,7 +91,6 @@ class Notifier {
       importance: Importance.max,
       priority: Priority.max,
       playSound: true,
-      sound: RawResourceAndroidNotificationSound('alarm'),
       enableVibration: true,
       category: AndroidNotificationCategory.alarm,
       audioAttributesUsage: AudioAttributesUsage.alarm,
@@ -91,9 +98,8 @@ class Notifier {
     );
     const iosDetails = DarwinNotificationDetails(
       presentAlert: true,
-      presentSound: true,
-      sound: 'alarm.mp3',
-      interruptionLevel: InterruptionLevel.critical,
+      presentSound: false,
+      interruptionLevel: InterruptionLevel.timeSensitive,
     );
     const notificationDetails = NotificationDetails(
       android: androidDetails,
@@ -136,17 +142,28 @@ class Notifier {
       return;
     }
     _isAlarming = true;
-    await _alarmPlayer.start();
-    if (generation != _generation) {
-      await _alarmPlayer.stop();
+    try {
+      await _alarmPlayer.start();
+      if (generation != _generation) {
+        await _alarmPlayer.stop();
+        _isAlarming = false;
+        return;
+      }
+      await _vibrationPlayer.start();
+      if (generation != _generation) {
+        await _alarmPlayer.stop();
+        await _vibrationPlayer.stop();
+        _isAlarming = false;
+      }
+    } catch (_) {
       _isAlarming = false;
-      return;
-    }
-    await _vibrationPlayer.start();
-    if (generation != _generation) {
-      await _alarmPlayer.stop();
-      await _vibrationPlayer.stop();
-      _isAlarming = false;
+      try {
+        await _alarmPlayer.stop();
+      } catch (_) {}
+      try {
+        await _vibrationPlayer.stop();
+      } catch (_) {}
+      rethrow;
     }
   }
 
@@ -259,29 +276,35 @@ class RingtoneAlarmPlayer implements AlarmPlayer {
     this.volume = 1.0,
     AlarmPlatformClient? platformClient,
     bool? isAndroid,
+    bool? isIOS,
   })  : _platformClient = platformClient,
-        _isAndroidOverride = isAndroid;
+        _isAndroidOverride = isAndroid,
+        _isIOSOverride = isIOS;
 
   final double volume;
   final AlarmPlatformClient? _platformClient;
   final bool? _isAndroidOverride;
+  final bool? _isIOSOverride;
 
   RingtoneAlarmPlayer copyWith({double? volume}) {
     return RingtoneAlarmPlayer(
       volume: volume ?? this.volume,
       platformClient: _platformClient,
       isAndroid: _isAndroidOverride,
+      isIOS: _isIOSOverride,
     );
   }
 
   AlarmPlatformClient get _client =>
       _platformClient ?? const MethodChannelAlarmClient();
   bool get _isAndroid => _isAndroidOverride ?? (!kIsWeb && Platform.isAndroid);
+  bool get _isIOS => _isIOSOverride ?? (!kIsWeb && Platform.isIOS);
+  bool get _usesNativePlatformClient => _isAndroid || _isIOS;
 
   @override
   Future<void> start() async {
     final clampedVolume = volume.clamp(0.0, 1.0).toDouble();
-    if (_isAndroid) {
+    if (_usesNativePlatformClient) {
       await _client.play(volume: clampedVolume);
       return;
     }
@@ -299,7 +322,7 @@ class RingtoneAlarmPlayer implements AlarmPlayer {
 
   @override
   Future<void> stop() async {
-    if (_isAndroid) {
+    if (_usesNativePlatformClient) {
       await _client.stop();
       return;
     }

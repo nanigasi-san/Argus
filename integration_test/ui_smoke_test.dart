@@ -13,7 +13,7 @@ import 'support/app_harness.dart';
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  group('Android UI smoke', () {
+  group('Mobile UI smoke', () {
     setUpAll(() async {
       await binding.convertFlutterSurfaceToImage();
     });
@@ -39,8 +39,8 @@ void main() {
       await tester.pumpWidget(HarnessBuilder.buildApp(controller));
       await tester.pumpAndSettle();
 
-      expect(find.text('バックグラウンド位置情報の設定が必要です'), findsOneWidget);
-      expect(find.text('開示を確認して設定へ進む'), findsOneWidget);
+      expect(find.text('監視開始前に位置情報の設定が必要です'), findsOneWidget);
+      expect(find.text('監視開始前に設定する'), findsOneWidget);
       expect(find.text('通知を許可'), findsOneWidget);
 
       await _tryTakeScreenshot(binding, 'home-permission-card');
@@ -60,7 +60,7 @@ void main() {
       await tester.pumpWidget(HarnessBuilder.buildApp(controller));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('開示を確認して設定へ進む'));
+      await tester.tap(find.text('監視開始前に設定する'));
       await tester.pumpAndSettle();
 
       expect(find.text('バックグラウンド位置情報の開示'), findsOneWidget);
@@ -81,9 +81,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Settings'), findsOneWidget);
+      expect(find.text('設定'), findsOneWidget);
       expect(find.text('監視を開始できる状態です。'), findsOneWidget);
-      expect(find.text('反応距離 (Inner buffer)'), findsOneWidget);
+      expect(find.text('境界バッファ距離'), findsOneWidget);
 
       await _tryTakeScreenshot(binding, 'settings-form');
     });
@@ -125,10 +125,10 @@ void main() {
 
       await tester.tap(find.byType(PopupMenuButton<int>));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Settings'));
+      await tester.tap(find.text('設定'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Settings'), findsOneWidget);
+      expect(find.text('設定'), findsWidgets);
     });
   });
 }

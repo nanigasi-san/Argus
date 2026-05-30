@@ -109,6 +109,7 @@ class GeolocatorLocationService implements LocationService {
         distanceFilter: 0,
         pauseLocationUpdatesAutomatically: false,
         showBackgroundLocationIndicator: true,
+        allowBackgroundLocationUpdates: true,
       );
     } else {
       settings = const LocationSettings(

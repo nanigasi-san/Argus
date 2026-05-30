@@ -59,7 +59,7 @@
 
 ### 5.4 位置サンプリング（`lib/platform/location_service.dart`）
 - Android: Foreground サービス通知タイトル「Argus 位置を監視中」、本文「画面を閉じても位置記録は続きます」。`enableWakeLock: true`、`setOngoing: true`。
-- iOS/macOS: `showBackgroundLocationIndicator: true`、`pauseLocationUpdatesAutomatically: false`。
+- iOS/macOS: `showBackgroundLocationIndicator: true`、`pauseLocationUpdatesAutomatically: false`、`allowBackgroundLocationUpdates: true`。
 - Stream 値: `latitude/longitude/timestamp/accuracyMeters/batteryPercent?` を `LocationFix` として配信。
 
 ### 5.5 状態機械（`state_machine.dart`）
@@ -78,6 +78,7 @@
 ### 5.7 通知・アラーム（`notifier.dart`）
 - チャンネル: `argus_alerts`（Android importance max / alarm 音属性）。タイトル「Argus警告」、本文「安全エリアを離脱しています。」。
 - OUTER: ローカル通知＋ループ再生のアラーム音＋連続バイブ（5 秒振動＋2 秒休止を繰り返し）。`Notifier.stopAlarm()` で両方停止。
+- iOS: 視覚的な Time Sensitive 通知と、`alarm.caf` を使う `AVAudioPlayer` のネイティブループ再生を使用。通知音は重複再生を避けるため無効化する。Critical Alerts は Apple の個別承認が必要なため標準設定では使用しない。
 - 復帰: OUTER 通知をキャンセルし、アラーム停止のみ。ログに “Returned to safe zone.” を出力。
 - 音量: ユーザー設定 0.0–1.0 を `RingtoneAlarmPlayer` に反映（初期 1.0）。
 

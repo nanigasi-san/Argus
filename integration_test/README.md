@@ -1,4 +1,4 @@
-# Android UI Smoke Checks
+# Mobile UI Smoke Checks
 
 This directory contains emulator-friendly UI smoke tests for ARGUS.
 
@@ -24,6 +24,7 @@ To save screenshots for the checked screens:
 Saved files:
 
 - `build/integration_test/screenshots/home-permission-card.png`
+- `build/integration_test/screenshots/background-location-disclosure.png`
 - `build/integration_test/screenshots/settings-form.png`
 - `build/integration_test/screenshots/qr-permission-error.png`
 
@@ -31,4 +32,12 @@ Or run the test directly against a connected emulator:
 
 ```powershell
 flutter test integration_test/ui_smoke_test.dart -d emulator-5554
+```
+
+## Run on iOS simulator
+
+macOS と Xcode が必要です。
+
+```bash
+flutter test integration_test/ui_smoke_test.dart -d <ios-simulator-id>
 ```
