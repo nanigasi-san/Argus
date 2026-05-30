@@ -263,6 +263,27 @@ void main() {
       expect(vibration.startCount, 1);
     });
 
+    test('stopAlarm suppresses an in-flight vibration start', () async {
+      final alarm = FakeAlarmPlayer();
+      final vibration = _BlockingVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+
+      final resumeFuture = notifier.resumeAlarm();
+      await vibration.startEntered.future;
+
+      final stopFuture = notifier.stopAlarm();
+      vibration.allowStart.complete();
+      await resumeFuture;
+      await stopFuture;
+
+      expect(alarm.stopCount, greaterThanOrEqualTo(2));
+      expect(vibration.stopCount, greaterThanOrEqualTo(2));
+    });
+
     test('dismissOuterAlert suppresses notifyOuter alarm resume', () async {
       final notifications = _BlockingLocalNotificationsClient();
       final alarm = FakeAlarmPlayer();
@@ -338,6 +359,20 @@ void main() {
       expect(platform.stopCount, 1);
     });
 
+    test('RingtoneAlarmPlayer copyWith keeps existing volume when omitted',
+        () async {
+      final platform = _RecordingAlarmPlatformClient();
+      final player = RingtoneAlarmPlayer(
+        volume: 0.4,
+        platformClient: platform,
+        isAndroid: true,
+      ).copyWith();
+
+      await player.start();
+
+      expect(platform.playVolumes, [0.4]);
+    });
+
     test('MethodChannelAlarmClient sends play and stop methods', () async {
       final calls = <MethodCall>[];
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -387,6 +422,20 @@ class _FailOnceAlarmPlayer extends FakeAlarmPlayer {
       _shouldFail = false;
       throw StateError('playback failed');
     }
+  }
+}
+
+class _BlockingVibrationPlayer extends FakeVibrationPlayer {
+  final Completer<void> startEntered = Completer<void>();
+  final Completer<void> allowStart = Completer<void>();
+
+  @override
+  Future<void> start() async {
+    startCount += 1;
+    if (!startEntered.isCompleted) {
+      startEntered.complete();
+    }
+    await allowStart.future;
   }
 }
 
