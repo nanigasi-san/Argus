@@ -1,6 +1,6 @@
 # ARGUS Privacy Policy
 
-Last updated: 2026-04-04
+Last updated: 2026-05-31
 
 ARGUS is a geofencing support app. This policy explains what data the app uses and how that data is handled.
 
@@ -41,10 +41,12 @@ Data used by ARGUS remains on the device unless the user removes the app or dele
 
 ## 6. Contact
 
-Questions about this policy can be sent through the repository issue tracker:
+Questions about this policy can be sent to:
 
-- [ARGUS Issues](https://github.com/nanigasi-san/Argus/issues)
+- [yamada.orien@gmail.com](mailto:yamada.orien@gmail.com)
 
 ## 7. Changes
 
-This policy may be updated when the app or legal requirements change. The latest version will be published in this repository.
+This policy may be updated when the app or legal requirements change. The latest version will be published at:
+
+- [ARGUS Privacy Policy](https://argus-lp.vercel.app/privacy.html)
