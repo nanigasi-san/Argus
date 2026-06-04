@@ -10,7 +10,6 @@ void main() {
   setUpAll(() async {
     final file = File('assets/geojson/map.geojson');
     sampleGeoJson = file.readAsStringSync();
-    await _ensureBrotliCli();
   });
 
   test('minifyGeoJson removes whitespace and keeps structure', () {
@@ -20,13 +19,12 @@ void main() {
     expect(result.info.featureCount, 1);
   });
 
-  test('encode and decode gjb1 round trip with hash succeeds', () async {
+  test('encode defaults to gjz1 and decodes with hash', () async {
     final bundle =
         await encodeGeoJson(GeoJsonQrEncodeInput(geoJson: sampleGeoJson));
 
     expect(bundle.qrTexts, hasLength(1));
-    expect(bundle.qrTexts, hasLength(1));
-    expect(bundle.qrTexts.first.startsWith('gjb1:'), isTrue);
+    expect(bundle.qrTexts.first.startsWith('gjz1:'), isTrue);
     final payloadSection =
         bundle.qrTexts.first.substring(bundle.qrTexts.first.indexOf(':') + 1);
     final payload = payloadSection.split('#').first;
@@ -42,7 +40,8 @@ void main() {
     expect(restored, bundle.minimizedGeoJson);
   });
 
-  test('encode and decode gjz1 round trip with hash succeeds', () async {
+  test('encode and decode explicit gjz1 round trip with hash succeeds',
+      () async {
     final bundle = await encodeGeoJson(
       GeoJsonQrEncodeInput(
         geoJson: sampleGeoJson,
@@ -70,6 +69,17 @@ void main() {
     expect(GeoJsonQrScheme.gjz1.wireName, 'gjz1');
   });
 
+  test('decode keeps gjb1 legacy compatibility without Brotli CLI', () async {
+    const legacyQrText =
+        'gjb1:ixSAeyJ0eXBlIjoiRmVhdHVyZUNvbGxlY3Rpb24iLCJmZWF0dXJlcyI6W119Aw';
+
+    final restored = await decodeGeoJson(
+      const GeoJsonQrDecodeInput(qrTexts: [legacyQrText]),
+    );
+
+    expect(restored, '{"type":"FeatureCollection","features":[]}');
+  });
+
   test('encode rejects payloads that exceed max text length', () async {
     await expectLater(
       encodeGeoJson(
@@ -84,7 +94,7 @@ void main() {
     );
   });
 
-  test('decode fails on hash mismatch', () async {
+  test('decode default gjz1 fails on hash mismatch', () async {
     final bundle =
         await encodeGeoJson(GeoJsonQrEncodeInput(geoJson: sampleGeoJson));
     final tampered = List<String>.from(bundle.qrTexts);
@@ -201,7 +211,7 @@ void main() {
 
     expect(bundle.hashHex, isNull);
     expect(bundle.qrTexts, hasLength(1));
-    expect(bundle.qrTexts.single, startsWith('gjb1:'));
+    expect(bundle.qrTexts.single, startsWith('gjz1:'));
     expect(bundle.qrTexts.single.contains('#'), isFalse);
   });
 
@@ -265,54 +275,4 @@ void main() {
       throwsA(isA<PayloadTooLargeException>()),
     );
   });
-}
-
-Future<void> _ensureBrotliCli() async {
-  final candidates = <String?>[
-    Platform.environment['BROTLI_CLI'],
-    if (Platform.isWindows)
-      'C:\\Program Files\\QGIS 3.40.5\\bin\\brotli.exe'
-    else
-      '/usr/bin/brotli',
-    if (Platform.isWindows) await _which('brotli.exe') else null,
-    await _which('brotli'),
-  ];
-
-  for (final candidate in candidates) {
-    if (candidate == null || candidate.isEmpty) {
-      continue;
-    }
-    final file = File(candidate);
-    if (await file.exists()) {
-      configureBrotliCliPath(file.path);
-      return;
-    }
-  }
-
-  fail(
-    'Brotli CLI not found. Install the "brotli" command or set BROTLI_CLI.',
-  );
-}
-
-Future<String?> _which(String command) async {
-  try {
-    final result = await Process.run(
-      Platform.isWindows ? 'where' : 'which',
-      [command],
-      runInShell: Platform.isWindows,
-    );
-    if (result.exitCode != 0) {
-      return null;
-    }
-    final stdout = result.stdout is String
-        ? result.stdout as String
-        : String.fromCharCodes(result.stdout as List<int>);
-    final path = stdout
-        .split(RegExp(r'\r?\n'))
-        .map((line) => line.trim())
-        .firstWhere((line) => line.isNotEmpty, orElse: () => '');
-    return path.isEmpty ? null : path;
-  } catch (_) {
-    return null;
-  }
 }

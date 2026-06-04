@@ -11,7 +11,7 @@ import 'package:qr/qr.dart';
 class GeoJsonQrEncodeInput {
   const GeoJsonQrEncodeInput({
     required this.geoJson,
-    this.scheme = GeoJsonQrScheme.gjb1,
+    this.scheme = GeoJsonQrScheme.gjz1,
     this.enableHash = true,
     this.maxQrTextLength = 2500,
     this.eccLevel = QrErrorCorrectionLevel.quartile,

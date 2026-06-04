@@ -27,8 +27,19 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Run iOS configuration and notifier tests
-        run: flutter test test/ios_project_configuration_test.dart test/platform/notifier_test.dart
+      - name: Analyze Dart code
+        run: flutter analyze
+
+      - name: Run iOS-focused Dart tests
+        run: >
+          flutter test
+          test/ios_project_configuration_test.dart
+          test/platform/notifier_test.dart
+          test/platform/permission_coordinator_test.dart
+          test/platform/location_service_test.dart
+          test/app_lifecycle_test.dart
+          test/app_controller_test.dart
+          test/qr/geojson_qr_codec_test.dart
 
       - name: Build iOS simulator app
         run: flutter build ios --simulator --debug

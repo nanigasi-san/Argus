@@ -19,6 +19,12 @@ void main() {
           infoPlist, contains('<key>NSPhotoLibraryAddUsageDescription</key>'));
       expect(infoPlist, contains('<string>audio</string>'));
       expect(infoPlist, contains('<string>location</string>'));
+      expect(infoPlist, contains('<key>UIApplicationSceneManifest</key>'));
+      expect(infoPlist,
+          contains('<key>UIApplicationSupportsMultipleScenes</key>'));
+      expect(infoPlist, contains('<false/>'));
+      expect(infoPlist, contains('<string>FlutterSceneDelegate</string>'));
+      expect(infoPlist, contains('<string>Main</string>'));
       expect(infoPlist, isNot(contains('<string>armv7</string>')));
     });
 
@@ -56,6 +62,11 @@ void main() {
       expect(appDelegate, contains('name: "argus/alarm"'));
       expect(appDelegate, contains('AVAudioPlayer'));
       expect(appDelegate, contains('player.numberOfLoops = -1'));
+      expect(appDelegate, contains('FlutterImplicitEngineDelegate'));
+      expect(appDelegate, contains('didInitializeImplicitFlutterEngine'));
+      expect(appDelegate,
+          contains('engineBridge.applicationRegistrar.messenger()'));
+      expect(appDelegate, isNot(contains('rootViewController')));
       expect(
         appDelegate,
         contains('UNUserNotificationCenter.current().delegate = self'),

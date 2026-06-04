@@ -710,8 +710,6 @@ void main() {
     });
 
     test('reloadGeoJsonFromQr loads GeoJSON from valid QR code', () async {
-      await _ensureBrotliCli();
-
       final config = _testConfig();
       final stateMachine = StateMachine(config: config);
       final locationService = FakeLocationService();
@@ -1032,8 +1030,6 @@ void main() {
     });
 
     test('cleanupTempGeoJsonFile deletes temporary file', () async {
-      await _ensureBrotliCli();
-
       final config = _testConfig();
       final stateMachine = StateMachine(config: config);
       final locationService = FakeLocationService();
@@ -1086,8 +1082,6 @@ void main() {
     });
 
     test('reloadGeoJsonFromQr resets state and stops monitoring', () async {
-      await _ensureBrotliCli();
-
       final config = _testConfig();
       final stateMachine = StateMachine(config: config);
       final locationService = FakeLocationService();
@@ -1416,54 +1410,4 @@ class _FailingStartLocationService implements LocationService {
 
   @override
   Future<void> stop() async {}
-}
-
-Future<void> _ensureBrotliCli() async {
-  final candidates = <String?>[
-    Platform.environment['BROTLI_CLI'],
-    if (Platform.isWindows)
-      'C:\\Program Files\\QGIS 3.40.5\\bin\\brotli.exe'
-    else
-      '/usr/bin/brotli',
-    if (Platform.isWindows) await _which('brotli.exe') else null,
-    await _which('brotli'),
-  ];
-
-  for (final candidate in candidates) {
-    if (candidate == null || candidate.isEmpty) {
-      continue;
-    }
-    final file = File(candidate);
-    if (await file.exists()) {
-      configureBrotliCliPath(file.path);
-      return;
-    }
-  }
-
-  fail(
-    'Brotli CLI not found. Install the "brotli" command or set BROTLI_CLI.',
-  );
-}
-
-Future<String?> _which(String command) async {
-  try {
-    final result = await Process.run(
-      Platform.isWindows ? 'where' : 'which',
-      [command],
-      runInShell: Platform.isWindows,
-    );
-    if (result.exitCode != 0) {
-      return null;
-    }
-    final stdout = result.stdout is String
-        ? result.stdout as String
-        : String.fromCharCodes(result.stdout as List<int>);
-    final path = stdout
-        .split(RegExp(r'\r?\n'))
-        .map((line) => line.trim())
-        .firstWhere((line) => line.isNotEmpty, orElse: () => '');
-    return path.isEmpty ? null : path;
-  } catch (_) {
-    return null;
-  }
 }
