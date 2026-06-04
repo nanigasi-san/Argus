@@ -27,11 +27,29 @@ void main() {
       expect(mainActivity, contains('result.error'));
     });
 
+    test('uses native vibration playback without plugin dependency', () {
+      final manifest =
+          File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
+      final mainActivity = File(
+        'android/app/src/main/kotlin/com/argus/orienteering/MainActivity.kt',
+      ).readAsStringSync();
+      final notifier = File('lib/platform/notifier.dart').readAsStringSync();
+
+      expect(manifest, contains('android.permission.VIBRATE'));
+      expect(mainActivity, contains('"startVibration"'));
+      expect(mainActivity, contains('"stopVibration"'));
+      expect(mainActivity, contains('NativeVibrationPlayer'));
+      expect(mainActivity, contains('VibrationEffect.createWaveform'));
+      expect(notifier, contains('NativeVibrationPlayer'));
+      expect(notifier, isNot(contains("package:vibration")));
+    });
+
     test('keeps Android alert notifications visual-only', () {
       final notifier = File('lib/platform/notifier.dart').readAsStringSync();
 
-      expect(notifier, contains("_channelId = 'argus_alerts_visual'"));
+      expect(notifier, contains("_channelId = 'argus_alerts_visual_v2'"));
       expect(notifier, contains('playSound: false'));
+      expect(notifier, contains('enableVibration: false'));
       expect(notifier, isNot(contains('audioAttributesUsage:')));
       expect(notifier, isNot(contains("fromAsset: 'assets/sounds/alarm.mp3'")));
     });
@@ -42,6 +60,36 @@ void main() {
 
       expect(pubspec, isNot(contains('flutter_ringtone_player')));
       expect(lockfile, isNot(contains('flutter_ringtone_player')));
+    });
+
+    test('uses current Android build tooling compatibility versions', () {
+      final settings = File('android/settings.gradle.kts').readAsStringSync();
+      final wrapper = File('android/gradle/wrapper/gradle-wrapper.properties')
+          .readAsStringSync();
+      final appBuild = File('android/app/build.gradle.kts').readAsStringSync();
+      final gradleProperties =
+          File('android/gradle.properties').readAsStringSync();
+
+      expect(settings, contains('com.android.application") version "8.11.1"'));
+      expect(
+        settings,
+        contains('org.jetbrains.kotlin.android") version "2.2.20"'),
+      );
+      expect(wrapper, contains('gradle-8.14-all.zip'));
+      expect(appBuild, isNot(contains('id("kotlin-android")')));
+      expect(appBuild, isNot(contains('kotlinOptions')));
+      expect(appBuild, contains('JvmTarget.JVM_17'));
+      expect(gradleProperties, contains('android.builtInKotlin=true'));
+      expect(gradleProperties, contains('android.newDsl=false'));
+    });
+
+    test('does not depend on vibration plugin fallback', () {
+      final pubspec = File('pubspec.yaml').readAsStringSync();
+      final lockfile = File('pubspec.lock').readAsStringSync();
+
+      expect(pubspec, isNot(contains('vibration:')));
+      expect(lockfile, isNot(contains('vibration_platform_interface')));
+      expect(lockfile, isNot(contains('name: vibration')));
     });
   });
 }

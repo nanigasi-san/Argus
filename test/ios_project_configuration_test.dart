@@ -66,6 +66,10 @@ void main() {
       expect(appDelegate, contains('session.setCategory(.playback'));
       expect(appDelegate, contains('AVAudioSession.interruptionNotification'));
       expect(appDelegate, contains('InterruptionOptions'));
+      expect(appDelegate, contains('AudioServicesPlaySystemSound'));
+      expect(appDelegate, contains('kSystemSoundID_Vibrate'));
+      expect(appDelegate, contains('case "startVibration"'));
+      expect(appDelegate, contains('case "stopVibration"'));
       expect(appDelegate, contains('FlutterImplicitEngineDelegate'));
       expect(appDelegate, contains('didInitializeImplicitFlutterEngine'));
       expect(appDelegate,
@@ -106,6 +110,14 @@ void main() {
 
       expect(pubspec, isNot(contains('flutter_ringtone_player')));
       expect(podfileLock, isNot(contains('flutter_ringtone_player')));
+    });
+
+    test('does not depend on vibration plugin fallback', () {
+      final pubspec = File('pubspec.yaml').readAsStringSync();
+      final podfileLock = File('ios/Podfile.lock').readAsStringSync();
+
+      expect(pubspec, isNot(contains('vibration:')));
+      expect(podfileLock, isNot(contains('vibration')));
     });
   });
 }

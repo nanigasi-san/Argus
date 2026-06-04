@@ -6,6 +6,7 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.os.Build
+import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import io.flutter.embedding.android.FlutterActivity
@@ -35,6 +36,14 @@ class MainActivity : FlutterActivity() {
                     }
                     "stop" -> {
                         NativeAlarmPlayer.stop(applicationContext)
+                        result.success(null)
+                    }
+                    "startVibration" -> {
+                        NativeVibrationPlayer.start(applicationContext)
+                        result.success(null)
+                    }
+                    "stopVibration" -> {
+                        NativeVibrationPlayer.stop(applicationContext)
                         result.success(null)
                     }
                     else -> result.notImplemented()
@@ -158,7 +167,7 @@ private object NativeAlarmPlayer {
             val audioManager =
                 appContext.applicationContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
             releaseAudioFocus(audioManager)
-            cancelVibration(appContext)
+            NativeVibrationPlayer.stop(appContext)
         }
     }
 
@@ -201,16 +210,42 @@ private object NativeAlarmPlayer {
         audioManager.abandonAudioFocus(focusChangeListener)
     }
 
-    private fun cancelVibration(context: Context) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val manager = context.getSystemService(VibratorManager::class.java)
-            manager?.defaultVibrator?.cancel()
+}
+
+private object NativeVibrationPlayer {
+    private val pattern = longArrayOf(0, 5000, 2000)
+
+    @Synchronized
+    fun start(context: Context) {
+        val vibrator = getVibrator(context.applicationContext) ?: return
+        if (!vibrator.hasVibrator()) {
+            return
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(
+                VibrationEffect.createWaveform(pattern, 0)
+            )
             return
         }
 
         @Suppress("DEPRECATION")
-        val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-        vibrator?.cancel()
+        vibrator.vibrate(pattern, 0)
+    }
+
+    @Synchronized
+    fun stop(context: Context) {
+        getVibrator(context.applicationContext)?.cancel()
+    }
+
+    private fun getVibrator(context: Context): Vibrator? {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val manager = context.getSystemService(VibratorManager::class.java)
+            return manager?.defaultVibrator
+        }
+
+        @Suppress("DEPRECATION")
+        return context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
     }
 }
 

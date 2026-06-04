@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/services.dart';
-import 'package:vibration/vibration.dart';
 
 import '../state_machine/state.dart';
 
@@ -19,7 +18,7 @@ class Notifier {
               plugin ?? FlutterLocalNotificationsPlugin(),
             ),
         _alarmPlayer = alarmPlayer ?? const NativeAlarmPlayer(),
-        _vibrationPlayer = vibrationPlayer ?? RepeatingVibrationPlayer();
+        _vibrationPlayer = vibrationPlayer ?? const NativeVibrationPlayer();
 
   final LocalNotificationsClient _notifications;
   AlarmPlayer _alarmPlayer;
@@ -30,7 +29,7 @@ class Notifier {
     LocationStateStatus.waitGeoJson,
   );
 
-  static const _channelId = 'argus_alerts_visual';
+  static const _channelId = 'argus_alerts_visual_v2';
   static const _channelName = 'ARGUS警告';
   static const _channelDescription = 'ジオフェンスの安全エリアから離れたときに通知します。';
   static const int _outerNotificationId = 1001;
@@ -72,7 +71,7 @@ class Notifier {
         description: _channelDescription,
         importance: Importance.max,
         playSound: false,
-        enableVibration: true,
+        enableVibration: false,
       ),
     );
 
@@ -89,7 +88,7 @@ class Notifier {
       importance: Importance.max,
       priority: Priority.max,
       playSound: false,
-      enableVibration: true,
+      enableVibration: false,
       category: AndroidNotificationCategory.alarm,
       ticker: 'ARGUS警告',
     );
@@ -324,75 +323,57 @@ abstract class VibrationPlayer {
   Future<void> stop();
 }
 
-// coverage:ignore-start
-/// 5秒振動→2秒休止を繰り返すバイブレーションパターンを提供します。
-class RepeatingVibrationPlayer implements VibrationPlayer {
-  RepeatingVibrationPlayer();
+abstract class VibrationPlatformClient {
+  Future<void> startPattern();
+  Future<void> stop();
+}
 
-  static const _vibrationDurationSeconds = 5;
-  static const _pauseDurationSeconds = 2;
+class MethodChannelVibrationClient implements VibrationPlatformClient {
+  const MethodChannelVibrationClient();
 
-  bool _shouldContinue = false;
-  bool _isRunning = false;
-  Future<void>? _loopFuture;
+  static const MethodChannel _channel = MethodChannel('argus/alarm');
+
+  @override
+  Future<void> startPattern() {
+    return _channel.invokeMethod<void>('startVibration');
+  }
+
+  @override
+  Future<void> stop() {
+    return _channel.invokeMethod<void>('stopVibration');
+  }
+}
+
+class NativeVibrationPlayer implements VibrationPlayer {
+  const NativeVibrationPlayer({
+    VibrationPlatformClient? platformClient,
+    bool? isAndroid,
+    bool? isIOS,
+  })  : _platformClient = platformClient,
+        _isAndroidOverride = isAndroid,
+        _isIOSOverride = isIOS;
+
+  final VibrationPlatformClient? _platformClient;
+  final bool? _isAndroidOverride;
+  final bool? _isIOSOverride;
+
+  VibrationPlatformClient get _client =>
+      _platformClient ?? const MethodChannelVibrationClient();
+  bool get _isAndroid => _isAndroidOverride ?? (!kIsWeb && Platform.isAndroid);
+  bool get _isIOS => _isIOSOverride ?? (!kIsWeb && Platform.isIOS);
+  bool get _usesNativePlatformClient => _isAndroid || _isIOS;
 
   @override
   Future<void> start() async {
-    if (_isRunning) {
-      return;
-    }
-
-    final bool hasVibrator;
-    try {
-      hasVibrator = await Vibration.hasVibrator() == true;
-    } on MissingPluginException {
-      return;
-    }
-
-    if (hasVibrator == true) {
-      _shouldContinue = true;
-      _isRunning = true;
-      _loopFuture = _vibrationLoop();
-    }
-  }
-
-  /// 5秒振動→2秒休止のパターンを繰り返すループを実行します。
-  Future<void> _vibrationLoop() async {
-    try {
-      while (_shouldContinue) {
-        // 5秒振動
-        await Vibration.vibrate(
-          duration: _vibrationDurationSeconds * 1000,
-        );
-
-        if (!_shouldContinue) break;
-
-        // 2秒休止
-        await Future.delayed(
-          const Duration(seconds: _pauseDurationSeconds),
-        );
-      }
-    } finally {
-      _isRunning = false;
-      _loopFuture = null;
+    if (_usesNativePlatformClient) {
+      await _client.startPattern();
     }
   }
 
   @override
   Future<void> stop() async {
-    _shouldContinue = false;
-    try {
-      await Vibration.cancel();
-    } on MissingPluginException {
-      return;
-    }
-    final loopFuture = _loopFuture;
-    if (loopFuture != null) {
-      await loopFuture.timeout(
-        const Duration(milliseconds: 250),
-        onTimeout: () {},
-      );
+    if (_usesNativePlatformClient) {
+      await _client.stop();
     }
   }
 }
-// coverage:ignore-end

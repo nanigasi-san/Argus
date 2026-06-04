@@ -655,7 +655,7 @@ class AppController extends ChangeNotifier {
     final notificationsPlugin = FlutterLocalNotificationsPlugin();
     final notifier = Notifier(
       plugin: notificationsPlugin,
-      vibrationPlayer: RepeatingVibrationPlayer(),
+      vibrationPlayer: const NativeVibrationPlayer(),
     );
     final controller = AppController(
       stateMachine: stateMachine,

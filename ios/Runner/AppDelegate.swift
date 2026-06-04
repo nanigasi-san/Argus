@@ -1,4 +1,5 @@
 import AVFoundation
+import AudioToolbox
 import Flutter
 import UIKit
 import UserNotifications
@@ -6,6 +7,7 @@ import UserNotifications
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private let alarmPlayer = IOSAlarmPlayer()
+  private let vibrationPlayer = IOSVibrationPlayer()
   private var alarmChannel: FlutterMethodChannel?
 
   override func application(
@@ -32,6 +34,7 @@ import UserNotifications
 
   override func applicationWillTerminate(_ application: UIApplication) {
     alarmPlayer.stop()
+    vibrationPlayer.stop()
     super.applicationWillTerminate(application)
   }
 
@@ -54,6 +57,12 @@ import UserNotifications
       }
     case "stop":
       alarmPlayer.stop()
+      result(nil)
+    case "startVibration":
+      vibrationPlayer.start()
+      result(nil)
+    case "stopVibration":
+      vibrationPlayer.stop()
       result(nil)
     default:
       result(FlutterMethodNotImplemented)
@@ -163,6 +172,32 @@ private final class IOSAlarmPlayer: NSObject {
     @unknown default:
       return
     }
+  }
+}
+
+private final class IOSVibrationPlayer {
+  private var timer: Timer?
+
+  func start() {
+    if timer != nil {
+      return
+    }
+
+    vibrate()
+    let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
+      self?.vibrate()
+    }
+    self.timer = timer
+    RunLoop.main.add(timer, forMode: .common)
+  }
+
+  func stop() {
+    timer?.invalidate()
+    timer = nil
+  }
+
+  private func vibrate() {
+    AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
   }
 }
 

@@ -98,7 +98,7 @@
   - EventLogger: `location`（lat/lon/accuracy/battery）、`state`（status/distance/accuracy/bearing/nearest/notes）をメモリ配列に追加。`exportJsonl()` で JSON 文字列を返すのみ。
 
 ## 7. 依存・アセット
-- 主要パッケージ: geolocator, flutter_local_notifications, permission_handler, mobile_scanner, file_selector, provider, vibration, flutter_ringtone_player, brotli, qr, image, crypto。
+- 主要パッケージ: geolocator, flutter_local_notifications, permission_handler, mobile_scanner, file_selector, provider, brotli, qr, image, crypto。
 - CLI 依存: QR エンコード時のみ `brotli` コマンドが必要（パス探索: `_BrotliCli.resolve()` が `BROTLI_CLI` 環境変数や where/which を検索）。
 - アセット: `assets/config/default_config.json`（初期設定）、`assets/geojson/map.geojson`（サンプル／テスト用、アプリ起動時には自動ロードされない）、`assets/sounds/alarm.mp3`（警告音）、`icon.png`。
 

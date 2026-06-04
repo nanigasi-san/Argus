@@ -158,7 +158,9 @@ void main() {
         notifications.lastInitializationSettings?.iOS?.requestSoundPermission,
         isFalse,
       );
-      expect(notifications.lastChannel?.id, 'argus_alerts_visual');
+      expect(notifications.lastChannel?.id, 'argus_alerts_visual_v2');
+      expect(notifications.lastChannel?.playSound, isFalse);
+      expect(notifications.lastChannel?.enableVibration, isFalse);
       expect(notifications.lastChannel?.playSound, isFalse);
       expect(notifications.lastChannel?.sound, isNull);
       expect(notifier.badgeState.value, LocationStateStatus.near);
@@ -408,6 +410,52 @@ void main() {
       expect(calls.map((call) => call.method), ['play', 'stop']);
       expect(calls.first.arguments, {'volume': 0.25});
     });
+
+    test('MethodChannelVibrationClient sends start and stop methods', () async {
+      final calls = <MethodCall>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('argus/alarm'),
+        (call) async {
+          calls.add(call);
+          return null;
+        },
+      );
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(const MethodChannel('argus/alarm'), null);
+      });
+
+      const client = MethodChannelVibrationClient();
+      await client.startPattern();
+      await client.stop();
+
+      expect(calls.map((call) => call.method), [
+        'startVibration',
+        'stopVibration',
+      ]);
+    });
+
+    test('NativeVibrationPlayer uses injected mobile platform client',
+        () async {
+      final platform = _RecordingVibrationPlatformClient();
+      const nonMobilePlayer = NativeVibrationPlayer(
+        isAndroid: false,
+        isIOS: false,
+      );
+      final mobilePlayer = NativeVibrationPlayer(
+        platformClient: platform,
+        isAndroid: true,
+      );
+
+      await nonMobilePlayer.start();
+      await nonMobilePlayer.stop();
+      await mobilePlayer.start();
+      await mobilePlayer.stop();
+
+      expect(platform.startCount, 1);
+      expect(platform.stopCount, 1);
+    });
   });
 }
 
@@ -478,6 +526,21 @@ class _RecordingAlarmPlatformClient implements AlarmPlatformClient {
   @override
   Future<void> play({required double volume}) async {
     playVolumes.add(volume);
+  }
+
+  @override
+  Future<void> stop() async {
+    stopCount += 1;
+  }
+}
+
+class _RecordingVibrationPlatformClient implements VibrationPlatformClient {
+  int startCount = 0;
+  int stopCount = 0;
+
+  @override
+  Future<void> startPattern() async {
+    startCount += 1;
   }
 
   @override
