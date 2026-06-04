@@ -158,6 +158,8 @@ void main() {
         notifications.lastInitializationSettings?.iOS?.requestSoundPermission,
         isFalse,
       );
+      expect(notifications.lastChannel?.id, 'argus_alerts_visual');
+      expect(notifications.lastChannel?.playSound, isFalse);
       expect(notifications.lastChannel?.sound, isNull);
       expect(notifier.badgeState.value, LocationStateStatus.near);
     });
@@ -172,6 +174,7 @@ void main() {
 
       await notifier.notifyOuter();
 
+      expect(notifications.lastShownDetails?.android?.playSound, isFalse);
       expect(notifications.lastShownDetails?.android?.sound, isNull);
       expect(notifications.lastShownDetails?.iOS?.presentSound, isFalse);
       expect(notifications.lastShownDetails?.iOS?.sound, isNull);
@@ -315,7 +318,7 @@ void main() {
       final platform = _RecordingAlarmPlatformClient();
       final notifier = Notifier(
         notificationsClient: FakeLocalNotificationsClient(),
-        alarmPlayer: RingtoneAlarmPlayer(
+        alarmPlayer: NativeAlarmPlayer(
           platformClient: platform,
           isAndroid: true,
         ),
@@ -328,9 +331,9 @@ void main() {
       expect(platform.playVolumes, [1.0]);
     });
 
-    test('RingtoneAlarmPlayer uses injected Android platform client', () async {
+    test('NativeAlarmPlayer uses injected Android platform client', () async {
       final platform = _RecordingAlarmPlatformClient();
-      final player = RingtoneAlarmPlayer(
+      final player = NativeAlarmPlayer(
         volume: -1,
         platformClient: platform,
         isAndroid: true,
@@ -343,9 +346,9 @@ void main() {
       expect(platform.stopCount, 1);
     });
 
-    test('RingtoneAlarmPlayer uses injected iOS platform client', () async {
+    test('NativeAlarmPlayer uses injected iOS platform client', () async {
       final platform = _RecordingAlarmPlatformClient();
-      final player = RingtoneAlarmPlayer(
+      final player = NativeAlarmPlayer(
         volume: 0.4,
         platformClient: platform,
         isAndroid: false,
@@ -359,10 +362,10 @@ void main() {
       expect(platform.stopCount, 1);
     });
 
-    test('RingtoneAlarmPlayer copyWith keeps existing volume when omitted',
+    test('NativeAlarmPlayer copyWith keeps existing volume when omitted',
         () async {
       final platform = _RecordingAlarmPlatformClient();
-      final player = RingtoneAlarmPlayer(
+      final player = NativeAlarmPlayer(
         volume: 0.4,
         platformClient: platform,
         isAndroid: true,
@@ -371,6 +374,16 @@ void main() {
       await player.start();
 
       expect(platform.playVolumes, [0.4]);
+    });
+
+    test('NativeAlarmPlayer rejects non-mobile playback fallback', () async {
+      const player = NativeAlarmPlayer(
+        isAndroid: false,
+        isIOS: false,
+      );
+
+      await expectLater(player.start(), throwsA(isA<UnsupportedError>()));
+      await player.stop();
     });
 
     test('MethodChannelAlarmClient sends play and stop methods', () async {

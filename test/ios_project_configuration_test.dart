@@ -62,6 +62,10 @@ void main() {
       expect(appDelegate, contains('name: "argus/alarm"'));
       expect(appDelegate, contains('AVAudioPlayer'));
       expect(appDelegate, contains('player.numberOfLoops = -1'));
+      expect(appDelegate, contains('AVAudioSession.sharedInstance()'));
+      expect(appDelegate, contains('session.setCategory(.playback'));
+      expect(appDelegate, contains('AVAudioSession.interruptionNotification'));
+      expect(appDelegate, contains('InterruptionOptions'));
       expect(appDelegate, contains('FlutterImplicitEngineDelegate'));
       expect(appDelegate, contains('didInitializeImplicitFlutterEngine'));
       expect(appDelegate,
@@ -94,6 +98,14 @@ void main() {
 
       expect(gitignore, contains('!/ios/Podfile.lock'));
       expect(workflow, contains('xcodebuild test \\'));
+    });
+
+    test('does not depend on flutter_ringtone_player fallback', () {
+      final pubspec = File('pubspec.yaml').readAsStringSync();
+      final podfileLock = File('ios/Podfile.lock').readAsStringSync();
+
+      expect(pubspec, isNot(contains('flutter_ringtone_player')));
+      expect(podfileLock, isNot(contains('flutter_ringtone_player')));
     });
   });
 }

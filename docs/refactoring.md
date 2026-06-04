@@ -48,7 +48,7 @@ class Notifier {
             FlutterLocalNotificationsClient(
               plugin ?? FlutterLocalNotificationsPlugin(),
             ),
-        _alarmPlayer = alarmPlayer ?? const RingtoneAlarmPlayer(),
+        _alarmPlayer = alarmPlayer ?? const NativeAlarmPlayer(),
         _vibrationPlayer = vibrationPlayer ?? RepeatingVibrationPlayer();
   
   final LocalNotificationsClient _notifications;
@@ -61,7 +61,7 @@ class Notifier {
 ```dart
 class Notifier {
   final _plugin = FlutterLocalNotificationsPlugin(); // 直接インスタンス化
-  final _alarmPlayer = RingtoneAlarmPlayer(); // テスト不可能
+  final _alarmPlayer = NativeAlarmPlayer(); // テスト不可能
 }
 ```
 
@@ -108,7 +108,7 @@ bool _running = false;
 
 ```dart
 class Notifier {
-  static const _channelId = 'argus_alerts';
+  static const _channelId = 'argus_alerts_visual';
   static const _channelName = 'Argus警告';
   static const _channelDescription = 'ジオフェンスの安全エリアから離れたときに通知します。';
   static const int _outerNotificationId = 1001;
@@ -469,14 +469,14 @@ class Notifier {
             FlutterLocalNotificationsClient(
               plugin ?? FlutterLocalNotificationsPlugin(),
             ),
-        _alarmPlayer = alarmPlayer ?? const RingtoneAlarmPlayer(),
+        _alarmPlayer = alarmPlayer ?? const NativeAlarmPlayer(),
         _vibrationPlayer = vibrationPlayer ?? RepeatingVibrationPlayer();
 
   final LocalNotificationsClient _notifications;
   final AlarmPlayer _alarmPlayer;
   final VibrationPlayer _vibrationPlayer;
 
-  static const _channelId = 'argus_alerts';
+  static const _channelId = 'argus_alerts_visual';
   static const _channelName = 'Argus警告';
   static const int _outerNotificationId = 1001;
 

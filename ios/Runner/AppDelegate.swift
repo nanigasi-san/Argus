@@ -61,11 +61,55 @@ import UserNotifications
   }
 }
 
-private final class IOSAlarmPlayer {
+private final class IOSAlarmPlayer: NSObject {
   private var player: AVAudioPlayer?
+  private var isAlarming = false
+  private var lastVolume = 1.0
+
+  override init() {
+    super.init()
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(handleAudioSessionInterruption(_:)),
+      name: AVAudioSession.interruptionNotification,
+      object: AVAudioSession.sharedInstance()
+    )
+  }
+
+  deinit {
+    NotificationCenter.default.removeObserver(self)
+  }
 
   func play(volume: Double) throws {
     stop()
+    lastVolume = min(max(volume, 0), 1)
+    isAlarming = true
+
+    do {
+      try startPlayback(volume: lastVolume)
+    } catch {
+      isAlarming = false
+      try? AVAudioSession.sharedInstance().setActive(
+        false,
+        options: .notifyOthersOnDeactivation
+      )
+      throw error
+    }
+  }
+
+  func stop() {
+    isAlarming = false
+    player?.stop()
+    player = nil
+    try? AVAudioSession.sharedInstance().setActive(
+      false,
+      options: .notifyOthersOnDeactivation
+    )
+  }
+
+  private func startPlayback(volume: Double) throws {
+    player?.stop()
+    player = nil
 
     guard let soundURL = Bundle.main.url(forResource: "alarm", withExtension: "caf") else {
       throw IOSAlarmError.missingSoundResource
@@ -85,13 +129,40 @@ private final class IOSAlarmPlayer {
     self.player = player
   }
 
-  func stop() {
-    player?.stop()
-    player = nil
-    try? AVAudioSession.sharedInstance().setActive(
-      false,
-      options: .notifyOthersOnDeactivation
-    )
+  @objc private func handleAudioSessionInterruption(_ notification: Notification) {
+    guard
+      let userInfo = notification.userInfo,
+      let rawType = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+      let type = AVAudioSession.InterruptionType(rawValue: rawType)
+    else {
+      return
+    }
+
+    switch type {
+    case .began:
+      player?.pause()
+    case .ended:
+      guard isAlarming else {
+        return
+      }
+      let rawOptions = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+      let options = AVAudioSession.InterruptionOptions(rawValue: rawOptions)
+      guard options.contains(.shouldResume) else {
+        return
+      }
+      do {
+        try startPlayback(volume: lastVolume)
+      } catch {
+        isAlarming = false
+        player = nil
+        try? AVAudioSession.sharedInstance().setActive(
+          false,
+          options: .notifyOthersOnDeactivation
+        )
+      }
+    @unknown default:
+      return
+    }
   }
 }
 

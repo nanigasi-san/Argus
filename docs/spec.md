@@ -77,14 +77,14 @@
 
 ### 1.6 通知とアラーム
 
-- **通知チャンネル**: `Argus警告`（ID: `argus_alerts`）。説明は「ジオフェンスの安全エリアから離れたときに通知します。」。
+- **通知チャンネル**: `Argus警告`（ID: `argus_alerts_visual`）。説明は「ジオフェンスの安全エリアから離れたときに通知します。」。通知音は無効化し、音声アラームはネイティブループ再生に一本化する。
 - **通知内容**: OUTER 状態への遷移時に通知を表示
   - タイトル: `Argus警告`
   - 本文: `競技エリアから離れています。`（実装では「競技エリア」と記載）
-  - Android: `Importance.max`, `Priority.max`, `category: AndroidNotificationCategory.alarm`
+  - Android: `Importance.max`, `Priority.max`, `category: AndroidNotificationCategory.alarm`, `playSound: false`
   - iOS: 視覚通知は `interruptionLevel: InterruptionLevel.timeSensitive`。音は `AVAudioPlayer` のネイティブループ再生に一本化。
 - **Foreground Service 通知**: Android 背景計測用に「Argusが位置情報を監視中です」「画面を消しても位置情報の追跡は継続されます。」を表示。
-- **アラーム音**: Android / iOS は `argus/alarm` MethodChannel のネイティブループ再生を使用。その他の対応プラットフォームでは `flutter_ringtone_player` を使用。`Notifier.stopAlarm()` で停止。
+- **アラーム音**: Android / iOS は `argus/alarm` MethodChannel のネイティブループ再生を使用。音源はアプリにバンドルしたローカルファイルのみ使用し、その他の対応プラットフォームではアラーム音再生をサポートしない。`Notifier.stopAlarm()` で停止。
 - **復帰通知**: INNER/NEAR 復帰時に通知をキャンセルし、アラームを停止。
 - **権限要求**: 初期化時には権限ダイアログを出さず、セットアップカードの操作時に `PermissionCoordinator` から通知権限を要求。
 
@@ -183,7 +183,7 @@ lib/
 | 点とポリゴン判定 | `PointInPolygon`, `PointInPolygonEvaluation`                                   | Ray Casting による包含判定、最近接点・距離・方位角の計算。                           |
 | QRコード         | `GeoJsonQrCodec`, `encodeGeoJson`, `decodeGeoJson`                            | GeoJSONのBrotli圧縮、Base64URLエンコード、QRコード生成・復元。                      |
 | 位置サービス     | `LocationService`, `GeolocatorLocationService`, `LocationFix`                  | 位置ストリームの開始・停止、権限確認、プラットフォーム固有設定。                     |
-| 通知             | `Notifier`, `AlarmPlayer`（`RingtoneAlarmPlayer`）, `LocalNotificationsClient` | 通知チャンネル作成、アラーム音制御、バッジ状態。                                     |
+| 通知             | `Notifier`, `AlarmPlayer`（`NativeAlarmPlayer`）, `LocalNotificationsClient` | 通知チャンネル作成、アラーム音制御、バッジ状態。                                     |
 | ログ             | `EventLogger`, `AppLogEntry`, `AppLogLevel`                                    | GPS・状態イベントのメモリ記録と UI 連携、JSON エクスポート。                         |
 | I/O              | `FileManager`, `AppConfig`                                                     | 設定・GeoJSON ファイルの読み書き、ファイルピッカー。                                 |
 | UI               | `HomePage`, `SettingsPage`, `QrScannerPage`, `ArgusApp`                       | 画面構成とユーザ操作ルーティング。                                                   |
@@ -572,10 +572,10 @@ stateDiagram-v2
 
 ### 7.1 通知チャンネル
 
-- **ID**: `argus_alerts`
+- **ID**: `argus_alerts_visual`
 - **名前**: `Argus警告`
 - **説明**: `ジオフェンスの安全エリアから離れたときに通知します。`
-- **Android 設定**: `Importance.max`, `playSound: true`, `enableVibration: true`, `audioAttributesUsage: AudioAttributesUsage.alarm`
+- **Android 設定**: `Importance.max`, `playSound: false`, `enableVibration: true`
 
 ### 7.2 OUTER 通知
 

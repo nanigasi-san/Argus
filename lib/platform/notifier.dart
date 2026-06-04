@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/services.dart';
 import 'package:vibration/vibration.dart';
-import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 
 import '../state_machine/state.dart';
 
@@ -19,7 +18,7 @@ class Notifier {
             FlutterLocalNotificationsClient(
               plugin ?? FlutterLocalNotificationsPlugin(),
             ),
-        _alarmPlayer = alarmPlayer ?? const RingtoneAlarmPlayer(),
+        _alarmPlayer = alarmPlayer ?? const NativeAlarmPlayer(),
         _vibrationPlayer = vibrationPlayer ?? RepeatingVibrationPlayer();
 
   final LocalNotificationsClient _notifications;
@@ -31,7 +30,7 @@ class Notifier {
     LocationStateStatus.waitGeoJson,
   );
 
-  static const _channelId = 'argus_alerts';
+  static const _channelId = 'argus_alerts_visual';
   static const _channelName = 'ARGUS警告';
   static const _channelDescription = 'ジオフェンスの安全エリアから離れたときに通知します。';
   static const int _outerNotificationId = 1001;
@@ -42,8 +41,8 @@ class Notifier {
 
   /// アラーム音量を設定します（0.0～1.0）。
   void setAlarmVolume(double volume) {
-    if (_alarmPlayer is RingtoneAlarmPlayer) {
-      final player = _alarmPlayer as RingtoneAlarmPlayer;
+    if (_alarmPlayer is NativeAlarmPlayer) {
+      final player = _alarmPlayer as NativeAlarmPlayer;
       _alarmPlayer = player.copyWith(
         volume: volume.clamp(0.0, 1.0).toDouble(),
       );
@@ -72,9 +71,8 @@ class Notifier {
         _channelName,
         description: _channelDescription,
         importance: Importance.max,
-        playSound: true,
+        playSound: false,
         enableVibration: true,
-        audioAttributesUsage: AudioAttributesUsage.alarm,
       ),
     );
 
@@ -90,10 +88,9 @@ class Notifier {
       channelDescription: _channelDescription,
       importance: Importance.max,
       priority: Priority.max,
-      playSound: true,
+      playSound: false,
       enableVibration: true,
       category: AndroidNotificationCategory.alarm,
-      audioAttributesUsage: AudioAttributesUsage.alarm,
       ticker: 'ARGUS警告',
     );
     const iosDetails = DarwinNotificationDetails(
@@ -271,8 +268,8 @@ class MethodChannelAlarmClient implements AlarmPlatformClient {
   }
 }
 
-class RingtoneAlarmPlayer implements AlarmPlayer {
-  const RingtoneAlarmPlayer({
+class NativeAlarmPlayer implements AlarmPlayer {
+  const NativeAlarmPlayer({
     this.volume = 1.0,
     AlarmPlatformClient? platformClient,
     bool? isAndroid,
@@ -286,8 +283,8 @@ class RingtoneAlarmPlayer implements AlarmPlayer {
   final bool? _isAndroidOverride;
   final bool? _isIOSOverride;
 
-  RingtoneAlarmPlayer copyWith({double? volume}) {
-    return RingtoneAlarmPlayer(
+  NativeAlarmPlayer copyWith({double? volume}) {
+    return NativeAlarmPlayer(
       volume: volume ?? this.volume,
       platformClient: _platformClient,
       isAndroid: _isAndroidOverride,
@@ -309,27 +306,16 @@ class RingtoneAlarmPlayer implements AlarmPlayer {
       return;
     }
 
-    // coverage:ignore-start
-    // Non-Android playback is delegated to the plugin channel.
-    await FlutterRingtonePlayer().play(
-      fromAsset: 'assets/sounds/alarm.mp3',
-      looping: true,
-      volume: clampedVolume,
-      asAlarm: true,
+    throw UnsupportedError(
+      'Native alarm playback is only supported on Android and iOS.',
     );
-    // coverage:ignore-end
   }
 
   @override
   Future<void> stop() async {
     if (_usesNativePlatformClient) {
       await _client.stop();
-      return;
     }
-
-    // coverage:ignore-start
-    return FlutterRingtonePlayer().stop();
-    // coverage:ignore-end
   }
 }
 

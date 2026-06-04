@@ -2,6 +2,8 @@ package com.argus.orienteering
 
 import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.media.MediaPlayer
 import android.os.Build
 import android.os.Vibrator
@@ -18,8 +20,18 @@ class MainActivity : FlutterActivity() {
                 when (call.method) {
                     "play" -> {
                         val volume = call.argument<Double>("volume") ?: 1.0
-                        NativeAlarmPlayer.play(applicationContext, volume)
-                        result.success(null)
+                        try {
+                            NativeAlarmPlayer.play(applicationContext, volume)
+                            result.success(null)
+                        } catch (error: NativeAlarmException) {
+                            result.error(error.code, error.message, null)
+                        } catch (error: Exception) {
+                            result.error(
+                                "alarm_play_failed",
+                                error.localizedMessage ?: "Android could not start alarm playback.",
+                                null
+                            )
+                        }
                     }
                     "stop" -> {
                         NativeAlarmPlayer.stop(applicationContext)
@@ -49,6 +61,8 @@ class MainActivity : FlutterActivity() {
 
 private object NativeAlarmPlayer {
     private var mediaPlayer: MediaPlayer? = null
+    private var focusRequest: AudioFocusRequest? = null
+    private val focusChangeListener = AudioManager.OnAudioFocusChangeListener { }
 
     @Synchronized
     fun play(context: Context, requestedVolume: Double) {
@@ -56,9 +70,38 @@ private object NativeAlarmPlayer {
 
         val volume = requestedVolume.coerceIn(0.0, 1.0).toFloat()
         val appContext = context.applicationContext
-        val asset = appContext.resources.openRawResourceFd(R.raw.alarm) ?: return
+        val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            ?: throw NativeAlarmException(
+                "alarm_audio_service_unavailable",
+                "Android audio service is unavailable."
+            )
+
+        if (!requestAudioFocus(audioManager)) {
+            throw NativeAlarmException(
+                "alarm_audio_focus_denied",
+                "Android denied alarm audio focus."
+            )
+        }
+
+        val asset = try {
+            appContext.resources.openRawResourceFd(R.raw.alarm)
+        } catch (_: Exception) {
+            releaseAudioFocus(audioManager)
+            throw NativeAlarmException(
+                "alarm_sound_missing",
+                "alarm.mp3 is missing from Android raw resources."
+            )
+        } ?: run {
+            releaseAudioFocus(audioManager)
+            throw NativeAlarmException(
+                "alarm_sound_missing",
+                "alarm.mp3 is missing from Android raw resources."
+            )
+        }
+
+        var player: MediaPlayer? = null
         try {
-            mediaPlayer = MediaPlayer().apply {
+            player = MediaPlayer().apply {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                     setAudioAttributes(
                         AudioAttributes.Builder()
@@ -73,8 +116,27 @@ private object NativeAlarmPlayer {
                 prepare()
                 start()
             }
+            mediaPlayer = player
+        } catch (error: Exception) {
+            player?.release()
+            mediaPlayer = null
+            releaseAudioFocus(audioManager)
+            throw NativeAlarmException(
+                "alarm_play_failed",
+                error.localizedMessage ?: "Android could not start alarm playback."
+            )
         } finally {
             asset.close()
+        }
+
+        if (mediaPlayer?.isPlaying != true) {
+            player?.release()
+            mediaPlayer = null
+            releaseAudioFocus(audioManager)
+            throw NativeAlarmException(
+                "alarm_play_failed",
+                "Android could not start alarm playback."
+            )
         }
     }
 
@@ -92,7 +154,51 @@ private object NativeAlarmPlayer {
             }
         }
         mediaPlayer = null
-        context?.let(::cancelVibration)
+        context?.let { appContext ->
+            val audioManager =
+                appContext.applicationContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            releaseAudioFocus(audioManager)
+            cancelVibration(appContext)
+        }
+    }
+
+    private fun requestAudioFocus(audioManager: AudioManager): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+                .setOnAudioFocusChangeListener(focusChangeListener)
+                .build()
+            focusRequest = request
+            audioManager.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        } else {
+            @Suppress("DEPRECATION")
+            audioManager.requestAudioFocus(
+                focusChangeListener,
+                AudioManager.STREAM_ALARM,
+                AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
+            ) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        }
+    }
+
+    private fun releaseAudioFocus(audioManager: AudioManager?) {
+        if (audioManager == null) {
+            focusRequest = null
+            return
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            focusRequest?.let(audioManager::abandonAudioFocusRequest)
+            focusRequest = null
+            return
+        }
+
+        @Suppress("DEPRECATION")
+        audioManager.abandonAudioFocus(focusChangeListener)
     }
 
     private fun cancelVibration(context: Context) {
@@ -108,4 +214,7 @@ private object NativeAlarmPlayer {
     }
 }
 
-
+private class NativeAlarmException(
+    val code: String,
+    override val message: String
+) : Exception(message)
