@@ -13,6 +13,7 @@ MacBook の初回環境構築は [macbook_ios_setup.md](macbook_ios_setup.md) �
 - 通知: `Time Sensitive Notifications`
 - 警告音: `ios/Runner/Resources/alarm.caf` をネイティブループ再生。iOS通知音は重複再生を避けるため無効
 - ネイティブアラーム: `argus/alarm` MethodChannel と `AVAudioPlayer` のループ再生
+- Privacy Manifest: `ios/Runner/PrivacyInfo.xcprivacy` を `Runner` target resources に含める
 
 `Critical Alerts` はAppleへの個別申請が必要なので有効化していません。現在は通常配布可能な `Time Sensitive Notifications` を使います。
 
@@ -59,3 +60,25 @@ flutter build ipa --release
 ```
 
 App Store Connectへ提出する際は、バックグラウンド位置情報とバックグラウンド音声の用途を審査メモに記載してください。音声モードはエリア外警告のループ再生中だけ使用します。
+
+## App Store Connect 審査メモ案
+
+```text
+ARGUSは、利用者が読み込んだGeoJSONエリアを監視するアプリです。利用者が明示的に監視を開始した後、バックグラウンド位置情報を使用して、画面ロック中や他アプリ利用中でもエリア外への離脱を検知します。位置情報は端末内でのみエリア内外判定に使用し、開発者サーバーへ送信しません。
+
+バックグラウンド音声は、エリア外を検知したときに警告音をループ再生するためだけに使用します。警告音はスヌーズ操作、または安全エリアへの復帰で停止します。
+```
+
+## リリース証跡チェックリスト
+
+| 項目 | 証跡 |
+| --- | --- |
+| `flutter analyze` が通る | 実行日時と結果 |
+| `flutter test` が通る | 実行日時と結果 |
+| `flutter build ipa --release` が通る | Archive / IPA のビルド番号 |
+| Xcode `Product > Test` が通る | 実行端末またはSimulator名 |
+| 実機で常時位置情報を許可できる | 端末名 / iOS version |
+| 画面ロック中に位置情報更新が続く | 確認メモ |
+| エリア外でTime Sensitive通知と警告音が鳴る | 確認メモ |
+| スヌーズまたはエリア復帰で警告音が止まる | 確認メモ |
+| App Store Connect Privacy回答と審査メモを入力した | 入力者 / 日時 |

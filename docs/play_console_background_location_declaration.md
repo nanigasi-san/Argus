@@ -37,6 +37,18 @@ Before any location runtime permission request, the app shows an in-app disclosu
 
 ARGUS uses background location only after the user starts monitoring a loaded GeoJSON competition area. This is required for the app's core feature: detecting when the user leaves the configured area and notifying them immediately, even when the app is closed or not in use. Location data is processed only on the device and is not sent to the developer's server.
 
+## Foreground service declaration text
+
+ARGUS uses the location foreground service type only while the user has started geofence monitoring. The foreground service keeps location monitoring active so ARGUS can notify the user immediately when they leave the loaded GeoJSON area. Monitoring is user initiated and can be stopped from the app.
+
+## Store listing short description note
+
+Mention background location in the Play Store description so the declared core functionality is visible outside the app:
+
+```text
+ARGUS monitors a loaded GeoJSON area and can warn you with notifications and sound when you leave the area, including while monitoring continues in the background.
+```
+
 ## Video checklist
 
 Record a short video that shows this exact flow:
@@ -51,3 +63,15 @@ Record a short video that shows this exact flow:
 8. Return to ARGUS and show monitoring can start.
 
 Do not include unrelated permission prompts if possible.
+
+## Release evidence checklist
+
+| Item | Evidence |
+| --- | --- |
+| AAB targets Android 15 / API 35 or later | AAB details or Play Console validation |
+| Privacy Policy URL is set on the store listing | URL and screenshot |
+| Background location declaration is submitted | Declaration submission screenshot |
+| Foreground service declaration is submitted, if requested | Declaration submission screenshot |
+| Video is uploaded as YouTube or Drive URL | Video URL |
+| In-app disclosure appears before runtime location permission | Video timestamp |
+| Closed testing release is available to testers | Track name / versionCode |

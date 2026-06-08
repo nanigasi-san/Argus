@@ -55,6 +55,26 @@ void main() {
       );
     });
 
+    test('bundles the app privacy manifest in Runner resources', () {
+      final privacyManifest =
+          File('ios/Runner/PrivacyInfo.xcprivacy').readAsStringSync();
+      final project =
+          File('ios/Runner.xcodeproj/project.pbxproj').readAsStringSync();
+
+      expect(project, contains('PrivacyInfo.xcprivacy in Resources'));
+      expect(privacyManifest, contains('<key>NSPrivacyTracking</key>'));
+      expect(privacyManifest, contains('<false/>'));
+      expect(
+        privacyManifest,
+        contains('<key>NSPrivacyCollectedDataTypes</key>'),
+      );
+      expect(
+        privacyManifest,
+        contains('NSPrivacyAccessedAPICategoryUserDefaults'),
+      );
+      expect(privacyManifest, contains('<string>CA92.1</string>'));
+    });
+
     test('registers the iOS native alarm method channel', () {
       final appDelegate =
           File('ios/Runner/AppDelegate.swift').readAsStringSync();
