@@ -9,7 +9,6 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.9
-  brotli: ^0.6.0
   crypto: ^3.0.7
   geolocator: ^14.0.2
   path: ^1.9.0

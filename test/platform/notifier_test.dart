@@ -253,7 +253,8 @@ void main() {
       expect(platform.playVolumes, [1.0]);
     });
 
-    test('RingtoneAlarmPlayer uses injected Android platform client', () async {
+    test('RingtoneAlarmPlayer uses injected Android system alarm client',
+        () async {
       final platform = _RecordingAlarmPlatformClient();
       final player = RingtoneAlarmPlayer(
         volume: -1,

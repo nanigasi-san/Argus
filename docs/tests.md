@@ -345,7 +345,7 @@ GeoJSONのパースとポリゴン生成を検証するテストです。
 
 ## 7. qr/geojson_qr_codec_test.dart
 
-GeoJSONとQRコードの相互変換機能を検証するテストです。Brotli圧縮、Base64URLエンコード、ハッシュ検証などをテストします。
+GeoJSONとQRコードの相互変換機能を検証するテストです。gzip圧縮、Base64URLエンコード、ハッシュ検証などをテストします。
 
 ### テストケース
 
@@ -354,45 +354,35 @@ GeoJSONとQRコードの相互変換機能を検証するテストです。Brotl
 - **テストデータ**: `assets/geojson/map.geojson`
 - **期待結果**: 最小化されたGeoJSONに改行が含まれず、`type`と`featureCount`が正しく抽出される
 
-#### 7.2 `encode and decode gjb1 round trip with hash succeeds`
-- **目的**: `gjb1:`スキームでのエンコード・デコードのラウンドトリップが成功することを確認
+#### 7.2 `default encode and decode gjz1 round trip with hash succeeds`
+- **目的**: `gjz1:`スキームでのエンコード・デコードのラウンドトリップが成功することを確認
 - **手順**:
   1. GeoJSONをエンコードしてQRテキストを生成
   2. QRテキストをデコードしてGeoJSONを復元
 - **期待結果**: 
-  - `bundle.isSplit = false`（分割されていない）
-  - QRテキストが`gjb1:`で始まる
+  - QRテキストが`gjz1:`で始まる
   - ペイロードがBase64URL形式（`=`を含まない、URL-safe文字のみ）
   - ハッシュが含まれる
   - 復元されたGeoJSONが元の最小化GeoJSONと一致
 
-#### 7.3 `encode triggers gjb1p split when max length is low`
-- **目的**: 最大長が小さい場合に`gjb1p:`スキームで分割されることを確認
-- **設定**: `maxQrTextLength: 80`
-- **期待結果**: 
-  - `bundle.isSplit = true`
-  - 複数のQRテキストが生成される
-  - すべてのQRテキストが`gjb1p:`で始まる
-  - 復元されたGeoJSONが元の最小化GeoJSONと一致
+#### 7.3 `encode rejects payloads that exceed max text length`
+- **目的**: 最大長が小さい場合に単一QRへ収めず、明示的に失敗することを確認
+- **設定**: `maxQrTextLength: 20`
+- **期待結果**: `PayloadTooLargeException`がスローされる
 
-#### 7.4 `decode fails when a gjb1p chunk is missing`
-- **目的**: 分割QRコードのチャンクが欠損している場合にデコードが失敗することを確認
-- **手順**: 分割QRコードの最初のチャンクを削除してデコードを試行
-- **期待結果**: `ChunkMismatchException`がスローされる
-
-#### 7.5 `decode fails on hash mismatch`
+#### 7.4 `decode fails on hash mismatch`
 - **目的**: ハッシュが一致しない場合にデコードが失敗することを確認
 - **手順**: QRテキストのハッシュ部分を改ざんしてデコードを試行
 - **期待結果**: `HashMismatchException`がスローされる
 
-#### 7.6 `decode rejects unsupported scheme`
+#### 7.5 `decode rejects unsupported scheme`
 - **目的**: サポートされていないスキームが拒否されることを確認
 - **テストデータ**: `abc1:payload`
 - **期待結果**: `UnsupportedSchemeException`がスローされる
 
-#### 7.7 `decode rejects invalid base64 payload`
+#### 7.6 `decode rejects invalid base64 payload`
 - **目的**: 無効なBase64URLペイロードが拒否されることを確認
-- **テストデータ**: `gjb1:@@@@`
+- **テストデータ**: `gjz1:@@@@`
 - **期待結果**: `DecodeFailedException`がスローされる
 
 ---
@@ -443,7 +433,7 @@ AppController の動作とログ出力をカバーするテストセット。開
 
 #### 8.6 `reloadGeoJsonFromQr handles decode errors gracefully`
 - **目的**: デコードエラーが適切に処理されることを確認
-- **テストデータ**: `gjb1:invalid_payload`
+- **テストデータ**: `gjz1:invalid_payload`
 - **期待結果**: 
   - `lastErrorMessage`が`Failed to decode`を含む
   - `geoJsonLoaded = false`
@@ -673,10 +663,9 @@ flutter test test/state_machine/state_machine_test.dart --name "returns INNER"
 
 ✅ **QRコード機能** (7件)
 - GeoJSONの最小化処理
-- `gjb1:`スキームでのエンコード・デコード
-- `gjb1p:`スキームでの分割QRコード
+- `gjz1:`スキームでのエンコード・デコード
 - ハッシュ検証
-- エラーハンドリング（無効なスキーム、無効なペイロード、欠損チャンク）
+- エラーハンドリング（無効なスキーム、無効なペイロード、容量超過）
 
 ✅ **アプリケーション制御** (7件)
 - GeoJSON再ロード時の状態リセット
@@ -721,7 +710,6 @@ flutter test test/state_machine/state_machine_test.dart --name "returns INNER"
 - [ ] パフォーマンステスト（大量のポリゴン、高頻度の評価）
 - [ ] 統合テスト（エンドツーエンドのシナリオ）
 - [ ] QRコード生成のPNG画像検証
-- [ ] 分割QRコードの順序検証
 
 ---
 

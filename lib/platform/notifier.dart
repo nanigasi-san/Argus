@@ -31,7 +31,7 @@ class Notifier {
     LocationStateStatus.waitGeoJson,
   );
 
-  static const _channelId = 'argus_alerts';
+  static const _channelId = 'argus_alerts_visual';
   static const _channelName = 'ARGUS警告';
   static const _channelDescription = 'ジオフェンスの安全エリアから離れたときに通知します。';
   static const int _outerNotificationId = 1001;
@@ -64,9 +64,8 @@ class Notifier {
         _channelName,
         description: _channelDescription,
         importance: Importance.max,
-        playSound: true,
+        playSound: false,
         enableVibration: true,
-        audioAttributesUsage: AudioAttributesUsage.alarm,
       ),
     );
 
@@ -82,11 +81,9 @@ class Notifier {
       channelDescription: _channelDescription,
       importance: Importance.max,
       priority: Priority.max,
-      playSound: true,
-      sound: RawResourceAndroidNotificationSound('alarm'),
+      playSound: false,
       enableVibration: true,
       category: AndroidNotificationCategory.alarm,
-      audioAttributesUsage: AudioAttributesUsage.alarm,
       ticker: 'ARGUS警告',
     );
     const iosDetails = DarwinNotificationDetails(

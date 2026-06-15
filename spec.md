@@ -12,7 +12,7 @@
 
 ## 2. ユースケース価値
 - 端末完結の監視（ネット不要）で通信遮断時も動作。
-- QR コード経由で GeoJSON を安全に配布（Brotli 圧縮＋Base64URL＋SHA-256 ハッシュ検証）。
+- QR コード経由で GeoJSON を安全に配布（gzip 圧縮＋Base64URL＋SHA-256 ハッシュ検証）。
 - 「離脱確定までの猶予」(サンプル数 + 経過秒数) を設定でき、GPS ノイズによる誤検知を抑制。
 - 離脱時はフルスクリーン通知＋アラーム音＋連続バイブで確実に気付かせる。
 - Developer mode でエリア内でも距離・方位を確認でき、デバッグ／捜索補助に使える。
@@ -26,7 +26,7 @@
 - `lib/platform/notifier.dart`: ローカル通知、アラーム音 (`assets/sounds/alarm.mp3`)、連続バイブ制御。
 - `lib/io/config.dart` / `file_manager.dart`: 設定 JSON の永続化、GeoJSON ファイルピック。
 - `lib/io/logger.dart` / `log_entry.dart`: 状態変化・GPS 受信の JSON レコード化（メモリ内）。
-- `lib/qr/geojson_qr_codec.dart`: GeoJSON の QR エンコード/デコード（Brotli CLI 依存）。
+- `lib/qr/geojson_qr_codec.dart`: GeoJSON の QR エンコード/デコード（gzip 圧縮、外部CLI依存なし）。
 - `lib/ui/home_page.dart` / `settings_page.dart` / `qr_scanner_page.dart`: 画面（Material3）。
 
 ## 4. ランタイムフロー
@@ -34,7 +34,7 @@
 2) 権限要求: 通知権限・位置情報 (Always) を permission_handler で要求。拒否/永久拒否時は設定画面を開くだけで UI 上の代替ハンドリングなし。  
 3) GeoJSON 取込:
    - ファイル: `FileManager.pickGeoJsonFile()` で `.geojson/.json/.bin` を選択しパース→`GeoModel`→`AreaIndex` 構築。ファイル名を `.geojson` 拡張子に正規化して保持。
-   - QR: `gjb1:` / `gjb1p:` テキストを復元→Brotli 伸長→構造バリデーション→一時ファイル保存（次回起動で消去）。  
+   - QR: `gjz1:` テキストを復元→gzip 伸長→構造バリデーション→一時ファイル保存（次回起動で消去）。  
    ロード成功後の状態は `waitStart`、`navigationEnabled` は false にリセット、アラーム停止。
 4) 監視開始: `startMonitoring()` で Geolocator ストリーム購読開始。`sampleIntervalS['fast']`（デフォルト 3 秒）間隔・距離フィルタ 0m・`LocationAccuracy.best`。
 5) 評価ループ: 各 `LocationFix` を `StateMachine.evaluate()` に通し、UI/ログ/通知に反映。OUTER 確定時に通知＋アラーム。再入時に停止通知。
@@ -48,9 +48,9 @@
 - 新規ロード時は監視を一時停止し、AreaIndex も再構築。
 
 ### 5.2 QR コーデック（ライブラリ）
-- エンコード: GeoJSON を jsonEncode → Brotli (quality=11, 外部 `brotli` CLI 必須) → Base64URL（= 無パディング）→ `gjb1:<payload>[#hash]`。長すぎる場合は `gjb1p:<idx>/<total>:<chunk>` へ自動分割。オプションで PNG 生成（`qr` + `image` パッケージ）。
+- エンコード: GeoJSON を jsonEncode → gzip(level=9) → Base64URL（= 無パディング）→ `gjz1:<payload>[#hash]`。単一QRに収まらない場合は `PayloadTooLargeException`。オプションで PNG 生成（`qr` + `image` パッケージ）。
 - ハッシュ: デフォルトで SHA-256 を付与し、デコード時に検証 (`verifyHash=true`)。不一致なら `HashMismatchException`。
-- デコード: `gjb1`/`gjb1p` 以外は拒否。Brotli 伸長後に GeoJSON 構造チェックを行い、無効なら `GeoJsonValidationException`。
+- デコード: `gjz1` 以外は拒否。gzip 伸長後に GeoJSON 構造チェックを行い、無効なら `GeoJsonValidationException`。
 - 一時ファイル: QR 取込時のみ `temp_geojson_<timestamp>.geojson` を作成。次回起動(detached)または再読込時に削除。
 
 ### 5.3 権限
@@ -84,7 +84,7 @@
 ### 5.8 UI
 - Home (`home_page.dart`): 大型ステータス円で状態表示（INNER/NEAR/OUTER 等、色付き）。`waitStart` ではタップで監視開始。GeoJSON ファイル名と GPS 精度を常時表示。OUTER（または Developer mode）で距離/方位ナビ表示。最新 5 件のアプリ内ログをカードで閲覧。エラーは Snackbar。
 - Settings (`settings_page.dart`): 設定フォーム（Inner buffer, GPS 精度閾値, Leave confirm サンプル/秒, Alarm 音量）。Developer mode トグル。ログ JSON エクスポート（メモリ上の `EventLogger` 内容をその場表示）。
-- QR Scanner (`qr_scanner_page.dart`): `mobile_scanner` で `gjb1` スキーム QR を読み取り、`AppController.reloadGeoJsonFromQr` へ連携。処理中オーバーレイとエラーバナーを表示。
+- QR Scanner (`qr_scanner_page.dart`): `mobile_scanner` で `gjz1` スキーム QR を読み取り、`AppController.reloadGeoJsonFromQr` へ連携。処理中オーバーレイとエラーバナーを表示。
 - テーマ: Material3、Seed color Blue。文言は日本語中心で一部英語残り。
 
 ## 6. データ/設定リファレンス
@@ -97,8 +97,8 @@
   - EventLogger: `location`（lat/lon/accuracy/battery）、`state`（status/distance/accuracy/bearing/nearest/notes）をメモリ配列に追加。`exportJsonl()` で JSON 文字列を返すのみ。
 
 ## 7. 依存・アセット
-- 主要パッケージ: geolocator, flutter_local_notifications, permission_handler, mobile_scanner, file_selector, provider, vibration, flutter_ringtone_player, brotli, qr, image, crypto。
-- CLI 依存: QR エンコード時のみ `brotli` コマンドが必要（パス探索: `_BrotliCli.resolve()` が `BROTLI_CLI` 環境変数や where/which を検索）。
+- 主要パッケージ: geolocator, flutter_local_notifications, permission_handler, mobile_scanner, file_selector, provider, vibration, flutter_ringtone_player, qr, image, crypto。
+- CLI 依存: なし。QR エンコード/デコードは Dart 標準の gzip とアプリ依存パッケージのみで完結。
 - アセット: `assets/config/default_config.json`（初期設定）、`assets/geojson/map.geojson`（サンプル／テスト用、アプリ起動時には自動ロードされない）、`assets/sounds/alarm.mp3`（警告音）、`icon.png`。
 
 ## 8. 品質・テスト
@@ -109,13 +109,13 @@
 ## 9. 強み（実装で裏付けられるポイント）
 - ノイズ耐性: サンプル数＋経過秒数によるヒステリシスで誤検知を抑制しつつ、精度不良時も OUTER 維持・距離算出を試みる（`state_machine.dart`）。
 - 詳細な距離/方位ガイダンス: 最近傍境界点と方位を常時計算し、OUTER で移動ヒントを出せる（`_buildNavHint`, `_cardinalFromBearing`）。
-- オフライン配布: Brotli 圧縮＋SHA-256 ハッシュ付き QR（分割にも対応）でエリアデータを物理的に配布可能（`qr/geojson_qr_codec.dart`）。
+- オフライン配布: gzip 圧縮＋SHA-256 ハッシュ付き QRでエリアデータを物理的に配布可能（`qr/geojson_qr_codec.dart`）。
 - フルアラート: クリティカル通知＋ループアラーム音＋連続バイブで確実に気付ける。音量はユーザー設定反映。
 - デベロッパーモード: エリア内でも距離/方位やログを確認でき、現地調査・検証に向く。
 
 ## 10. 弱み / リスク（現状コード由来）
 - ポーリング前提: OS ネイティブ geofence を使わず Geolocator の高頻度ストリーム依存。電池負荷と端末設定（省電力）に左右される。
-- 外部依存: QR エンコードは外部 `brotli` CLI が無いと失敗（デフォルトで同梱されない）。デコードは可能。
+- 外部依存: QR エンコード/デコードに外部CLIは不要。
 - GeoJSON サポートの簡素さ: 最初のリングしか読まないため穴 (holes) や複数リングを無視。MultiPolygon も各ポリゴンの一番外側のみ。高精度ジオフェンスには不十分な場合がある。
 - 設定項目の遊休: `sample_distance_m` と `screen_wake_on_leave` は UI/ロジックで未使用。設定と実挙動が乖離する恐れ。
 - ログ永続化なし: UI ログはメモリ 200 件のみ、EventLogger もメモリのみ。`FileManager.openLogFile()` は未使用で実ファイルに残らない。

@@ -19,7 +19,7 @@
 
 - **初回起動**: `assets/geojson/sample_area.geojson` をバンドルロードを試行。失敗時はエラーログを記録し、`waitGeoJson` 状態を維持。
 - **ファイルピッカー**: ユーザは FloatingActionButton（「Load GeoJSON」ラベル）またはファイルピッカーで `.geojson` / `.json` を再ロード可能。
-- **QRコード読み込み**: ユーザは FloatingActionButton（「Read QR code」ラベル）でQRコードをスキャンし、GeoJSONを読み込むことが可能。QRコードは `gjb1:` スキームで始まる必要がある。読み込んだGeoJSONは一時ファイルとして保存され、アプリ終了時に自動削除される。
+- **QRコード読み込み**: ユーザは FloatingActionButton（「Read QR code」ラベル）でQRコードをスキャンし、GeoJSONを読み込むことが可能。QRコードは `gjz1:` スキームで始まる必要がある。読み込んだGeoJSONは一時ファイルとして保存され、アプリ終了時に自動削除される。
 - **ファイル名処理**: 読み込んだファイル名は `.geojson` 拡張子に正規化され、UI に表示される。QRコードから読み込んだ場合は `temp_geojson_<timestamp>.geojson` という名前で一時ファイルとして保存される。
 - **エラー処理**: 読み込み失敗はエラーバナーとログ（レベル ERROR）で通知。`FormatException` とその他の例外を区別して表示。QRコードの形式が無効な場合やデコードに失敗した場合も適切にエラーを表示する。
 
@@ -160,7 +160,7 @@ lib/
 │   ├── location_service.dart  # 位置情報サービス（Geolocator抽象化）
 │   └── notifier.dart          # 通知・アラーム制御
 ├── qr/                         # QRコード機能
-│   └── geojson_qr_codec.dart  # GeoJSONとQRコードの相互変換（Brotli圧縮、Base64URLエンコード）
+│   └── geojson_qr_codec.dart  # GeoJSONとQRコードの相互変換（gzip圧縮、Base64URLエンコード）
 ├── io/                         # ファイルI/Oと設定管理
 │   ├── config.dart            # AppConfig定義とJSONシリアライゼーション
 │   ├── file_manager.dart      # 設定ファイル・GeoJSONファイルの読み書き
@@ -181,7 +181,7 @@ lib/
 | ジオメトリ       | `GeoModel`, `GeoPolygon`, `LatLng`                                             | GeoJSON パース、ポリゴンデータの保持。                                               |
 | 空間インデックス | `AreaIndex`                                                                    | ポリゴンの境界ボックスによる空間インデックス。位置に基づいて候補ポリゴンを絞り込み。 |
 | 点とポリゴン判定 | `PointInPolygon`, `PointInPolygonEvaluation`                                   | Ray Casting による包含判定、最近接点・距離・方位角の計算。                           |
-| QRコード         | `GeoJsonQrCodec`, `encodeGeoJson`, `decodeGeoJson`                            | GeoJSONのBrotli圧縮、Base64URLエンコード、QRコード生成・復元。                      |
+| QRコード         | `GeoJsonQrCodec`, `encodeGeoJson`, `decodeGeoJson`                            | GeoJSONのgzip圧縮、Base64URLエンコード、QRコード生成・復元。                        |
 | 位置サービス     | `LocationService`, `GeolocatorLocationService`, `LocationFix`                  | 位置ストリームの開始・停止、権限確認、プラットフォーム固有設定。                     |
 | 通知             | `Notifier`, `AlarmPlayer`（`RingtoneAlarmPlayer`）, `LocalNotificationsClient` | 通知チャンネル作成、アラーム音制御、バッジ状態。                                     |
 | ログ             | `EventLogger`, `AppLogEntry`, `AppLogLevel`                                    | GPS・状態イベントのメモリ記録と UI 連携、JSON エクスポート。                         |
@@ -203,7 +203,7 @@ lib/
 - **StateMachine** ← GeoModel, AreaIndex, PointInPolygon, AppConfig, HysteresisCounter
 - **GeoModel** ← GeoJSON（パース）
 - **PointInPolygon** ← 地理計算（Haversine公式など）
-- **GeoJsonQrCodec** ← Brotli（CLI）、Base64URL、SHA256、QR生成
+- **GeoJsonQrCodec** ← gzip、Base64URL、SHA256、QR生成
 - **QrScannerPage** ← AppController（Provider経由）、MobileScanner
 - **UI** ← AppController（Provider経由）
 
@@ -509,33 +509,30 @@ stateDiagram-v2
 ### 5.1.1 エンコード処理
 
 - **最小化**: GeoJSON文字列から不要な空白（改行、スペース、タブ）を除去し、構造を保持。
-- **圧縮**: Brotli圧縮（品質11、最大圧縮）を使用。外部`brotli`CLIツールを呼び出し。
+- **圧縮**: gzip圧縮（level=9）を使用。外部CLIは不要。
 - **エンコード**: Base64URLエンコード（パディングなし、URL-safe文字）。
 - **ハッシュ**: 最小化されたGeoJSONのSHA256ハッシュを計算（16進数文字列）。
 - **QRテキスト形式**: 
-  - 単一QR: `gjb1:<base64url_payload>#<hash>`
-  - 分割QR: `gjb1p:<chunk_index>/<total_chunks>:<base64url_chunk>#<hash>`（最後のチャンクのみハッシュを含む）
-- **分割条件**: QRテキスト長が`maxQrTextLength`（デフォルト2500文字）を超える場合、自動的に分割。
+  - 単一QR: `gjz1:<base64url_payload>#<hash>`
+- **容量制限**: QRテキスト長が`maxQrTextLength`（デフォルト2500文字）を超える場合、`PayloadTooLargeException`を返す。
 - **QR画像生成**: PNG形式でQRコード画像を生成（オプション、デフォルト有効）。
 
 ### 5.1.2 デコード処理
 
-- **スキーム検証**: QRテキストが`gjb1:`または`gjb1p:`で始まることを確認。
-- **分割QR処理**: `gjb1p:`スキームの場合、チャンクをマージしてからデコード。
+- **スキーム検証**: QRテキストが`gjz1:`で始まることを確認。
 - **Base64URLデコード**: パディングを自動補完してデコード。
-- **Brotli展開**: `brotli`パッケージを使用して展開。
+- **gzip展開**: Dart標準の`GZipCodec`で展開。
 - **ハッシュ検証**: 復元されたGeoJSONのハッシュを計算し、QRテキストに含まれるハッシュと比較（`verifyHash=true`の場合）。
 - **GeoJSON検証**: 復元された文字列が有効なGeoJSONであることを確認（`type`フィールドの存在）。
 
 ### 5.1.3 エラーハンドリング
 
 - **GeoJsonValidationException**: GeoJSONの構造が無効な場合。
-- **CompressFailedException**: Brotli圧縮に失敗した場合。
-- **DecompressFailedException**: Brotli展開に失敗した場合。
+- **CompressFailedException**: gzip圧縮に失敗した場合。
+- **DecompressFailedException**: gzip展開に失敗した場合。
 - **DecodeFailedException**: Base64URLデコードに失敗した場合。
 - **HashMismatchException**: ハッシュが一致しない場合。
 - **UnsupportedSchemeException**: サポートされていないスキームの場合。
-- **ChunkMismatchException**: 分割QRコードのチャンクが欠損または不一致の場合。
 - **PayloadTooLargeException**: QRコードの容量を超える場合。
 
 ### 5.1.4 一時ファイル管理
@@ -651,7 +648,7 @@ stateDiagram-v2
   - `point_in_polygon_test.dart`: 点とポリゴンの関係判定。
   - `platform/notifier_test.dart`: OUTER→INNER→OUTER でアラーム切り替え。
   - `app_controller_test.dart`: GeoJSON 再読込で waitStart 状態・アラーム停止を確認、QRコードからの読み込み。
-  - `qr/geojson_qr_codec_test.dart`: QRコードエンコード・デコード、Brotli圧縮、ハッシュ検証。
+  - `qr/geojson_qr_codec_test.dart`: QRコードエンコード・デコード、gzip圧縮、ハッシュ検証。
   - `ui/qr_scanner_page_test.dart`: QRスキャン画面の表示とナビゲーション。
 
 - `flutter analyze` を CI ベースラインとし、警告ゼロを維持。
