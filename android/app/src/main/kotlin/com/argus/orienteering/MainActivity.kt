@@ -1,10 +1,8 @@
 package com.argus.orienteering
 
 import android.content.Context
-import android.media.AudioManager
-import android.media.Ringtone
-import android.media.RingtoneManager
-import android.net.Uri
+import android.media.AudioAttributes
+import android.media.MediaPlayer
 import android.os.Build
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -50,7 +48,7 @@ class MainActivity : FlutterActivity() {
 }
 
 private object NativeAlarmPlayer {
-    private var ringtone: Ringtone? = null
+    private var mediaPlayer: MediaPlayer? = null
 
     @Synchronized
     fun play(context: Context, requestedVolume: Double) {
@@ -58,36 +56,32 @@ private object NativeAlarmPlayer {
 
         val volume = requestedVolume.coerceIn(0.0, 1.0).toFloat()
         val appContext = context.applicationContext
-        val alarmUri = resolveAlarmUri(appContext) ?: return
-        ringtone = RingtoneManager.getRingtone(appContext, alarmUri)?.apply {
-            @Suppress("DEPRECATION")
-            streamType = AudioManager.STREAM_ALARM
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                isLooping = true
-                setVolume(volume)
-            }
-            play()
+        val attributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_ALARM)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
+        mediaPlayer = MediaPlayer.create(appContext, R.raw.alarm, attributes, 0)?.apply {
+            isLooping = true
+            setVolume(volume, volume)
+            start()
         }
     }
 
     @Synchronized
     fun stop(context: Context? = null) {
-        ringtone?.let { player ->
+        mediaPlayer?.let { player ->
             try {
-                player.stop()
+                if (player.isPlaying) {
+                    player.stop()
+                }
             } catch (_: RuntimeException) {
                 // The player may already be stopping while the activity is being destroyed.
+            } finally {
+                player.release()
             }
         }
-        ringtone = null
+        mediaPlayer = null
         context?.let(::cancelVibration)
-    }
-
-    private fun resolveAlarmUri(context: Context): Uri? {
-        return RingtoneManager.getActualDefaultRingtoneUri(context, RingtoneManager.TYPE_ALARM)
-            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-            ?: RingtoneManager.getActualDefaultRingtoneUri(context, RingtoneManager.TYPE_RINGTONE)
-            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
     }
 
     private fun cancelVibration(context: Context) {
