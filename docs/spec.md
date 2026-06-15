@@ -77,16 +77,16 @@
 
 ### 1.6 通知とアラーム
 
-- **通知チャンネル**: `Argus警告`（ID: `argus_alerts`）。説明は「ジオフェンスの安全エリアから離れたときに通知します。」。
+- **通知チャンネル**: `ARGUS警告`（ID: `argus_alerts_visual`）。説明は「ジオフェンスの安全エリアから離れたときに通知します。」。通知自体の音は鳴らさず、アプリ同梱の警報 MP3 を別途ループ再生する。
 - **通知内容**: OUTER 状態への遷移時に通知を表示
-  - タイトル: `Argus警告`
+  - タイトル: `ARGUS警告`
   - 本文: `競技エリアから離れています。`（実装では「競技エリア」と記載）
-  - Android: `Importance.max`, `Priority.max`, `fullScreenIntent: true`, `category: AndroidNotificationCategory.alarm`
+  - Android: `Importance.max`, `Priority.max`, `playSound: false`, `enableVibration: true`, `category: AndroidNotificationCategory.alarm`
   - iOS: `interruptionLevel: InterruptionLevel.critical`
 - **Foreground Service 通知**: Android 背景計測用に「Argusが位置情報を監視中です」「画面を消しても位置情報の追跡は継続されます。」を表示。
-- **アラーム音**: `flutter_ringtone_player` によるループ再生（`looping: true`, `volume: 1.0`, `asAlarm: true`）。`Notifier.stopAlarm()` で停止。
+- **アラーム音**: Android は `MediaPlayer` で `android/app/src/main/res/raw/alarm.mp3` を `USAGE_ALARM` としてループ再生する。非 Android は `flutter_ringtone_player` で `assets/sounds/alarm.mp3` をループ再生する。`Notifier.stopAlarm()` で停止。
 - **復帰通知**: INNER/NEAR 復帰時に通知をキャンセルし、アラームを停止。
-- **権限要求**: 初期化時に通知権限を要求（`alert`, `badge`, `sound`, `critical`）。
+- **権限要求**: 通知・位置情報の権限状態は `PermissionCoordinator` が確認・要求する。`Notifier` は通知権限を直接要求しない。
 
 ### 1.7 退避ナビゲーション
 
@@ -135,7 +135,7 @@
 - **パフォーマンス**: 位置取得・状態評価・ログ記録はいずれも非同期処理で UI スレッドを阻害しない。`AreaIndex` による空間インデックスで評価対象ポリゴンを絞り込み。
 - **電力消費**: Android は WakeLock を活用しつつも位置リクエスト間隔は設定値で調整可能。iOS はバックグラウンド許可前提。
 - **データ永続化**: 設定はアプリドキュメントディレクトリの `config.json` に保存。存在しない場合はデフォルト設定をロード。ログはメモリのみで保持し、最大 200 件のリングバッファ管理（`AppController._logs`）。
-- **権限**: 初期化時に通知・位置情報（常時）許可を順序立てて要求。拒否時はアプリ設定画面への誘導。
+- **権限**: `PermissionCoordinator` が通知・位置情報（常時）許可を順序立てて確認・要求する。拒否時はアプリ設定画面への誘導。
 - **ローカライズ**: 通知文言、位置許可文言、UI 文言は日本語がデフォルト。
 
 ---
@@ -183,7 +183,7 @@ lib/
 | 点とポリゴン判定 | `PointInPolygon`, `PointInPolygonEvaluation`                                   | Ray Casting による包含判定、最近接点・距離・方位角の計算。                           |
 | QRコード         | `GeoJsonQrCodec`, `encodeGeoJson`, `decodeGeoJson`                            | GeoJSONのgzip圧縮、Base64URLエンコード、QRコード生成・復元。                        |
 | 位置サービス     | `LocationService`, `GeolocatorLocationService`, `LocationFix`                  | 位置ストリームの開始・停止、権限確認、プラットフォーム固有設定。                     |
-| 通知             | `Notifier`, `AlarmPlayer`（`RingtoneAlarmPlayer`）, `LocalNotificationsClient` | 通知チャンネル作成、アラーム音制御、バッジ状態。                                     |
+| 通知             | `Notifier`, `AlarmPlayer`（`RingtoneAlarmPlayer`）, `LocalNotificationsClient`, Android `MediaPlayer` | 通知チャンネル作成、同梱アラーム音制御、バッジ状態。                                  |
 | ログ             | `EventLogger`, `AppLogEntry`, `AppLogLevel`                                    | GPS・状態イベントのメモリ記録と UI 連携、JSON エクスポート。                         |
 | I/O              | `FileManager`, `AppConfig`                                                     | 設定・GeoJSON ファイルの読み書き、ファイルピッカー。                                 |
 | UI               | `HomePage`, `SettingsPage`, `QrScannerPage`, `ArgusApp`                       | 画面構成とユーザ操作ルーティング。                                                   |
@@ -569,19 +569,19 @@ stateDiagram-v2
 
 ### 7.1 通知チャンネル
 
-- **ID**: `argus_alerts`
-- **名前**: `Argus警告`
+- **ID**: `argus_alerts_visual`
+- **名前**: `ARGUS警告`
 - **説明**: `ジオフェンスの安全エリアから離れたときに通知します。`
-- **Android 設定**: `Importance.max`, `playSound: true`, `enableVibration: true`, `audioAttributesUsage: AudioAttributesUsage.alarm`
+- **Android 設定**: `Importance.max`, `playSound: false`, `enableVibration: true`
 
 ### 7.2 OUTER 通知
 
 - **通知ID**: `1001`
-- **タイトル**: `Argus警告`
+- **タイトル**: `ARGUS警告`
 - **本文**: `競技エリアから離れています。`（実装では「競技エリア」と記載）
-- **Android**: `fullScreenIntent: true`, `category: AndroidNotificationCategory.alarm`
+- **Android**: `Importance.max`, `Priority.max`, `category: AndroidNotificationCategory.alarm`, `playSound: false`, `enableVibration: true`
 - **iOS**: `interruptionLevel: InterruptionLevel.critical`
-- **アラーム**: 通知と同時にアラーム音をループ再生開始。
+- **アラーム**: 通知と同時に同梱の警報 MP3 をループ再生開始。Android では端末の既定アラーム音に依存しない。
 
 ### 7.3 復帰通知
 

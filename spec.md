@@ -23,7 +23,7 @@
 - `lib/state_machine/state_machine.dart` + `state.dart` + `hysteresis_counter.dart`: ジオフェンス状態遷移ロジック。
 - `lib/geo/geo_model.dart` / `area_index.dart` / `point_in_polygon.dart`: GeoJSON パーサ・境界インデックス・点とポリゴン判定/距離/方位計算。
 - `lib/platform/location_service.dart`: Geolocator を用いた位置ストリーム抽象＆実装。
-- `lib/platform/notifier.dart`: ローカル通知、アラーム音 (`assets/sounds/alarm.mp3`)、連続バイブ制御。
+- `lib/platform/notifier.dart`: ローカル通知、同梱アラーム音 (`assets/sounds/alarm.mp3` / Android `res/raw/alarm.mp3`)、連続バイブ制御。
 - `lib/io/config.dart` / `file_manager.dart`: 設定 JSON の永続化、GeoJSON ファイルピック。
 - `lib/io/logger.dart` / `log_entry.dart`: 状態変化・GPS 受信の JSON レコード化（メモリ内）。
 - `lib/qr/geojson_qr_codec.dart`: GeoJSON の QR エンコード/デコード（gzip 圧縮、外部CLI依存なし）。
@@ -76,10 +76,10 @@
 - 方位: Haversine を基に 0–360deg へ正規化。UI では 8 方位 (N/NE/…/NW) 併記。
 
 ### 5.7 通知・アラーム（`notifier.dart`）
-- チャンネル: `argus_alerts`（Android importance max / alarm 音属性）。タイトル「Argus警告」、本文「安全エリアを離脱しています。」。
-- OUTER: ローカル通知＋ループ再生のアラーム音＋連続バイブ（5 秒振動＋2 秒休止を繰り返し）。`Notifier.stopAlarm()` で両方停止。
+- チャンネル: `argus_alerts_visual`（Android importance max / 通知自体は無音、バイブ有効）。タイトル「ARGUS警告」、本文「競技エリアから離れています。」。
+- OUTER: ローカル通知＋同梱 MP3 のループ再生＋連続バイブ（5 秒振動＋2 秒休止を繰り返し）。Android は `MediaPlayer` で `res/raw/alarm.mp3` を `USAGE_ALARM` として再生する。`Notifier.stopAlarm()` で両方停止。
 - 復帰: OUTER 通知をキャンセルし、アラーム停止のみ。ログに “Returned to safe zone.” を出力。
-- 音量: ユーザー設定 0.0–1.0 を `RingtoneAlarmPlayer` に反映（初期 1.0）。
+- 音量: ユーザー設定 0.0–1.0 を `AlarmPlayer` に反映（初期 0.5）。警報音源自体は増幅済みの MP3 を同梱する。
 
 ### 5.8 UI
 - Home (`home_page.dart`): 大型ステータス円で状態表示（INNER/NEAR/OUTER 等、色付き）。`waitStart` ではタップで監視開始。GeoJSON ファイル名と GPS 精度を常時表示。OUTER（または Developer mode）で距離/方位ナビ表示。最新 5 件のアプリ内ログをカードで閲覧。エラーは Snackbar。
@@ -97,7 +97,7 @@
   - EventLogger: `location`（lat/lon/accuracy/battery）、`state`（status/distance/accuracy/bearing/nearest/notes）をメモリ配列に追加。`exportJsonl()` で JSON 文字列を返すのみ。
 
 ## 7. 依存・アセット
-- 主要パッケージ: geolocator, flutter_local_notifications, permission_handler, mobile_scanner, file_selector, provider, vibration, flutter_ringtone_player, qr, image, crypto。
+- 主要パッケージ: geolocator, flutter_local_notifications, permission_handler, mobile_scanner, file_selector, provider, vibration, flutter_ringtone_player（非 Android 再生用）, qr, image, crypto。
 - CLI 依存: なし。QR エンコード/デコードは Dart 標準の gzip とアプリ依存パッケージのみで完結。
 - アセット: `assets/config/default_config.json`（初期設定）、`assets/geojson/map.geojson`（サンプル／テスト用、アプリ起動時には自動ロードされない）、`assets/sounds/alarm.mp3`（警告音）、`icon.png`。
 
@@ -110,7 +110,7 @@
 - ノイズ耐性: サンプル数＋経過秒数によるヒステリシスで誤検知を抑制しつつ、精度不良時も OUTER 維持・距離算出を試みる（`state_machine.dart`）。
 - 詳細な距離/方位ガイダンス: 最近傍境界点と方位を常時計算し、OUTER で移動ヒントを出せる（`_buildNavHint`, `_cardinalFromBearing`）。
 - オフライン配布: gzip 圧縮＋SHA-256 ハッシュ付き QRでエリアデータを物理的に配布可能（`qr/geojson_qr_codec.dart`）。
-- フルアラート: クリティカル通知＋ループアラーム音＋連続バイブで確実に気付ける。音量はユーザー設定反映。
+- フルアラート: クリティカル通知＋同梱 MP3 のループアラーム音＋連続バイブで気付けるようにする。音量はユーザー設定反映。
 - デベロッパーモード: エリア内でも距離/方位やログを確認でき、現地調査・検証に向く。
 
 ## 10. 弱み / リスク（現状コード由来）

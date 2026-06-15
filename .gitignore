@@ -1,15 +1,20 @@
 # Miscellaneous
 *.class
+*.iml
 *.lock
 *.log
 *.pyc
 *.swp
 .buildlog/
 .history
+.idea/
 
 # 自走用
 codex-logs/
 tasks.md
+
+# Script/demo outputs
+scripts/output/
 
 # Flutter repo-specific
 /bin/cache/
