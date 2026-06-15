@@ -79,7 +79,7 @@
 - チャンネル: `argus_alerts_visual`（Android importance max / 通知自体は無音、バイブ有効）。タイトル「ARGUS警告」、本文「競技エリアから離れています。」。
 - OUTER: ローカル通知＋同梱 MP3 のループ再生＋連続バイブ（5 秒振動＋2 秒休止を繰り返し）。Android は `MediaPlayer` で `res/raw/alarm.mp3` を `USAGE_ALARM` として再生する。`Notifier.stopAlarm()` で両方停止。
 - 復帰: OUTER 通知をキャンセルし、アラーム停止のみ。ログに “Returned to safe zone.” を出力。
-- 音量: ユーザー設定 0.0–1.0 を `AlarmPlayer` に反映（初期 0.5）。警報音源自体は増幅済みの MP3 を同梱する。
+- 音量: ユーザー設定 0.0–1.0 を `AlarmPlayer` に反映（初期 0.5）。警報音源自体は増幅済みの MP3 を同梱する。Android では監視開始前に端末のアラーム音量を確認し、50% 未満なら開始せず音設定への導線を出す。
 
 ### 5.8 UI
 - Home (`home_page.dart`): 大型ステータス円で状態表示（INNER/NEAR/OUTER 等、色付き）。`waitStart` ではタップで監視開始。GeoJSON ファイル名と GPS 精度を常時表示。OUTER（または Developer mode）で距離/方位ナビ表示。最新 5 件のアプリ内ログをカードで閲覧。エラーは Snackbar。

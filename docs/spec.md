@@ -85,6 +85,7 @@
   - iOS: `interruptionLevel: InterruptionLevel.critical`
 - **Foreground Service 通知**: Android 背景計測用に「Argusが位置情報を監視中です」「画面を消しても位置情報の追跡は継続されます。」を表示。
 - **アラーム音**: Android は `MediaPlayer` で `android/app/src/main/res/raw/alarm.mp3` を `USAGE_ALARM` としてループ再生する。非 Android は `flutter_ringtone_player` で `assets/sounds/alarm.mp3` をループ再生する。`Notifier.stopAlarm()` で停止。
+- **音量チェック**: Android は監視開始前に端末のアラーム音量を確認し、50% 未満なら開始をブロックして音設定画面への導線を表示する。
 - **復帰通知**: INNER/NEAR 復帰時に通知をキャンセルし、アラームを停止。
 - **権限要求**: 通知・位置情報の権限状態は `PermissionCoordinator` が確認・要求する。`Notifier` は通知権限を直接要求しない。
 

@@ -1,16 +1,10 @@
 package com.argus.orienteering
 
 import android.content.Context
-<<<<<<< HEAD
-import android.media.AudioAttributes
-import android.media.MediaPlayer
-=======
 import android.content.Intent
+import android.media.AudioAttributes
 import android.media.AudioManager
-import android.media.Ringtone
-import android.media.RingtoneManager
-import android.net.Uri
->>>>>>> b2894d78b1264e83b16553c92e8e941188b47522
+import android.media.MediaPlayer
 import android.os.Build
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -113,8 +107,6 @@ private object NativeAlarmPlayer {
         context?.let(::cancelVibration)
     }
 
-<<<<<<< HEAD
-=======
     fun getAlarmVolumeState(context: Context): Map<String, Any> {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val current = audioManager.getStreamVolume(AudioManager.STREAM_ALARM)
@@ -126,15 +118,6 @@ private object NativeAlarmPlayer {
             "percent" to percent,
         )
     }
-
-    private fun resolveAlarmUri(context: Context): Uri? {
-        return RingtoneManager.getActualDefaultRingtoneUri(context, RingtoneManager.TYPE_ALARM)
-            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-            ?: RingtoneManager.getActualDefaultRingtoneUri(context, RingtoneManager.TYPE_RINGTONE)
-            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
-    }
-
->>>>>>> b2894d78b1264e83b16553c92e8e941188b47522
     private fun cancelVibration(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val manager = context.getSystemService(VibratorManager::class.java)

@@ -22,6 +22,8 @@ import 'state_machine/state_machine.dart';
 
 typedef QrImageAnalyzer = Future<String?> Function(String imagePath);
 
+const double minRequiredAlarmVolumePercent = 0.5;
+
 /// アプリケーション全体の状態と動作を管理するコントローラ。
 ///
 /// 位置情報の監視、GeoJSONの読み込み、設定管理、ログ記録などを統合的に処理します。
@@ -176,7 +178,7 @@ class AppController extends ChangeNotifier {
 
     try {
       final volumeState = await alarmVolumeClient.getAlarmVolumeState();
-      return volumeState.percent > 0.20;
+      return volumeState.percent >= minRequiredAlarmVolumePercent;
     } catch (error) {
       _logWarning('APP', 'Failed to check alarm volume: $error');
       return true;

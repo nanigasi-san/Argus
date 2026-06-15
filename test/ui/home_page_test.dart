@@ -436,7 +436,7 @@ void main() {
       (tester) async {
     final alarmVolumeClient = _FakeAlarmVolumeClient(
       states: const [
-        AlarmVolumeState(current: 3, max: 10, percent: 0.3),
+        AlarmVolumeState(current: 5, max: 10, percent: 0.5),
       ],
     );
     final controller = buildTestController(
@@ -471,7 +471,7 @@ void main() {
       permissionCoordinator: _GrantedPermissionCoordinator(),
       alarmVolumeClient: _FakeAlarmVolumeClient(
         states: const [
-          AlarmVolumeState(current: 2, max: 10, percent: 0.2),
+          AlarmVolumeState(current: 4, max: 10, percent: 0.4),
         ],
       ),
       isAndroid: true,
@@ -502,7 +502,7 @@ void main() {
       alarmVolumeClient: _FakeAlarmVolumeClient(
         states: const [
           AlarmVolumeState(current: 1, max: 10, percent: 0.1),
-          AlarmVolumeState(current: 3, max: 10, percent: 0.3),
+          AlarmVolumeState(current: 5, max: 10, percent: 0.5),
         ],
       ),
       isAndroid: true,

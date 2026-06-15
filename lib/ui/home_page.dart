@@ -252,7 +252,7 @@ Future<void> _showAlarmVolumeGuidanceDialog(
       return AlertDialog(
         title: const Text('アラーム音量が低すぎます'),
         content: const Text(
-          '端末のアラーム音量が低いため、警報音が聞こえない可能性があります。音量を上げてから開始してください。',
+          '端末のアラーム音量が50%未満です。警報音が聞こえない可能性があるため、50%以上に上げてから開始してください。',
         ),
         actions: [
           TextButton(
