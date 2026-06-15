@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show compute;
+import 'package:flutter/foundation.dart' show compute, kIsWeb;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:path_provider/path_provider.dart';
@@ -35,12 +35,19 @@ class AppController extends ChangeNotifier {
     required this.notifier,
     PermissionCoordinator? permissionCoordinator,
     QrImageAnalyzer? qrImageAnalyzer,
+    AlarmVolumeClient? alarmVolumeClient,
+    bool? isAndroid,
   })  : permissionCoordinator =
             permissionCoordinator ?? PermissionCoordinator(),
-        _qrImageAnalyzer = qrImageAnalyzer ?? _defaultQrImageAnalyzer;
+        _qrImageAnalyzer = qrImageAnalyzer ?? _defaultQrImageAnalyzer,
+        alarmVolumeClient =
+            alarmVolumeClient ?? const MethodChannelAlarmClient(),
+        _isAndroidOverride = isAndroid;
 
   final PermissionCoordinator permissionCoordinator;
   final QrImageAnalyzer _qrImageAnalyzer;
+  final AlarmVolumeClient alarmVolumeClient;
+  final bool? _isAndroidOverride;
 
   final StateMachine stateMachine;
   final LocationService locationService;
@@ -83,6 +90,7 @@ class AppController extends ChangeNotifier {
       _snapshot.status == LocationStateStatus.outer && !_isAlarmSnoozed;
   MonitoringPermissionState get monitoringPermissionState =>
       _monitoringPermissionState;
+  bool get _isAndroid => _isAndroidOverride ?? (!kIsWeb && Platform.isAndroid);
   bool get canStartMonitoring =>
       geoJsonLoaded && _monitoringPermissionState.canStartMonitoring;
   bool get shouldShowPermissionSetupCard =>
@@ -159,6 +167,29 @@ class AppController extends ChangeNotifier {
     _lastErrorMessage = null;
     _logInfo('APP', 'Monitoring started.');
     notifyListeners();
+  }
+
+  Future<bool> canStartWithCurrentAlarmVolume() async {
+    if (!_isAndroid) {
+      return true;
+    }
+
+    try {
+      final volumeState = await alarmVolumeClient.getAlarmVolumeState();
+      return volumeState.percent > 0.20;
+    } catch (error) {
+      _logWarning('APP', 'Failed to check alarm volume: $error');
+      return true;
+    }
+  }
+
+  Future<bool> openAlarmSoundSettings() async {
+    try {
+      return await alarmVolumeClient.openSoundSettings();
+    } catch (error) {
+      _logWarning('APP', 'Failed to open sound settings: $error');
+      return false;
+    }
   }
 
   /// 位置情報の監視を停止します。

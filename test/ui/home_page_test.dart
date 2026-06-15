@@ -29,6 +29,14 @@ Future<void> _pumpHome(
   await tester.pumpAndSettle();
 }
 
+Future<void> _tapWaitStart(WidgetTester tester) async {
+  final statusTapTarget = find.ancestor(
+    of: find.text('スタート待機'),
+    matching: find.byType(InkWell),
+  );
+  await tester.tap(statusTapTarget.first);
+}
+
 void main() {
   tearDown(() async {
     await clearUrlLauncherMock();
@@ -426,9 +434,16 @@ void main() {
 
   testWidgets('tapping wait-start status starts monitoring when permitted',
       (tester) async {
+    final alarmVolumeClient = _FakeAlarmVolumeClient(
+      states: const [
+        AlarmVolumeState(current: 3, max: 10, percent: 0.3),
+      ],
+    );
     final controller = buildTestController(
       hasGeoJson: true,
       permissionCoordinator: _GrantedPermissionCoordinator(),
+      alarmVolumeClient: alarmVolumeClient,
+      isAndroid: true,
       snapshot: StateSnapshot(
         status: LocationStateStatus.waitStart,
         timestamp: DateTime.utc(2024, 1, 1),
@@ -446,6 +461,181 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(locationService.hasStarted, isTrue);
+    expect(alarmVolumeClient.checkCount, 1);
+  });
+
+  testWidgets('low Android alarm volume blocks monitoring and shows dialog',
+      (tester) async {
+    final controller = buildTestController(
+      hasGeoJson: true,
+      permissionCoordinator: _GrantedPermissionCoordinator(),
+      alarmVolumeClient: _FakeAlarmVolumeClient(
+        states: const [
+          AlarmVolumeState(current: 2, max: 10, percent: 0.2),
+        ],
+      ),
+      isAndroid: true,
+      snapshot: StateSnapshot(
+        status: LocationStateStatus.waitStart,
+        timestamp: DateTime.utc(2024, 1, 1),
+        geoJsonLoaded: true,
+      ),
+    );
+    final locationService = controller.locationService as FakeLocationService;
+
+    await _pumpHome(tester, controller);
+    await _tapWaitStart(tester);
+    await tester.pumpAndSettle();
+
+    expect(locationService.hasStarted, isFalse);
+    expect(find.text('アラーム音量が低すぎます'), findsOneWidget);
+    expect(find.text('音設定を開く'), findsOneWidget);
+    expect(find.text('再確認'), findsOneWidget);
+    expect(find.text('キャンセル'), findsOneWidget);
+  });
+
+  testWidgets('recheck starts monitoring after Android alarm volume is raised',
+      (tester) async {
+    final controller = buildTestController(
+      hasGeoJson: true,
+      permissionCoordinator: _GrantedPermissionCoordinator(),
+      alarmVolumeClient: _FakeAlarmVolumeClient(
+        states: const [
+          AlarmVolumeState(current: 1, max: 10, percent: 0.1),
+          AlarmVolumeState(current: 3, max: 10, percent: 0.3),
+        ],
+      ),
+      isAndroid: true,
+      snapshot: StateSnapshot(
+        status: LocationStateStatus.waitStart,
+        timestamp: DateTime.utc(2024, 1, 1),
+        geoJsonLoaded: true,
+      ),
+    );
+    final locationService = controller.locationService as FakeLocationService;
+
+    await _pumpHome(tester, controller);
+    await _tapWaitStart(tester);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('再確認'));
+    await tester.pumpAndSettle();
+
+    expect(locationService.hasStarted, isTrue);
+    expect(find.text('アラーム音量が低すぎます'), findsNothing);
+  });
+
+  testWidgets('cancel keeps monitoring stopped after low alarm volume',
+      (tester) async {
+    final controller = buildTestController(
+      hasGeoJson: true,
+      permissionCoordinator: _GrantedPermissionCoordinator(),
+      alarmVolumeClient: _FakeAlarmVolumeClient(
+        states: const [
+          AlarmVolumeState(current: 0, max: 10, percent: 0),
+        ],
+      ),
+      isAndroid: true,
+      snapshot: StateSnapshot(
+        status: LocationStateStatus.waitStart,
+        timestamp: DateTime.utc(2024, 1, 1),
+        geoJsonLoaded: true,
+      ),
+    );
+    final locationService = controller.locationService as FakeLocationService;
+
+    await _pumpHome(tester, controller);
+    await _tapWaitStart(tester);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('キャンセル'));
+    await tester.pumpAndSettle();
+
+    expect(locationService.hasStarted, isFalse);
+    expect(find.text('アラーム音量が低すぎます'), findsNothing);
+  });
+
+  testWidgets('alarm volume check failure does not block monitoring',
+      (tester) async {
+    final controller = buildTestController(
+      hasGeoJson: true,
+      permissionCoordinator: _GrantedPermissionCoordinator(),
+      alarmVolumeClient: _FakeAlarmVolumeClient(throwOnCheck: true),
+      isAndroid: true,
+      snapshot: StateSnapshot(
+        status: LocationStateStatus.waitStart,
+        timestamp: DateTime.utc(2024, 1, 1),
+        geoJsonLoaded: true,
+      ),
+    );
+    final locationService = controller.locationService as FakeLocationService;
+
+    await _pumpHome(tester, controller);
+    await _tapWaitStart(tester);
+    await tester.pumpAndSettle();
+
+    expect(locationService.hasStarted, isTrue);
+    expect(
+      controller.logs.any(
+        (entry) => entry.message.startsWith('Failed to check alarm volume:'),
+      ),
+      isTrue,
+    );
+  });
+
+  testWidgets('non-Android start is not blocked by alarm volume check',
+      (tester) async {
+    final alarmVolumeClient = _FakeAlarmVolumeClient(
+      states: const [
+        AlarmVolumeState(current: 0, max: 10, percent: 0),
+      ],
+    );
+    final controller = buildTestController(
+      hasGeoJson: true,
+      permissionCoordinator: _GrantedPermissionCoordinator(),
+      alarmVolumeClient: alarmVolumeClient,
+      isAndroid: false,
+      snapshot: StateSnapshot(
+        status: LocationStateStatus.waitStart,
+        timestamp: DateTime.utc(2024, 1, 1),
+        geoJsonLoaded: true,
+      ),
+    );
+    final locationService = controller.locationService as FakeLocationService;
+
+    await _pumpHome(tester, controller);
+    await _tapWaitStart(tester);
+    await tester.pumpAndSettle();
+
+    expect(locationService.hasStarted, isTrue);
+    expect(alarmVolumeClient.checkCount, 0);
+  });
+
+  testWidgets('sound settings failure shows snackbar', (tester) async {
+    final alarmVolumeClient = _FakeAlarmVolumeClient(
+      states: const [
+        AlarmVolumeState(current: 1, max: 10, percent: 0.1),
+      ],
+      openResult: false,
+    );
+    final controller = buildTestController(
+      hasGeoJson: true,
+      permissionCoordinator: _GrantedPermissionCoordinator(),
+      alarmVolumeClient: alarmVolumeClient,
+      isAndroid: true,
+      snapshot: StateSnapshot(
+        status: LocationStateStatus.waitStart,
+        timestamp: DateTime.utc(2024, 1, 1),
+        geoJsonLoaded: true,
+      ),
+    );
+
+    await _pumpHome(tester, controller);
+    await _tapWaitStart(tester);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('音設定を開く'));
+    await tester.pumpAndSettle();
+
+    expect(alarmVolumeClient.openSettingsCount, 1);
+    expect(find.text('音設定を開けませんでした。'), findsOneWidget);
   });
 
   testWidgets('QR action opens scanner page', (tester) async {
@@ -572,5 +762,37 @@ class _GrantedPermissionCoordinator extends PermissionCoordinator {
       locationAlwaysStatus: PermissionStatus.granted,
       locationServicesEnabled: true,
     );
+  }
+}
+
+class _FakeAlarmVolumeClient implements AlarmVolumeClient {
+  _FakeAlarmVolumeClient({
+    this.states = const [
+      AlarmVolumeState(current: 10, max: 10, percent: 1),
+    ],
+    this.throwOnCheck = false,
+    this.openResult = true,
+  });
+
+  final List<AlarmVolumeState> states;
+  final bool throwOnCheck;
+  final bool openResult;
+  int checkCount = 0;
+  int openSettingsCount = 0;
+
+  @override
+  Future<AlarmVolumeState> getAlarmVolumeState() async {
+    checkCount += 1;
+    if (throwOnCheck) {
+      throw StateError('volume unavailable');
+    }
+    final index = (checkCount - 1).clamp(0, states.length - 1);
+    return states[index];
+  }
+
+  @override
+  Future<bool> openSoundSettings() async {
+    openSettingsCount += 1;
+    return openResult;
   }
 }

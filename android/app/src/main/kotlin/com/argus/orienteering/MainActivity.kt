@@ -1,11 +1,20 @@
 package com.argus.orienteering
 
 import android.content.Context
+<<<<<<< HEAD
 import android.media.AudioAttributes
 import android.media.MediaPlayer
+=======
+import android.content.Intent
+import android.media.AudioManager
+import android.media.Ringtone
+import android.media.RingtoneManager
+import android.net.Uri
+>>>>>>> b2894d78b1264e83b16553c92e8e941188b47522
 import android.os.Build
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -24,6 +33,12 @@ class MainActivity : FlutterActivity() {
                     "stop" -> {
                         NativeAlarmPlayer.stop(applicationContext)
                         result.success(null)
+                    }
+                    "getAlarmVolumeState" -> {
+                        result.success(NativeAlarmPlayer.getAlarmVolumeState(applicationContext))
+                    }
+                    "openSoundSettings" -> {
+                        result.success(openSoundSettings())
                     }
                     else -> result.notImplemented()
                 }
@@ -44,6 +59,20 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         private const val ALARM_CHANNEL = "argus/alarm"
+    }
+
+    private fun openSoundSettings(): Boolean {
+        return try {
+            startActivity(Intent(Settings.ACTION_SOUND_SETTINGS))
+            true
+        } catch (_: RuntimeException) {
+            try {
+                startActivity(Intent(Settings.ACTION_SETTINGS))
+                true
+            } catch (_: RuntimeException) {
+                false
+            }
+        }
     }
 }
 
@@ -84,6 +113,28 @@ private object NativeAlarmPlayer {
         context?.let(::cancelVibration)
     }
 
+<<<<<<< HEAD
+=======
+    fun getAlarmVolumeState(context: Context): Map<String, Any> {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val current = audioManager.getStreamVolume(AudioManager.STREAM_ALARM)
+        val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+        val percent = if (max > 0) current.toDouble() / max.toDouble() else 1.0
+        return mapOf(
+            "current" to current,
+            "max" to max,
+            "percent" to percent,
+        )
+    }
+
+    private fun resolveAlarmUri(context: Context): Uri? {
+        return RingtoneManager.getActualDefaultRingtoneUri(context, RingtoneManager.TYPE_ALARM)
+            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+            ?: RingtoneManager.getActualDefaultRingtoneUri(context, RingtoneManager.TYPE_RINGTONE)
+            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+    }
+
+>>>>>>> b2894d78b1264e83b16553c92e8e941188b47522
     private fun cancelVibration(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val manager = context.getSystemService(VibratorManager::class.java)
