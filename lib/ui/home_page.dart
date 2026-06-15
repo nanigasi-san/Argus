@@ -135,7 +135,10 @@ class _HomeScrollableContent extends StatelessWidget {
                                   LocationStateStatus.waitStart
                               ? () {
                                   if (controller.canStartMonitoring) {
-                                    controller.startMonitoring();
+                                    unawaited(_startMonitoringAfterAlarmCheck(
+                                      context,
+                                      controller,
+                                    ));
                                   } else {
                                     showBackgroundLocationDisclosure(context);
                                   }
@@ -215,6 +218,80 @@ class _HomeScrollableContent extends StatelessWidget {
       },
     );
   }
+}
+
+enum _AlarmVolumeDialogAction {
+  recheck,
+  cancel,
+}
+
+Future<void> _startMonitoringAfterAlarmCheck(
+  BuildContext context,
+  AppController controller,
+) async {
+  final canStart = await controller.canStartWithCurrentAlarmVolume();
+  if (!context.mounted) {
+    return;
+  }
+  if (canStart) {
+    await controller.startMonitoring();
+    return;
+  }
+
+  await _showAlarmVolumeGuidanceDialog(context, controller);
+}
+
+Future<void> _showAlarmVolumeGuidanceDialog(
+  BuildContext context,
+  AppController controller,
+) async {
+  final action = await showDialog<_AlarmVolumeDialogAction>(
+    context: context,
+    barrierDismissible: false,
+    builder: (dialogContext) {
+      return AlertDialog(
+        title: const Text('アラーム音量が低すぎます'),
+        content: const Text(
+          '端末のアラーム音量が低いため、警報音が聞こえない可能性があります。音量を上げてから開始してください。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              final opened = await controller.openAlarmSoundSettings();
+              if (!dialogContext.mounted || opened) {
+                return;
+              }
+              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                const SnackBar(
+                  content: Text('音設定を開けませんでした。'),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            },
+            child: const Text('音設定を開く'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop(_AlarmVolumeDialogAction.recheck);
+            },
+            child: const Text('再確認'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop(_AlarmVolumeDialogAction.cancel);
+            },
+            child: const Text('キャンセル'),
+          ),
+        ],
+      );
+    },
+  );
+
+  if (!context.mounted || action != _AlarmVolumeDialogAction.recheck) {
+    return;
+  }
+
+  await _startMonitoringAfterAlarmCheck(context, controller);
 }
 
 class _DeveloperDetails extends StatelessWidget {

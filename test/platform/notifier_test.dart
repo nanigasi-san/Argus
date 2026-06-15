@@ -269,13 +269,23 @@ void main() {
       expect(platform.stopCount, 1);
     });
 
-    test('MethodChannelAlarmClient sends play and stop methods', () async {
+    test('MethodChannelAlarmClient sends alarm channel methods', () async {
       final calls = <MethodCall>[];
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(
         const MethodChannel('argus/alarm'),
         (call) async {
           calls.add(call);
+          if (call.method == 'getAlarmVolumeState') {
+            return <String, Object?>{
+              'current': 2,
+              'max': 10,
+              'percent': 0.2,
+            };
+          }
+          if (call.method == 'openSoundSettings') {
+            return true;
+          }
           return null;
         },
       );
@@ -287,9 +297,20 @@ void main() {
       const client = MethodChannelAlarmClient();
       await client.play(volume: 0.25);
       await client.stop();
+      final volumeState = await client.getAlarmVolumeState();
+      final opened = await client.openSoundSettings();
 
-      expect(calls.map((call) => call.method), ['play', 'stop']);
+      expect(calls.map((call) => call.method), [
+        'play',
+        'stop',
+        'getAlarmVolumeState',
+        'openSoundSettings',
+      ]);
       expect(calls.first.arguments, {'volume': 0.25});
+      expect(volumeState.current, 2);
+      expect(volumeState.max, 10);
+      expect(volumeState.percent, 0.2);
+      expect(opened, isTrue);
     });
   });
 }

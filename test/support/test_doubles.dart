@@ -118,6 +118,8 @@ AppController buildTestController({
   MonitoringPermissionState? permissionState,
   PermissionCoordinator? permissionCoordinator,
   QrImageAnalyzer? qrImageAnalyzer,
+  AlarmVolumeClient? alarmVolumeClient,
+  bool? isAndroid,
 }) {
   final config = createTestConfig();
   final stateMachine = StateMachine(config: config);
@@ -134,6 +136,8 @@ AppController buildTestController({
     ),
     permissionCoordinator: permissionCoordinator,
     qrImageAnalyzer: qrImageAnalyzer,
+    alarmVolumeClient: alarmVolumeClient,
+    isAndroid: isAndroid,
   );
 
   GeoModel? geoModel;
