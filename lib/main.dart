@@ -7,11 +7,13 @@ import 'app_controller.dart';
 import 'theme/app_theme.dart';
 import 'ui/home_page.dart';
 
+// coverage:ignore-start
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final controller = await AppController.bootstrap();
   runApp(ArgusApp(controller: controller));
 }
+// coverage:ignore-end
 
 class ArgusApp extends StatefulWidget {
   const ArgusApp({super.key, required this.controller});

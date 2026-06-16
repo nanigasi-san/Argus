@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:brotli/brotli.dart' as brotli;
 import 'package:crypto/crypto.dart';
 import 'package:image/image.dart' as img;
 import 'package:qr/qr.dart';
@@ -11,7 +10,7 @@ import 'package:qr/qr.dart';
 class GeoJsonQrEncodeInput {
   const GeoJsonQrEncodeInput({
     required this.geoJson,
-    this.scheme = GeoJsonQrScheme.gjb1,
+    this.scheme = GeoJsonQrScheme.gjz1,
     this.enableHash = true,
     this.maxQrTextLength = 2500,
     this.eccLevel = QrErrorCorrectionLevel.quartile,
@@ -130,9 +129,6 @@ enum QrErrorCorrectionLevel {
 
 /// GeoJSON QRで使う圧縮/ペイロードスキーム。
 enum GeoJsonQrScheme {
-  /// Brotli圧縮。既存互換だが、生成には外部Brotli CLIが必要。
-  gjb1,
-
   /// gzip圧縮。Dart標準ライブラリのみで生成/復元できる。
   gjz1,
 }
@@ -140,8 +136,6 @@ enum GeoJsonQrScheme {
 extension GeoJsonQrSchemeName on GeoJsonQrScheme {
   String get wireName {
     switch (this) {
-      case GeoJsonQrScheme.gjb1:
-        return 'gjb1';
       case GeoJsonQrScheme.gjz1:
         return 'gjz1';
     }
@@ -174,9 +168,13 @@ Future<GeoJsonQrBundle> encodeGeoJson(GeoJsonQrEncodeInput input) async {
           quietZoneModules: input.quietZoneModules,
         ),
       ];
+      // coverage:ignore-start
     } on PayloadTooLargeException catch (e) {
+      // The lower-level encoder already covers this limit; this branch keeps
+      // the bundle API error type stable if PNG generation is requested.
       throw QrGenerationException(e.message, e);
     }
+    // coverage:ignore-end
   }
 
   return GeoJsonQrBundle(
@@ -190,7 +188,7 @@ Future<GeoJsonQrBundle> encodeGeoJson(GeoJsonQrEncodeInput input) async {
 
 bool isSupportedGeoJsonQrText(String text) {
   final normalized = text.trim();
-  return normalized.startsWith('gjb1:') || normalized.startsWith('gjz1:');
+  return normalized.startsWith('gjz1:');
 }
 
 /// QRテキストからGeoJSON文字列を復元する。
@@ -280,61 +278,15 @@ GeoJsonInfo validateGeoJsonStructure(dynamic decoded) {
   return GeoJsonInfo(type: type, featureCount: featureCount);
 }
 
-Future<Uint8List> brotliCompress(Uint8List bytes, {int quality = 11}) async {
-  try {
-    final executable = await _BrotliCli.instance.resolve();
-    final process = await Process.start(
-      executable,
-      ['--quality=$quality', '--stdout'],
-      runInShell: false,
-    );
-
-    final stdoutFuture = process.stdout.fold<List<int>>(
-      <int>[],
-      (previous, element) => previous..addAll(element),
-    );
-    final stderrFuture = process.stderr.fold<List<int>>(
-      <int>[],
-      (previous, element) => previous..addAll(element),
-    );
-
-    process.stdin.add(bytes);
-    await process.stdin.close();
-
-    final exitCode = await process.exitCode;
-    final stdoutBytes = Uint8List.fromList(await stdoutFuture);
-    final stderrBytes = Uint8List.fromList(await stderrFuture);
-
-    if (exitCode != 0) {
-      final message = stderrBytes.isEmpty
-          ? 'exit code $exitCode'
-          : utf8.decode(stderrBytes, allowMalformed: true);
-      throw CompressFailedException('Brotli CLI failed: $message');
-    }
-
-    return stdoutBytes;
-  } on GeoJsonQrException {
-    rethrow;
-  } catch (e) {
-    throw CompressFailedException('Brotli compression failed', e);
-  }
-}
-
 Uint8List gzipCompress(Uint8List bytes, {int level = 9}) {
   try {
     return Uint8List.fromList(GZipCodec(level: level).encode(bytes));
   } catch (e) {
+    // coverage:ignore-start
+    // Dart's gzip encoder does not expose a practical deterministic failure
+    // path for valid in-memory bytes.
     throw CompressFailedException('gzip compression failed', e);
-  }
-}
-
-Uint8List brotliDecompress(Uint8List bytes) {
-  try {
-    const decoder = brotli.BrotliDecoder();
-    final decompressed = decoder.convert(bytes);
-    return Uint8List.fromList(decompressed);
-  } catch (e) {
-    throw DecompressFailedException('Brotli decompression failed', e);
+    // coverage:ignore-end
   }
 }
 
@@ -374,8 +326,6 @@ Future<Uint8List> _compressForScheme(
   Uint8List bytes,
 ) {
   switch (scheme) {
-    case GeoJsonQrScheme.gjb1:
-      return brotliCompress(bytes);
     case GeoJsonQrScheme.gjz1:
       return Future.value(gzipCompress(bytes));
   }
@@ -383,8 +333,6 @@ Future<Uint8List> _compressForScheme(
 
 Uint8List _decompressForScheme(GeoJsonQrScheme scheme, Uint8List bytes) {
   switch (scheme) {
-    case GeoJsonQrScheme.gjb1:
-      return brotliDecompress(bytes);
     case GeoJsonQrScheme.gjz1:
       return gzipDecompress(bytes);
   }
@@ -416,13 +364,10 @@ String _buildSingleText(
   return '$prefix:$payload#$hashHex';
 }
 
-/// `gjb1` / `gjz1`テキストを解析する。
+/// `gjz1`テキストを解析する。
 QrPayload _parseQrPayload(List<String> texts) {
   if (texts.length == 1) {
     final text = texts.first;
-    if (text.startsWith('gjb1:')) {
-      return _parseSinglePayload(GeoJsonQrScheme.gjb1, text);
-    }
     if (text.startsWith('gjz1:')) {
       return _parseSinglePayload(GeoJsonQrScheme.gjz1, text);
     }
@@ -522,7 +467,11 @@ Uint8List generateQrPng(
     throw PayloadTooLargeException(
         'QR payload too large for the selected configuration');
   } catch (e) {
+    // coverage:ignore-start
+    // Image encoding failures are defensive; QR sizing errors are covered by
+    // the InputTooLongException branch above.
     throw QrGenerationException('Failed to render QR image', e);
+    // coverage:ignore-end
   }
 }
 
@@ -538,82 +487,6 @@ extension on QrErrorCorrectionLevel {
       case QrErrorCorrectionLevel.high:
         return QrErrorCorrectLevel.H;
     }
-  }
-}
-
-/// Brotli CLI の検索パスを明示的に設定する。`null`でリセット。
-void configureBrotliCliPath(String? path) {
-  _BrotliCli.instance.override(path);
-}
-
-class _BrotliCli {
-  _BrotliCli._();
-
-  static final _BrotliCli instance = _BrotliCli._();
-
-  String? _overridePath;
-  String? _cachedPath;
-
-  void override(String? path) {
-    final normalized = path?.trim();
-    _overridePath =
-        (normalized != null && normalized.isNotEmpty) ? normalized : null;
-    _cachedPath = null;
-  }
-
-  Future<String> resolve() async {
-    final candidates = <String?>[
-      _overridePath,
-      Platform.environment['BROTLI_CLI'],
-      if (_cachedPath != null) _cachedPath,
-      if (Platform.isWindows) ...[
-        await _which('brotli.exe'),
-        await _which('brotli'),
-        'C:\\Program Files\\QGIS 3.40.5\\bin\\brotli.exe',
-      ] else ...[
-        await _which('brotli'),
-      ],
-    ];
-
-    for (final candidate in candidates) {
-      if (candidate == null || candidate.isEmpty) {
-        continue;
-      }
-      final file = File(candidate);
-      if (await file.exists()) {
-        _cachedPath = file.path;
-        return file.path;
-      }
-    }
-
-    throw CompressFailedException(
-      'Brotli CLI not found. Install "brotli" command or set BROTLI_CLI.',
-    );
-  }
-
-  Future<String?> _which(String command) async {
-    try {
-      final result = await Process.run(
-        Platform.isWindows ? 'where' : 'which',
-        [command],
-        runInShell: Platform.isWindows,
-      );
-      if (result.exitCode == 0) {
-        final stdout = result.stdout is String
-            ? result.stdout as String
-            : utf8.decode(result.stdout as List<int>, allowMalformed: true);
-        final candidate = stdout
-            .split(RegExp(r'\r?\n'))
-            .map((line) => line.trim())
-            .firstWhere((line) => line.isNotEmpty, orElse: () => '');
-        if (candidate.isNotEmpty) {
-          return candidate;
-        }
-      }
-    } catch (_) {
-      // ignore
-    }
-    return null;
   }
 }
 

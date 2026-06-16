@@ -31,7 +31,7 @@ class Notifier {
     LocationStateStatus.waitGeoJson,
   );
 
-  static const _channelId = 'argus_alerts';
+  static const _channelId = 'argus_alerts_visual';
   static const _channelName = 'ARGUS警告';
   static const _channelDescription = 'ジオフェンスの安全エリアから離れたときに通知します。';
   static const int _outerNotificationId = 1001;
@@ -64,9 +64,8 @@ class Notifier {
         _channelName,
         description: _channelDescription,
         importance: Importance.max,
-        playSound: true,
+        playSound: false,
         enableVibration: true,
-        audioAttributesUsage: AudioAttributesUsage.alarm,
       ),
     );
 
@@ -82,11 +81,9 @@ class Notifier {
       channelDescription: _channelDescription,
       importance: Importance.max,
       priority: Priority.max,
-      playSound: true,
-      sound: RawResourceAndroidNotificationSound('alarm'),
+      playSound: false,
       enableVibration: true,
       category: AndroidNotificationCategory.alarm,
-      audioAttributesUsage: AudioAttributesUsage.alarm,
       ticker: 'ARGUS警告',
     );
     const iosDetails = DarwinNotificationDetails(
@@ -231,7 +228,39 @@ abstract class AlarmPlatformClient {
   Future<void> stop();
 }
 
-class MethodChannelAlarmClient implements AlarmPlatformClient {
+class AlarmVolumeState {
+  const AlarmVolumeState({
+    required this.current,
+    required this.max,
+    required this.percent,
+  });
+
+  factory AlarmVolumeState.fromMap(Map<Object?, Object?> map) {
+    final current = map['current'];
+    final max = map['max'];
+    final percent = map['percent'];
+    if (current is! int || max is! int || percent is! num) {
+      throw const FormatException('Invalid alarm volume state.');
+    }
+    return AlarmVolumeState(
+      current: current,
+      max: max,
+      percent: percent.toDouble(),
+    );
+  }
+
+  final int current;
+  final int max;
+  final double percent;
+}
+
+abstract class AlarmVolumeClient {
+  Future<AlarmVolumeState> getAlarmVolumeState();
+  Future<bool> openSoundSettings();
+}
+
+class MethodChannelAlarmClient
+    implements AlarmPlatformClient, AlarmVolumeClient {
   const MethodChannelAlarmClient();
 
   static const MethodChannel _channel = MethodChannel('argus/alarm');
@@ -251,6 +280,22 @@ class MethodChannelAlarmClient implements AlarmPlatformClient {
   @override
   Future<void> stop() {
     return _channel.invokeMethod<void>('stop');
+  }
+
+  @override
+  Future<AlarmVolumeState> getAlarmVolumeState() async {
+    final result = await _channel.invokeMapMethod<Object?, Object?>(
+      'getAlarmVolumeState',
+    );
+    if (result == null) {
+      throw const FormatException('Missing alarm volume state.');
+    }
+    return AlarmVolumeState.fromMap(result);
+  }
+
+  @override
+  Future<bool> openSoundSettings() async {
+    return await _channel.invokeMethod<bool>('openSoundSettings') ?? false;
   }
 }
 

@@ -1,11 +1,14 @@
 package com.argus.orienteering
 
 import android.content.Context
+import android.content.Intent
 import android.media.AudioAttributes
+import android.media.AudioManager
 import android.media.MediaPlayer
 import android.os.Build
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -24,6 +27,12 @@ class MainActivity : FlutterActivity() {
                     "stop" -> {
                         NativeAlarmPlayer.stop(applicationContext)
                         result.success(null)
+                    }
+                    "getAlarmVolumeState" -> {
+                        result.success(NativeAlarmPlayer.getAlarmVolumeState(applicationContext))
+                    }
+                    "openSoundSettings" -> {
+                        result.success(openSoundSettings())
                     }
                     else -> result.notImplemented()
                 }
@@ -45,6 +54,20 @@ class MainActivity : FlutterActivity() {
     companion object {
         private const val ALARM_CHANNEL = "argus/alarm"
     }
+
+    private fun openSoundSettings(): Boolean {
+        return try {
+            startActivity(Intent(Settings.ACTION_SOUND_SETTINGS))
+            true
+        } catch (_: RuntimeException) {
+            try {
+                startActivity(Intent(Settings.ACTION_SETTINGS))
+                true
+            } catch (_: RuntimeException) {
+                false
+            }
+        }
+    }
 }
 
 private object NativeAlarmPlayer {
@@ -56,25 +79,14 @@ private object NativeAlarmPlayer {
 
         val volume = requestedVolume.coerceIn(0.0, 1.0).toFloat()
         val appContext = context.applicationContext
-        val asset = appContext.resources.openRawResourceFd(R.raw.alarm) ?: return
-        try {
-            mediaPlayer = MediaPlayer().apply {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    setAudioAttributes(
-                        AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_ALARM)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                            .build()
-                    )
-                }
-                setDataSource(asset.fileDescriptor, asset.startOffset, asset.length)
-                isLooping = true
-                setVolume(volume, volume)
-                prepare()
-                start()
-            }
-        } finally {
-            asset.close()
+        val attributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_ALARM)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
+        mediaPlayer = MediaPlayer.create(appContext, R.raw.alarm, attributes, 0)?.apply {
+            isLooping = true
+            setVolume(volume, volume)
+            start()
         }
     }
 
@@ -85,7 +97,7 @@ private object NativeAlarmPlayer {
                 if (player.isPlaying) {
                     player.stop()
                 }
-            } catch (_: IllegalStateException) {
+            } catch (_: RuntimeException) {
                 // The player may already be stopping while the activity is being destroyed.
             } finally {
                 player.release()
@@ -95,6 +107,17 @@ private object NativeAlarmPlayer {
         context?.let(::cancelVibration)
     }
 
+    fun getAlarmVolumeState(context: Context): Map<String, Any> {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val current = audioManager.getStreamVolume(AudioManager.STREAM_ALARM)
+        val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+        val percent = if (max > 0) current.toDouble() / max.toDouble() else 1.0
+        return mapOf(
+            "current" to current,
+            "max" to max,
+            "percent" to percent,
+        )
+    }
     private fun cancelVibration(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val manager = context.getSystemService(VibratorManager::class.java)
@@ -107,5 +130,3 @@ private object NativeAlarmPlayer {
         vibrator?.cancel()
     }
 }
-
-

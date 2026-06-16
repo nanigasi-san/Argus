@@ -25,7 +25,12 @@ void main() {
     expect(copy.status, LocationStateStatus.outer);
     expect(copy.notes, 'changed');
     expect(copy.geoJsonLoaded, isFalse);
+    expect(copy.hasGeoJson, isFalse);
     expect(copy.distanceToBoundaryM, original.distanceToBoundaryM);
     expect(copy.nearestBoundaryPoint, original.nearestBoundaryPoint);
+
+    final unchanged = original.copyWith();
+    expect(unchanged.geoJsonLoaded, isTrue);
+    expect(unchanged.hasGeoJson, isTrue);
   });
 }

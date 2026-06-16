@@ -30,7 +30,7 @@ AppConfig createTestConfig() {
 }
 
 GeoModel createSquareModel() {
-  return GeoModel.fromGeoJson(_squareGeoJson);
+  return GeoModel.fromGeoJson(squareGeoJsonFixture);
 }
 
 class FakeFileManager extends FileManager {
@@ -50,7 +50,7 @@ class FakeFileManager extends FileManager {
   @override
   Future<XFile?> pickGeoJsonFile() async {
     return XFile.fromData(
-      utf8.encode(_squareGeoJson),
+      utf8.encode(squareGeoJsonFixture),
       name: 'test_square.geojson',
       mimeType: 'application/geo+json',
       path: 'test_square.geojson',
@@ -111,6 +111,41 @@ class FakeLocationService implements LocationService {
   }
 }
 
+class RecordingAlarmVolumeClient implements AlarmVolumeClient {
+  RecordingAlarmVolumeClient({
+    this.states = const [
+      AlarmVolumeState(current: 10, max: 10, percent: 1),
+    ],
+    this.throwOnCheck = false,
+    this.openResult = true,
+  });
+
+  final List<AlarmVolumeState> states;
+  final bool throwOnCheck;
+  final bool openResult;
+  final List<String> calls = <String>[];
+  int checkCount = 0;
+  int openSettingsCount = 0;
+
+  @override
+  Future<AlarmVolumeState> getAlarmVolumeState() async {
+    calls.add('getAlarmVolumeState');
+    checkCount += 1;
+    if (throwOnCheck) {
+      throw StateError('volume unavailable');
+    }
+    final index = (checkCount - 1).clamp(0, states.length - 1);
+    return states[index];
+  }
+
+  @override
+  Future<bool> openSoundSettings() async {
+    calls.add('openSoundSettings');
+    openSettingsCount += 1;
+    return openResult;
+  }
+}
+
 AppController buildTestController({
   bool hasGeoJson = false,
   StateSnapshot? snapshot,
@@ -118,6 +153,8 @@ AppController buildTestController({
   MonitoringPermissionState? permissionState,
   PermissionCoordinator? permissionCoordinator,
   QrImageAnalyzer? qrImageAnalyzer,
+  AlarmVolumeClient? alarmVolumeClient,
+  bool? isAndroid,
 }) {
   final config = createTestConfig();
   final stateMachine = StateMachine(config: config);
@@ -134,6 +171,8 @@ AppController buildTestController({
     ),
     permissionCoordinator: permissionCoordinator,
     qrImageAnalyzer: qrImageAnalyzer,
+    alarmVolumeClient: alarmVolumeClient,
+    isAndroid: isAndroid,
   );
 
   GeoModel? geoModel;
@@ -161,7 +200,7 @@ AppController buildTestController({
   return controller;
 }
 
-const String _squareGeoJson = '''
+const String squareGeoJsonFixture = '''
 {
   "type": "FeatureCollection",
   "features": [
