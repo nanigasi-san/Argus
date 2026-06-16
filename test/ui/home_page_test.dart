@@ -489,6 +489,12 @@ void main() {
 
     expect(locationService.hasStarted, isFalse);
     expect(find.text('アラーム音量が低すぎます'), findsOneWidget);
+    expect(
+      find.text(
+        '端末のアラーム音量が５０％未満です。警報音が聞こえない可能性があるため、５０％以上に上げてから開始してください。',
+      ),
+      findsOneWidget,
+    );
     expect(find.text('音設定を開く'), findsOneWidget);
     expect(find.text('再確認'), findsOneWidget);
     expect(find.text('キャンセル'), findsOneWidget);
