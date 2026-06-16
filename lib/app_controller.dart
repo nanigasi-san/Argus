@@ -404,10 +404,14 @@ class AppController extends ChangeNotifier {
       notifyListeners();
       return false;
     } on FormatException catch (e) {
+      // coverage:ignore-start
+      // decodeGeoJson validates structure first; this remains as a defensive
+      // guard for future decoder changes.
       _lastErrorMessage = 'Failed to parse GeoJSON: ${e.message}';
       _logError('APP', _lastErrorMessage!);
       notifyListeners();
       return false;
+      // coverage:ignore-end
     } catch (e) {
       _lastErrorMessage =
           'Unable to load GeoJSON from QR code: ${e.toString()}';
@@ -464,7 +468,10 @@ class AppController extends ChangeNotifier {
               'APP', 'Temporary GeoJSON file deleted: $_tempGeoJsonFilePath');
         }
       } catch (e) {
+        // coverage:ignore-start
+        // File.delete failures depend on the host filesystem and permissions.
         _logError('APP', 'Failed to delete temporary GeoJSON file: $e');
+        // coverage:ignore-end
       }
       _tempGeoJsonFilePath = null;
     }

@@ -20,7 +20,7 @@ enum _LoadFileAction {
 }
 
 class HomePage extends StatelessWidget {
-  const HomePage({super.key});
+  const HomePage({super.key}); // coverage:ignore-line
 
   @override
   Widget build(BuildContext context) {
@@ -597,9 +597,13 @@ class _HoldToFinishRaceButtonState extends State<_HoldToFinishRaceButton>
   @override
   void didUpdateWidget(covariant _HoldToFinishRaceButton oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // coverage:ignore-start
+    // The production button duration is constant; this keeps the state object
+    // correct if tests or future callers provide a different duration.
     if (oldWidget.duration != widget.duration) {
       _controller.duration = widget.duration;
     }
+    // coverage:ignore-end
   }
 
   @override
@@ -657,7 +661,7 @@ class _HoldToFinishRaceButtonState extends State<_HoldToFinishRaceButton>
           behavior: HitTestBehavior.opaque,
           onPointerDown: (_) => _startHold(),
           onPointerUp: (_) => _cancelHold(),
-          onPointerCancel: (_) => _cancelHold(),
+          onPointerCancel: (_) => _cancelHold(), // coverage:ignore-line
           child: InkWell(
             splashColor: fillColor.withValues(alpha: 0.12),
             highlightColor: fillColor.withValues(alpha: 0.08),

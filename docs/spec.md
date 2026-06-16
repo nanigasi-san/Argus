@@ -1,6 +1,6 @@
-﻿# Argus 仕様書 v6（2025-01-XX 時点）
+﻿# Argus 仕様書 v6（2026-06-17 時点）
 
-本ドキュメントは Flutter 製アプリ Argus の現行コード（ブランチ `easy-navigation`）をもとに構成・挙動・テスト観点を整理したものです。コードベースを深く解析し、実装に基づいた正確な仕様を記載しています。
+本ドキュメントは Flutter 製アプリ Argus の現行コードをもとに構成・挙動・テスト観点を整理したものです。現在の実装を正とし、仕様変更時は実装・テスト・関連ドキュメントを同時に更新します。
 
 ---
 
@@ -17,7 +17,7 @@
 
 ### 1.1 GeoJSON 読み込み
 
-- **初回起動**: `assets/geojson/sample_area.geojson` をバンドルロードを試行。失敗時はエラーログを記録し、`waitGeoJson` 状態を維持。
+- **初回起動**: GeoJSON は自動ロードしない。状態は `waitGeoJson` で開始し、ユーザーがファイルまたは QR から読み込む。
 - **ファイルピッカー**: ユーザは FloatingActionButton（「Load GeoJSON」ラベル）またはファイルピッカーで `.geojson` / `.json` を再ロード可能。
 - **QRコード読み込み**: ユーザは FloatingActionButton（「Read QR code」ラベル）でQRコードをスキャンし、GeoJSONを読み込むことが可能。QRコードは `gjz1:` スキームで始まる必要がある。読み込んだGeoJSONは一時ファイルとして保存され、アプリ終了時に自動削除される。
 - **ファイル名処理**: 読み込んだファイル名は `.geojson` 拡張子に正規化され、UI に表示される。QRコードから読み込んだ場合は `temp_geojson_<timestamp>.geojson` という名前で一時ファイルとして保存される。
@@ -32,14 +32,14 @@
   - `AndroidSettings` を使用
   - `accuracy: LocationAccuracy.best`
   - `forceLocationManager: false`
-  - `ForegroundNotificationConfig` で通知を表示（タイトル: 「Argusが位置情報を監視中です」、本文: 「画面を消しても位置情報の追跡は継続されます。」）
+  - `ForegroundNotificationConfig` で通知を表示（タイトル: 「ARGUSが位置情報を監視中です」、本文: 「画面を消しても位置情報の追跡は継続されます。」）
   - `enableWakeLock: true`, `setOngoing: true`
 - **iOS/macOS 設定**:
   - `AppleSettings` を使用
   - `accuracy: LocationAccuracy.best`
   - `pauseLocationUpdatesAutomatically: false`
   - `showBackgroundLocationIndicator: true`
-- **権限確認**: `start()` 時に `LocationPermission.always` を要求。`whileInUse` のみ許可されている場合は設定画面を開く。
+- **権限確認**: 監視開始前に位置サービス有効 + `LocationPermission.always` を確認する。`whileInUse` から foreground → background の順に要求し、拒否時は app/location settings への導線を表示する。通知権限は警告を見逃さないための setup 対象だが、監視開始ブロック条件ではない。
 
 ### 1.3 状態遷移ロジック
 
@@ -83,11 +83,12 @@
   - 本文: `競技エリアから離れています。`（実装では「競技エリア」と記載）
   - Android: `Importance.max`, `Priority.max`, `playSound: false`, `enableVibration: true`, `category: AndroidNotificationCategory.alarm`
   - iOS: `interruptionLevel: InterruptionLevel.critical`
-- **Foreground Service 通知**: Android 背景計測用に「Argusが位置情報を監視中です」「画面を消しても位置情報の追跡は継続されます。」を表示。
-- **アラーム音**: Android は `MediaPlayer` で `android/app/src/main/res/raw/alarm.mp3` を `USAGE_ALARM` としてループ再生する。非 Android は `flutter_ringtone_player` で `assets/sounds/alarm.mp3` をループ再生する。`Notifier.stopAlarm()` で停止。
-- **音量チェック**: Android は監視開始前に端末のアラーム音量を確認し、50% 未満なら開始をブロックして音設定画面への導線を表示する。
+- **Foreground Service 通知**: Android 背景計測用にチャンネル名 `ARGUSバックグラウンド監視`、タイトル「ARGUSが位置情報を監視中です」、本文「画面を消しても位置情報の追跡は継続されます。」を表示する。
+- **アラーム音**: Android は `MediaPlayer` で `R.raw.alarm` を `USAGE_ALARM` としてループ再生し、`setVolume(config.alarmVolume)` を反映する。非 Android は `flutter_ringtone_player` で `assets/sounds/alarm.mp3` をループ再生する。`Notifier.stopAlarm()` で MediaPlayer release と vibration cancel を行う。
+- **音量チェック**: Android は監視開始前に端末のアラーム音量を確認し、`percent >= 0.5` なら開始可、50% 未満なら開始をブロックして「５０％以上」警告と音設定画面への導線を表示する。取得失敗時は warning ログを残し、監視開始はブロックしない。
+- **音設定**: MethodChannel `argus/alarm` の `openSoundSettings` を呼ぶ。Android 側は `ACTION_SOUND_SETTINGS` を開き、失敗時は `ACTION_SETTINGS` にフォールバックする。
 - **復帰通知**: INNER/NEAR 復帰時に通知をキャンセルし、アラームを停止。
-- **権限要求**: 通知・位置情報の権限状態は `PermissionCoordinator` が確認・要求する。`Notifier` は通知権限を直接要求しない。
+- **権限要求**: 通知・位置情報の権限状態は `PermissionCoordinator` が確認・要求する。`Notifier` は通知権限を直接要求しない。監視開始ブロック条件は位置サービス有効 + Always 位置権限。
 
 ### 1.7 退避ナビゲーション
 
@@ -590,8 +591,8 @@ stateDiagram-v2
 
 ### 7.4 Foreground Service 通知（Android）
 
-- **チャンネル名**: `Argusバックグラウンド監視`
-- **タイトル**: `Argusが位置情報を監視中です`
+- **チャンネル名**: `ARGUSバックグラウンド監視`
+- **タイトル**: `ARGUSが位置情報を監視中です`
 - **本文**: `画面を消しても位置情報の追跡は継続されます。`
 - **設定**: `enableWakeLock: true`, `setOngoing: true`
 
@@ -642,27 +643,21 @@ stateDiagram-v2
 
 ## 10. テストと検証
 
-- `flutter test` で以下をカバー:
-  - `state_machine_test.dart`: 状態判定とヒステリシス挙動。
-  - `hysteresis_counter_test.dart`: カウンタのサンプル数／時間条件。
-  - `geo_model_test.dart`: GeoJSON パーサの挙動。
-  - `point_in_polygon_test.dart`: 点とポリゴンの関係判定。
-  - `platform/notifier_test.dart`: OUTER→INNER→OUTER でアラーム切り替え。
-  - `app_controller_test.dart`: GeoJSON 再読込で waitStart 状態・アラーム停止を確認、QRコードからの読み込み。
-  - `qr/geojson_qr_codec_test.dart`: QRコードエンコード・デコード、gzip圧縮、ハッシュ検証。
-  - `ui/qr_scanner_page_test.dart`: QRスキャン画面の表示とナビゲーション。
-
-- `flutter analyze` を CI ベースラインとし、警告ゼロを維持。
+- `flutter analyze` を静的解析のベースラインとし、警告ゼロを維持する。
+- `flutter test` で state / geo / QR / controller / platform contract / UI を検証する。
+- `flutter test --coverage` と `scripts/parse_coverage.py` で 100% coverage を目標にする。
+- Android 周辺は、音量 50% 境界、MethodChannel payload、通知チャンネル、OUTER 通知 ID `1001`、Foreground Service 文言、権限要求順序、音設定導線を契約テストで守る。
+- GPS、カメラ、file picker、通知プラグインなど実機・OS 境界の薄い wrapper は `coverage:ignore` を許容し、Fake と contract test でアプリ側の判定を検証する。
+- `integration_test/ui_smoke_test.dart` は実機 / emulator 向け smoke として、Home permission card、background disclosure、Settings、QR permission error、Home → Settings navigation に限定する。
 
 ---
 
 ## 11. 今後の検討事項
 
 - ログフィルタ／検索 UI の追加（警告だけ表示する等）。
-- 設定画面からサンプリング間隔やバッファ値を編集できるフォーム化。
 - 通知チャンネル別の細分化（警告・情報を分離）。
 - バッテリー・位置権限のチュートリアル画面や再許可導線の強化。
-- 本番向け Foreground Service の設定（通知タップでアプリ復帰など）。
+- Foreground Service 通知タップでのアプリ復帰など、運用 UX の強化。
 - GeoJSON ファイル名の表示改善（長いファイル名の省略表示など）。
 
 ---

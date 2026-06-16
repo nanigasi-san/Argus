@@ -50,14 +50,61 @@ class LocationServiceStartResult {
   final String? message;
 }
 
+class LocationSettingsFactory {
+  const LocationSettingsFactory();
+
+  LocationSettings buildStreamSettings({
+    required RuntimePlatform runtimePlatform,
+    required Duration interval,
+  }) {
+    if (runtimePlatform.isAndroid) {
+      return AndroidSettings(
+        accuracy: LocationAccuracy.best,
+        distanceFilter: 0,
+        intervalDuration: interval,
+        forceLocationManager: false,
+        foregroundNotificationConfig: const ForegroundNotificationConfig(
+          notificationTitle: 'ARGUSが位置情報を監視中です',
+          notificationText: '画面を消しても位置情報の追跡は継続されます。',
+          notificationChannelName: 'ARGUSバックグラウンド監視',
+          enableWakeLock: true,
+          setOngoing: true,
+        ),
+      );
+    }
+    if (runtimePlatform.isApple) {
+      return AppleSettings(
+        accuracy: LocationAccuracy.best,
+        distanceFilter: 0,
+        pauseLocationUpdatesAutomatically: false,
+        showBackgroundLocationIndicator: true,
+      );
+    }
+    return const LocationSettings(
+      accuracy: LocationAccuracy.best,
+      distanceFilter: 0,
+    );
+  }
+
+  LocationSettings buildPollSettings() {
+    return const LocationSettings(
+      accuracy: LocationAccuracy.best,
+      distanceFilter: 0,
+    );
+  }
+}
+
 // coverage:ignore-start
 /// Geolocatorパッケージを使用した位置情報サービスの実装。
 class GeolocatorLocationService implements LocationService {
   GeolocatorLocationService({
     RuntimePlatform? runtimePlatform,
-  }) : _runtimePlatform = runtimePlatform ?? RuntimePlatform.current();
+    LocationSettingsFactory? settingsFactory,
+  })  : _runtimePlatform = runtimePlatform ?? RuntimePlatform.current(),
+        _settingsFactory = settingsFactory ?? const LocationSettingsFactory();
 
   final RuntimePlatform _runtimePlatform;
+  final LocationSettingsFactory _settingsFactory;
 
   final StreamController<LocationFix> _controller =
       StreamController<LocationFix>.broadcast();
@@ -88,38 +135,11 @@ class GeolocatorLocationService implements LocationService {
     final interval =
         Duration(seconds: normalizedConfig.effectiveFastSampleIntervalS);
 
-    final LocationSettings settings;
-    if (_runtimePlatform.isAndroid) {
-      settings = AndroidSettings(
-        accuracy: LocationAccuracy.best,
-        distanceFilter: 0,
-        intervalDuration: interval,
-        forceLocationManager: false,
-        foregroundNotificationConfig: const ForegroundNotificationConfig(
-          notificationTitle: 'ARGUSが位置情報を監視中です',
-          notificationText: '画面を消しても位置情報の追跡は継続されます。',
-          notificationChannelName: 'ARGUSバックグラウンド監視',
-          enableWakeLock: true,
-          setOngoing: true,
-        ),
-      );
-    } else if (_runtimePlatform.isApple) {
-      settings = AppleSettings(
-        accuracy: LocationAccuracy.best,
-        distanceFilter: 0,
-        pauseLocationUpdatesAutomatically: false,
-        showBackgroundLocationIndicator: true,
-      );
-    } else {
-      settings = const LocationSettings(
-        accuracy: LocationAccuracy.best,
-        distanceFilter: 0,
-      );
-    }
-    const pollSettings = LocationSettings(
-      accuracy: LocationAccuracy.best,
-      distanceFilter: 0,
+    final settings = _settingsFactory.buildStreamSettings(
+      runtimePlatform: _runtimePlatform,
+      interval: interval,
     );
+    final pollSettings = _settingsFactory.buildPollSettings();
 
     try {
       await _subscription?.cancel();

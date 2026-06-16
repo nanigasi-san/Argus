@@ -33,6 +33,17 @@ void main() {
             .locationAlwaysGranted,
         isFalse,
       );
+      expect(
+        readyState
+            .copyWith(locationAlwaysStatus: PermissionStatus.provisional)
+            .locationAlwaysGranted,
+        isTrue,
+      );
+      expect(
+          readyState
+              .copyWith(locationServicesEnabled: false)
+              .canStartMonitoring,
+          isFalse);
     });
 
     test('camera permission state exposes guidance', () {
@@ -97,6 +108,22 @@ void main() {
 
       expect(gateway.requestLocationWhenInUseCount, 1);
       expect(gateway.requestLocationAlwaysCount, 1);
+      expect(
+        gateway.calls,
+        [
+          'notificationStatus',
+          'locationWhenInUseStatus',
+          'locationAlwaysStatus',
+          'requestLocationWhenInUse',
+          'notificationStatus',
+          'locationWhenInUseStatus',
+          'locationAlwaysStatus',
+          'requestLocationAlways',
+          'notificationStatus',
+          'locationWhenInUseStatus',
+          'locationAlwaysStatus',
+        ],
+      );
       expect(state.canStartMonitoring, isTrue);
     });
 
@@ -265,24 +292,35 @@ class _FakePermissionGateway implements PermissionGateway {
   int requestLocationWhenInUseCount = 0;
   int requestLocationAlwaysCount = 0;
   int requestCameraCount = 0;
+  final List<String> calls = <String>[];
 
   @override
-  Future<PermissionStatus> cameraStatus() async => cameraStatusValue;
+  Future<PermissionStatus> cameraStatus() async {
+    calls.add('cameraStatus');
+    return cameraStatusValue;
+  }
 
   @override
-  Future<PermissionStatus> locationAlwaysStatus() async =>
-      locationAlwaysStatusValue;
+  Future<PermissionStatus> locationAlwaysStatus() async {
+    calls.add('locationAlwaysStatus');
+    return locationAlwaysStatusValue;
+  }
 
   @override
-  Future<PermissionStatus> locationWhenInUseStatus() async =>
-      locationWhenInUseStatusValue;
+  Future<PermissionStatus> locationWhenInUseStatus() async {
+    calls.add('locationWhenInUseStatus');
+    return locationWhenInUseStatusValue;
+  }
 
   @override
-  Future<PermissionStatus> notificationStatus() async =>
-      notificationStatusValue;
+  Future<PermissionStatus> notificationStatus() async {
+    calls.add('notificationStatus');
+    return notificationStatusValue;
+  }
 
   @override
   Future<PermissionStatus> requestCamera() async {
+    calls.add('requestCamera');
     requestCameraCount += 1;
     cameraStatusValue = cameraRequestResult;
     return cameraRequestResult;
@@ -290,6 +328,7 @@ class _FakePermissionGateway implements PermissionGateway {
 
   @override
   Future<PermissionStatus> requestLocationAlways() async {
+    calls.add('requestLocationAlways');
     requestLocationAlwaysCount += 1;
     locationAlwaysStatusValue = locationAlwaysRequestResult;
     return locationAlwaysRequestResult;
@@ -297,6 +336,7 @@ class _FakePermissionGateway implements PermissionGateway {
 
   @override
   Future<PermissionStatus> requestLocationWhenInUse() async {
+    calls.add('requestLocationWhenInUse');
     requestLocationWhenInUseCount += 1;
     locationWhenInUseStatusValue = locationWhenInUseRequestResult;
     return locationWhenInUseRequestResult;
@@ -304,6 +344,7 @@ class _FakePermissionGateway implements PermissionGateway {
 
   @override
   Future<PermissionStatus> requestNotification() async {
+    calls.add('requestNotification');
     requestNotificationCount += 1;
     notificationStatusValue = notificationRequestResult;
     return notificationRequestResult;

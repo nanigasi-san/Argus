@@ -434,7 +434,7 @@ void main() {
 
   testWidgets('tapping wait-start status starts monitoring when permitted',
       (tester) async {
-    final alarmVolumeClient = _FakeAlarmVolumeClient(
+    final alarmVolumeClient = RecordingAlarmVolumeClient(
       states: const [
         AlarmVolumeState(current: 5, max: 10, percent: 0.5),
       ],
@@ -469,7 +469,7 @@ void main() {
     final controller = buildTestController(
       hasGeoJson: true,
       permissionCoordinator: _GrantedPermissionCoordinator(),
-      alarmVolumeClient: _FakeAlarmVolumeClient(
+      alarmVolumeClient: RecordingAlarmVolumeClient(
         states: const [
           AlarmVolumeState(current: 4, max: 10, percent: 0.4),
         ],
@@ -505,7 +505,7 @@ void main() {
     final controller = buildTestController(
       hasGeoJson: true,
       permissionCoordinator: _GrantedPermissionCoordinator(),
-      alarmVolumeClient: _FakeAlarmVolumeClient(
+      alarmVolumeClient: RecordingAlarmVolumeClient(
         states: const [
           AlarmVolumeState(current: 1, max: 10, percent: 0.1),
           AlarmVolumeState(current: 5, max: 10, percent: 0.5),
@@ -535,7 +535,7 @@ void main() {
     final controller = buildTestController(
       hasGeoJson: true,
       permissionCoordinator: _GrantedPermissionCoordinator(),
-      alarmVolumeClient: _FakeAlarmVolumeClient(
+      alarmVolumeClient: RecordingAlarmVolumeClient(
         states: const [
           AlarmVolumeState(current: 0, max: 10, percent: 0),
         ],
@@ -564,7 +564,7 @@ void main() {
     final controller = buildTestController(
       hasGeoJson: true,
       permissionCoordinator: _GrantedPermissionCoordinator(),
-      alarmVolumeClient: _FakeAlarmVolumeClient(throwOnCheck: true),
+      alarmVolumeClient: RecordingAlarmVolumeClient(throwOnCheck: true),
       isAndroid: true,
       snapshot: StateSnapshot(
         status: LocationStateStatus.waitStart,
@@ -589,7 +589,7 @@ void main() {
 
   testWidgets('non-Android start is not blocked by alarm volume check',
       (tester) async {
-    final alarmVolumeClient = _FakeAlarmVolumeClient(
+    final alarmVolumeClient = RecordingAlarmVolumeClient(
       states: const [
         AlarmVolumeState(current: 0, max: 10, percent: 0),
       ],
@@ -616,7 +616,7 @@ void main() {
   });
 
   testWidgets('sound settings failure shows snackbar', (tester) async {
-    final alarmVolumeClient = _FakeAlarmVolumeClient(
+    final alarmVolumeClient = RecordingAlarmVolumeClient(
       states: const [
         AlarmVolumeState(current: 1, max: 10, percent: 0.1),
       ],
@@ -699,6 +699,58 @@ void main() {
     expect(find.text('DBG'), findsOneWidget);
   });
 
+  testWidgets('developer details show and clear controller errors',
+      (tester) async {
+    final controller = _DisplayOnlyHomeController(
+      logs: const [],
+      snapshot: StateSnapshot(
+        status: LocationStateStatus.inner,
+        timestamp: DateTime.utc(2024, 1, 1),
+        geoJsonLoaded: true,
+      ),
+      lastErrorMessage: '監視を開始するには位置情報の使用中許可が必要です。',
+      ignoreFirstClear: true,
+    );
+
+    await _pumpHome(tester, controller);
+
+    expect(find.text('監視を開始するには位置情報の使用中許可が必要です。'), findsWidgets);
+
+    final errorTile = find.ancestor(
+      of: find.text('監視を開始するには位置情報の使用中許可が必要です。'),
+      matching: find.byType(ListTile),
+    );
+    final closeButton = find.descendant(
+      of: errorTile,
+      matching: find.byType(IconButton),
+    );
+    expect(closeButton, findsOneWidget);
+    await tester.ensureVisible(closeButton);
+    await tester.tap(closeButton);
+    await tester.pumpAndSettle();
+
+    expect(controller.lastErrorMessage, isNull);
+    expect(find.byIcon(Icons.close), findsNothing);
+  });
+
+  testWidgets('dismissing file loader sheet leaves controller unchanged',
+      (tester) async {
+    final controller = buildTestController(hasGeoJson: true);
+
+    await _pumpHome(tester, controller);
+    await tester.ensureVisible(find.text('ファイルを\n読み込む'));
+    await tester.tap(find.text('ファイルを\n読み込む'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('GeoJSONファイルを読み込む'), findsOneWidget);
+
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+
+    expect(controller.geoJsonFileName, isNull);
+    expect(find.text('GeoJSONファイルを読み込む'), findsNothing);
+  });
+
   testWidgets('renders remaining status display variants', (tester) async {
     for (final status in <LocationStateStatus>[
       LocationStateStatus.outerPending,
@@ -724,8 +776,12 @@ class _DisplayOnlyHomeController extends AppController {
   _DisplayOnlyHomeController({
     required List<AppLogEntry> logs,
     required StateSnapshot snapshot,
+    String? lastErrorMessage,
+    bool ignoreFirstClear = false,
   })  : _logs = logs,
         _snapshot = snapshot,
+        _lastErrorMessage = lastErrorMessage,
+        _ignoreNextClear = ignoreFirstClear,
         super(
           stateMachine: StateMachine(config: createTestConfig()),
           locationService: FakeLocationService(),
@@ -742,6 +798,8 @@ class _DisplayOnlyHomeController extends AppController {
 
   final List<AppLogEntry> _logs;
   final StateSnapshot _snapshot;
+  String? _lastErrorMessage;
+  bool _ignoreNextClear;
 
   @override
   StateSnapshot get snapshot => _snapshot;
@@ -757,6 +815,19 @@ class _DisplayOnlyHomeController extends AppController {
 
   @override
   List<AppLogEntry> get logs => _logs;
+
+  @override
+  String? get lastErrorMessage => _lastErrorMessage;
+
+  @override
+  void clearError() {
+    if (_ignoreNextClear) {
+      _ignoreNextClear = false;
+      return;
+    }
+    _lastErrorMessage = null;
+    notifyListeners();
+  }
 }
 
 class _GrantedPermissionCoordinator extends PermissionCoordinator {
@@ -768,37 +839,5 @@ class _GrantedPermissionCoordinator extends PermissionCoordinator {
       locationAlwaysStatus: PermissionStatus.granted,
       locationServicesEnabled: true,
     );
-  }
-}
-
-class _FakeAlarmVolumeClient implements AlarmVolumeClient {
-  _FakeAlarmVolumeClient({
-    this.states = const [
-      AlarmVolumeState(current: 10, max: 10, percent: 1),
-    ],
-    this.throwOnCheck = false,
-    this.openResult = true,
-  });
-
-  final List<AlarmVolumeState> states;
-  final bool throwOnCheck;
-  final bool openResult;
-  int checkCount = 0;
-  int openSettingsCount = 0;
-
-  @override
-  Future<AlarmVolumeState> getAlarmVolumeState() async {
-    checkCount += 1;
-    if (throwOnCheck) {
-      throw StateError('volume unavailable');
-    }
-    final index = (checkCount - 1).clamp(0, states.length - 1);
-    return states[index];
-  }
-
-  @override
-  Future<bool> openSoundSettings() async {
-    openSettingsCount += 1;
-    return openResult;
   }
 }

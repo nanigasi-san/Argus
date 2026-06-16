@@ -18,22 +18,17 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../../test/support/test_doubles.dart' as shared;
+
 class HarnessBuilder {
   const HarnessBuilder._();
 
   static AppConfig createConfig() {
-    return AppConfig(
-      innerBufferM: 5,
-      leaveConfirmSamples: 1,
-      leaveConfirmSeconds: 1,
-      gpsAccuracyBadMeters: 50,
-      sampleIntervalS: const {'fast': 1},
-      alarmVolume: 1.0,
-    );
+    return shared.createTestConfig();
   }
 
   static GeoModel createSquareModel() {
-    return GeoModel.fromGeoJson(_squareGeoJson);
+    return shared.createSquareModel();
   }
 
   static AppController buildController({
@@ -100,7 +95,7 @@ class HarnessFileManager extends FileManager {
   @override
   Future<XFile?> pickGeoJsonFile() async {
     return XFile.fromData(
-      utf8.encode(_squareGeoJson),
+      utf8.encode(shared.squareGeoJsonFixture),
       name: 'integration_square.geojson',
       mimeType: 'application/geo+json',
     );
@@ -222,19 +217,3 @@ class HarnessPermissionCoordinator extends PermissionCoordinator {
           locationServicesEnabled: () async => locationServicesEnabled,
         );
 }
-
-const String _squareGeoJson = '''
-{
-  "type": "FeatureCollection",
-  "features": [
-    {
-      "type": "Feature",
-      "properties": {"name": "Integration Area"},
-      "geometry": {
-        "type": "Polygon",
-        "coordinates": [[[0,0],[1,0],[1,1],[0,1],[0,0]]]
-      }
-    }
-  ]
-}
-''';

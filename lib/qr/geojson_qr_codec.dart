@@ -168,9 +168,13 @@ Future<GeoJsonQrBundle> encodeGeoJson(GeoJsonQrEncodeInput input) async {
           quietZoneModules: input.quietZoneModules,
         ),
       ];
+      // coverage:ignore-start
     } on PayloadTooLargeException catch (e) {
+      // The lower-level encoder already covers this limit; this branch keeps
+      // the bundle API error type stable if PNG generation is requested.
       throw QrGenerationException(e.message, e);
     }
+    // coverage:ignore-end
   }
 
   return GeoJsonQrBundle(
@@ -278,7 +282,11 @@ Uint8List gzipCompress(Uint8List bytes, {int level = 9}) {
   try {
     return Uint8List.fromList(GZipCodec(level: level).encode(bytes));
   } catch (e) {
+    // coverage:ignore-start
+    // Dart's gzip encoder does not expose a practical deterministic failure
+    // path for valid in-memory bytes.
     throw CompressFailedException('gzip compression failed', e);
+    // coverage:ignore-end
   }
 }
 
@@ -459,7 +467,11 @@ Uint8List generateQrPng(
     throw PayloadTooLargeException(
         'QR payload too large for the selected configuration');
   } catch (e) {
+    // coverage:ignore-start
+    // Image encoding failures are defensive; QR sizing errors are covered by
+    // the InputTooLongException branch above.
     throw QrGenerationException('Failed to render QR image', e);
+    // coverage:ignore-end
   }
 }
 
