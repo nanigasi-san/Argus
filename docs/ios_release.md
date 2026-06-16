@@ -42,6 +42,45 @@ flutter build ios --simulator --debug
 5. `Background Modes` に `Location updates` と `Audio, AirPlay, and Picture in Picture` が表示されることを確認する。
 6. `Time Sensitive Notifications` capability が表示されることを確認する。
 
+## iPhone実機での開発起動
+
+実機がMacに接続され、Xcodeでpairing済みになっていることを確認します。接続状態は次で確認できます。
+
+```bash
+flutter devices
+```
+
+Flutterのホットリロードや実行ログを見ながら確認する場合:
+
+```bash
+flutter run -d <iphone-device-id>
+```
+
+ホーム画面から通常アプリとして開く挙動を確認する場合:
+
+```bash
+flutter run -d <iphone-device-id> --release
+```
+
+DebugビルドはFlutter toolingまたはXcodeから起動する前提です。Debugビルドを実機に入れたあとホーム画面から直接開くと、白画面になり、実機ログに `Cannot create a FlutterEngine instance in debug mode without Flutter tooling or Xcode.` が出ることがあります。この場合はReleaseビルドを入れ直して確認します。
+
+インストール済みアプリとバージョンを確認する場合:
+
+```bash
+xcrun devicectl device info apps \
+  --device <device-identifier> | grep com.argus.orienteering
+```
+
+起動ログを短時間確認する場合:
+
+```bash
+xcrun devicectl device process launch \
+  --device <device-identifier> \
+  --terminate-existing \
+  --console \
+  com.argus.orienteering
+```
+
 ## 実機で必ず確認する項目
 
 1. 初回起動後、通知、位置情報の使用中許可、常時許可を順に設定できる。

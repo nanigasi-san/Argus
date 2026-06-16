@@ -219,11 +219,19 @@ Terminal で確認:
 flutter devices
 ```
 
-実機起動:
+Flutter ツール経由でデバッグ起動:
 
 ```bash
 flutter run -d <iphone-device-id>
 ```
+
+ホーム画面から手動起動して確認したい場合は、Release ビルドを入れます。
+
+```bash
+flutter run -d <iphone-device-id> --release
+```
+
+Debug ビルドは Flutter tooling または Xcode から起動する前提です。iOS 14 以降では、Debug ビルドをホーム画面から直接開くと白画面になり、実機ログに `Cannot create a FlutterEngine instance in debug mode without Flutter tooling or Xcode.` が出ることがあります。この場合はアプリ本体のUI不具合ではなく、起動方法の問題です。
 
 初回起動時に開発者証明書の信頼が必要な場合は、iPhone の `設定 > 一般 > VPNとデバイス管理` から対象証明書を信頼します。
 
@@ -298,6 +306,36 @@ Xcode の `Runner > Signing & Capabilities` で、`Team`、`Automatically manage
 ### iPhone が `flutter devices` に出ない
 
 ケーブル接続、Mac の信頼、Xcode の `Window > Devices and Simulators`、iPhone のデベロッパモードを順に確認します。
+
+### Xcode で iPhone が unpaired と表示される
+
+Xcode の destination に `iPhone is not available because it is unpaired` と出る場合は、`Window > Devices and Simulators` を開き、iPhone 側に表示されるペアリング確認を許可します。iPhone 側の「このコンピュータを信頼」も必要です。
+
+### 実機インストール後にホーム画面から開くと白画面になる
+
+まず入っているビルド種別を切り分けます。Debug ビルドをホーム画面から直接開いた場合は白画面になることがあります。
+
+```bash
+flutter run -d <iphone-device-id>
+```
+
+上のコマンドはデバッグ用です。ホーム画面から普通に開く動作を確認する場合は、Release ビルドを入れます。
+
+```bash
+flutter run -d <iphone-device-id> --release
+```
+
+実機ログで確認する場合:
+
+```bash
+xcrun devicectl device process launch \
+  --device <device-identifier> \
+  --terminate-existing \
+  --console \
+  com.argus.orienteering
+```
+
+Debug ビルドで `Cannot create a FlutterEngine instance in debug mode without Flutter tooling or Xcode.` が出ていれば、Release ビルドを入れ直して確認します。
 
 ### 通知または位置情報の初回許可を再確認したい
 
