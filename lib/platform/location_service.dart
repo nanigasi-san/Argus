@@ -85,13 +85,6 @@ class LocationSettingsFactory {
       distanceFilter: 0,
     );
   }
-
-  LocationSettings buildPollSettings() {
-    return const LocationSettings(
-      accuracy: LocationAccuracy.best,
-      distanceFilter: 0,
-    );
-  }
 }
 
 // coverage:ignore-start
@@ -109,7 +102,6 @@ class GeolocatorLocationService implements LocationService {
   final StreamController<LocationFix> _controller =
       StreamController<LocationFix>.broadcast();
   StreamSubscription<Position>? _subscription;
-  Timer? _pollTimer;
 
   @override
   Stream<LocationFix> get stream => _controller.stream;
@@ -139,18 +131,11 @@ class GeolocatorLocationService implements LocationService {
       runtimePlatform: _runtimePlatform,
       interval: interval,
     );
-    final pollSettings = _settingsFactory.buildPollSettings();
-
     try {
       await _subscription?.cancel();
-      _pollTimer?.cancel();
       _subscription = Geolocator.getPositionStream(
         locationSettings: settings,
       ).listen(_emitPosition);
-      _pollTimer = Timer.periodic(interval, (_) {
-        unawaited(_pollCurrentPosition(pollSettings));
-      });
-      unawaited(_pollCurrentPosition(pollSettings));
       return const LocationServiceStartResult.started();
     } catch (e) {
       return LocationServiceStartResult(
@@ -162,8 +147,6 @@ class GeolocatorLocationService implements LocationService {
 
   @override
   Future<void> stop() async {
-    _pollTimer?.cancel();
-    _pollTimer = null;
     await _subscription?.cancel();
     _subscription = null;
   }
@@ -177,17 +160,6 @@ class GeolocatorLocationService implements LocationService {
         timestamp: position.timestamp,
       ),
     );
-  }
-
-  Future<void> _pollCurrentPosition(LocationSettings settings) async {
-    try {
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: settings,
-      );
-      _emitPosition(position);
-    } catch (_) {
-      // The stream remains active even if one explicit poll fails.
-    }
   }
 }
 // coverage:ignore-end

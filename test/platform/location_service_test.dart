@@ -96,18 +96,6 @@ void main() {
     expect(foreground.setOngoing, isTrue);
   });
 
-  test(
-      'LocationSettingsFactory keeps explicit polling settings platform-neutral',
-      () {
-    const factory = LocationSettingsFactory();
-
-    final settings = factory.buildPollSettings();
-
-    expect(settings, isA<LocationSettings>());
-    expect(settings.accuracy, LocationAccuracy.best);
-    expect(settings.distanceFilter, 0);
-  });
-
   test('LocationSettingsFactory builds Apple background indicator settings',
       () {
     const factory = LocationSettingsFactory();
