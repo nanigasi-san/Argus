@@ -1,4 +1,4 @@
-# Argus アプリ仕様（コード起点 / 2025-11-17）
+# Argus アプリ仕様（コード起点 / 2026-06-17）
 
 この文書はリポジトリ内の実装（特に `lib/` 配下）から読み取った事実ベースの仕様です。ランディングページ用コピーや追加開発時の参照に使えます。
 
@@ -8,13 +8,13 @@
 - 目的: GeoJSON で定義された安全圏からの離脱を端末内で検知し、音・バイブ・ローカル通知で即時警告するジオフェンスアプリ。
 - 想定利用: 認知症徘徊対策、警備エリア監視、養護施設内の見守りなど「エリア外に出たら即アラート」が要るケース。
 - 対応プラットフォーム: Flutter 3 / Dart 3.2+。Android 9+ / iOS 15+（Foreground / 背景位置情報前提）。
-- 同期/クラウドなし。GeoJSON は手動読み込み（ファイル or QR）。位置情報は Geolocator のポーリングのみ。
+- 同期/クラウドなし。GeoJSON は手動読み込み（ファイル or QR）。位置情報は Geolocator の単一ストリームで取得する。
 
 ## 2. ユースケース価値
 - 端末完結の監視（ネット不要）で通信遮断時も動作。
-- QR コード経由で GeoJSON を安全に配布（Brotli 圧縮＋Base64URL＋SHA-256 ハッシュ検証）。
+- QR コード経由で GeoJSON を安全に配布（ARGUS専用差分圧縮または汎用gzip圧縮）。
 - 「離脱確定までの猶予」(サンプル数 + 経過秒数) を設定でき、GPS ノイズによる誤検知を抑制。
-- 離脱時はフルスクリーン通知＋アラーム音＋連続バイブで確実に気付かせる。
+- 離脱時は無音の高重要度通知＋アラーム音＋連続バイブで確実に気付かせる。
 - Developer mode でエリア内でも距離・方位を確認でき、デバッグ／捜索補助に使える。
 
 ## 3. モジュール構成（主要ファイル）
@@ -23,18 +23,18 @@
 - `lib/state_machine/state_machine.dart` + `state.dart` + `hysteresis_counter.dart`: ジオフェンス状態遷移ロジック。
 - `lib/geo/geo_model.dart` / `area_index.dart` / `point_in_polygon.dart`: GeoJSON パーサ・境界インデックス・点とポリゴン判定/距離/方位計算。
 - `lib/platform/location_service.dart`: Geolocator を用いた位置ストリーム抽象＆実装。
-- `lib/platform/notifier.dart`: ローカル通知、アラーム音 (`assets/sounds/alarm.mp3`)、連続バイブ制御。
+- `lib/platform/notifier.dart`: ローカル通知、同梱アラーム音 (`assets/sounds/alarm.mp3` / Android `res/raw/alarm.mp3`)、連続バイブ制御。
 - `lib/io/config.dart` / `file_manager.dart`: 設定 JSON の永続化、GeoJSON ファイルピック。
 - `lib/io/logger.dart` / `log_entry.dart`: 状態変化・GPS 受信の JSON レコード化（メモリ内）。
-- `lib/qr/geojson_qr_codec.dart`: GeoJSON の QR エンコード/デコード（Brotli CLI 依存）。
+- `lib/qr/geojson_qr_codec.dart`: GeoJSON の QR エンコード/デコード（gzip 圧縮、外部CLI依存なし）。
 - `lib/ui/home_page.dart` / `settings_page.dart` / `qr_scanner_page.dart`: 画面（Material3）。
 
 ## 4. ランタイムフロー
 1) 起動: `AppController.bootstrap()` で設定を `config.json`（無ければ `assets/config/default_config.json`）から読み込み、通知音量設定。GeoJSON 未ロードなので状態は `waitGeoJson` で開始。  
-2) 権限要求: 通知権限・位置情報 (Always) を permission_handler で要求。拒否/永久拒否時は設定画面を開くだけで UI 上の代替ハンドリングなし。  
+2) 権限要求: 通知権限は警告を見逃さないための setup 対象。監視開始のブロック条件は位置サービス有効 + Always 位置権限で、PermissionCoordinator が foreground から background の順に確認・要求する。拒否/永久拒否時は app/location settings への導線を出す。
 3) GeoJSON 取込:
    - ファイル: `FileManager.pickGeoJsonFile()` で `.geojson/.json/.bin` を選択しパース→`GeoModel`→`AreaIndex` 構築。ファイル名を `.geojson` 拡張子に正規化して保持。
-   - QR: `gjb1:` / `gjb1p:` テキストを復元→Brotli 伸長→構造バリデーション→一時ファイル保存（次回起動で消去）。  
+   - QR: `agz1:` / `gjz1:` テキストを復元→gzip 伸長→構造バリデーション→一時ファイル保存（次回起動で消去）。`agz1` は元ファイル名も復元する。
    ロード成功後の状態は `waitStart`、`navigationEnabled` は false にリセット、アラーム停止。
 4) 監視開始: `startMonitoring()` で Geolocator ストリーム購読開始。`sampleIntervalS['fast']`（デフォルト 3 秒）間隔・距離フィルタ 0m・`LocationAccuracy.best`。
 5) 評価ループ: 各 `LocationFix` を `StateMachine.evaluate()` に通し、UI/ログ/通知に反映。OUTER 確定時に通知＋アラーム。再入時に停止通知。
@@ -48,17 +48,17 @@
 - 新規ロード時は監視を一時停止し、AreaIndex も再構築。
 
 ### 5.2 QR コーデック（ライブラリ）
-- エンコード: GeoJSON を jsonEncode → Brotli (quality=11, 外部 `brotli` CLI 必須) → Base64URL（= 無パディング）→ `gjb1:<payload>[#hash]`。長すぎる場合は `gjb1p:<idx>/<total>:<chunk>` へ自動分割。オプションで PNG 生成（`qr` + `image` パッケージ）。
-- ハッシュ: デフォルトで SHA-256 を付与し、デコード時に検証 (`verifyHash=true`)。不一致なら `HashMismatchException`。
-- デコード: `gjb1`/`gjb1p` 以外は拒否。Brotli 伸長後に GeoJSON 構造チェックを行い、無効なら `GeoJsonValidationException`。
-- 一時ファイル: QR 取込時のみ `temp_geojson_<timestamp>.geojson` を作成。次回起動(detached)または再読込時に削除。
+- 標準エンコード: 単一Feature・単一Polygonの外周座標をscale 6の差分列へ変換し、元ファイル名とともに `a3` 本文へ格納する。gzip(level=9) → Base64URL（= 無パディング）→ `agz1:<payload>` とし、画像名は `QR_<元名>.png`。
+- 互換形式: `gjz1:<payload>[#hash]` の生成APIと読み込みを維持する。`gjz1` のSHA-256検証も従来どおり行う。
+- デコード: `agz1` はGeoJSONと埋め込みファイル名を復元し、`gjz1` はGeoJSONのみ復元する。
+- 一時ファイル: QR取込時の実体は `temp_geojson_<timestamp>.geojson` として安全に管理し、表示名には `agz1` 内の元ファイル名を使う。次回起動(detached)または再読込時に削除する。
 
 ### 5.3 権限
-- 通知: denied/permanentlyDenied の場合は `openAppSettings()` を呼ぶのみ。
-- 位置: `locationAlways` を要求。`whileInUse` のみ許可された場合は再要求し、それでもダメなら設定画面を開くだけでフェールファスト。
+- 通知: 警告を見逃さないための setup 対象。拒否時は app settings への導線を表示するが、監視開始ブロック条件そのものではない。
+- 位置: 位置サービス有効 + `locationAlways` を監視開始条件とする。`whileInUse` から foreground → background の順に要求し、拒否時は app/location settings への導線を表示する。
 
 ### 5.4 位置サンプリング（`lib/platform/location_service.dart`）
-- Android: Foreground サービス通知タイトル「Argus 位置を監視中」、本文「画面を閉じても位置記録は続きます」。`enableWakeLock: true`、`setOngoing: true`。
+- Android: Foreground Service 通知チャンネル名「ARGUSバックグラウンド監視」、タイトル「ARGUSが位置情報を監視中です」、本文「画面を消しても位置情報の追跡は継続されます。」。`enableWakeLock: true`、`setOngoing: true`。
 - iOS/macOS: `showBackgroundLocationIndicator: true`、`pauseLocationUpdatesAutomatically: false`、`allowBackgroundLocationUpdates: true`。
 - Stream 値: `latitude/longitude/timestamp/accuracyMeters/batteryPercent?` を `LocationFix` として配信。
 
@@ -76,16 +76,16 @@
 - 方位: Haversine を基に 0–360deg へ正規化。UI では 8 方位 (N/NE/…/NW) 併記。
 
 ### 5.7 通知・アラーム（`notifier.dart`）
-- チャンネル: `argus_alerts`（Android importance max / alarm 音属性）。タイトル「Argus警告」、本文「安全エリアを離脱しています。」。
-- OUTER: ローカル通知＋ループ再生のアラーム音＋連続バイブ（5 秒振動＋2 秒休止を繰り返し）。`Notifier.stopAlarm()` で両方停止。
-- iOS: 視覚的な Time Sensitive 通知と、`alarm.caf` を使う `AVAudioPlayer` のネイティブループ再生を使用。通知音は重複再生を避けるため無効化する。Critical Alerts は Apple の個別承認が必要なため標準設定では使用しない。
+- チャンネル: `argus_alerts_visual_v2` / `ARGUS警告`（Android importance max / 通知自体の音・バイブは無効）。タイトル「ARGUS警告」、本文「競技エリアから離れています。」。OUTER 通知 ID は `1001`。
+- OUTER: ローカル通知＋同梱警報音のネイティブループ再生＋ネイティブ連続バイブを開始する。Android は `MediaPlayer` と `VibrationEffect`、iOS は `AVAudioPlayer` と `AudioServicesPlaySystemSound` を使用し、通知との重複再生を避ける。
 - 復帰: OUTER 通知をキャンセルし、アラーム停止のみ。ログに “Returned to safe zone.” を出力。
-- 音量: ユーザー設定 0.0–1.0 を `RingtoneAlarmPlayer` に反映（初期 1.0）。
+- 音量: ユーザー設定 0.0–1.0 を `AlarmPlayer` に反映（初期 0.5）。警報音源自体は増幅済みの MP3 を同梱する。Android では監視開始前に端末のアラーム音量を確認し、`percent >= 0.5` なら開始可、50% 未満なら開始せず「５０％以上」警告と音設定への導線を出す。音量取得失敗時は warning ログを残し、監視開始はブロックしない。
+- 音設定: MethodChannel `argus/alarm` の `openSoundSettings` を呼ぶ。Android 側は `ACTION_SOUND_SETTINGS` を開き、失敗時は `ACTION_SETTINGS` にフォールバックする。
 
 ### 5.8 UI
 - Home (`home_page.dart`): 大型ステータス円で状態表示（INNER/NEAR/OUTER 等、色付き）。`waitStart` ではタップで監視開始。GeoJSON ファイル名と GPS 精度を常時表示。OUTER（または Developer mode）で距離/方位ナビ表示。最新 5 件のアプリ内ログをカードで閲覧。エラーは Snackbar。
 - Settings (`settings_page.dart`): 設定フォーム（Inner buffer, GPS 精度閾値, Leave confirm サンプル/秒, Alarm 音量）。Developer mode トグル。ログ JSON エクスポート（メモリ上の `EventLogger` 内容をその場表示）。
-- QR Scanner (`qr_scanner_page.dart`): `mobile_scanner` で `gjb1` スキーム QR を読み取り、`AppController.reloadGeoJsonFromQr` へ連携。処理中オーバーレイとエラーバナーを表示。
+- QR Scanner (`qr_scanner_page.dart`): `mobile_scanner` で `agz1` / `gjz1` スキーム QR を読み取り、`AppController.reloadGeoJsonFromQr` へ連携。処理中オーバーレイとエラーバナーを表示。
 - テーマ: Material3、Seed color Blue。文言は日本語中心で一部英語残り。
 
 ## 6. データ/設定リファレンス
@@ -98,25 +98,26 @@
   - EventLogger: `location`（lat/lon/accuracy/battery）、`state`（status/distance/accuracy/bearing/nearest/notes）をメモリ配列に追加。`exportJsonl()` で JSON 文字列を返すのみ。
 
 ## 7. 依存・アセット
-- 主要パッケージ: geolocator, flutter_local_notifications, permission_handler, mobile_scanner, file_selector, provider, brotli, qr, image, crypto。
-- CLI 依存: QR エンコード時のみ `brotli` コマンドが必要（パス探索: `_BrotliCli.resolve()` が `BROTLI_CLI` 環境変数や where/which を検索）。
+- 主要パッケージ: geolocator, flutter_local_notifications, permission_handler, mobile_scanner, file_selector, provider, qr, image, crypto, package_info_plus, upgrader。
+- CLI 依存: なし。QR エンコード/デコードは Dart 標準の gzip とアプリ依存パッケージのみで完結。
 - アセット: `assets/config/default_config.json`（初期設定）、`assets/geojson/map.geojson`（サンプル／テスト用、アプリ起動時には自動ロードされない）、`assets/sounds/alarm.mp3`（警告音）、`icon.png`。
 
 ## 8. 品質・テスト
-- README 時点カバレッジ: 42.5%（state_machine/geo 周りは高カバー、UI・I/O は低カバー）。
-- 自動テスト対象（抜粋）: 状態遷移とヒステリシス、GeoJSON パース/点とポリゴン計算、QR コーデック、Notifier のアラーム状態、AppController の GeoJSON 読み込み/アラーム停止など。
-- 未テスト/低カバー: file_picker, UI 表示分岐、位置サービス実機連携、設定フォームバリデーション。
+- `flutter analyze` / `flutter test` / `flutter test --coverage` を基本確認とし、カバレッジは 100% を目標にする。
+- 自動テスト対象（抜粋）: 状態遷移とヒステリシス、GeoJSON パース/点とポリゴン計算、QR コーデック、AppController、Notifier、PermissionCoordinator、LocationService settings、Home / Settings / QR UI。
+- Android 契約テスト: 音量 50% 境界、MethodChannel、通知チャンネル、Foreground Service 文言、権限順序、音設定導線を保護する。
+- GPS、カメラ、file picker、通知プラグインなど実機/OS 境界は薄い wrapper として `coverage:ignore` を許容し、周辺 contract を Fake で検証する。
 
 ## 9. 強み（実装で裏付けられるポイント）
 - ノイズ耐性: サンプル数＋経過秒数によるヒステリシスで誤検知を抑制しつつ、精度不良時も OUTER 維持・距離算出を試みる（`state_machine.dart`）。
 - 詳細な距離/方位ガイダンス: 最近傍境界点と方位を常時計算し、OUTER で移動ヒントを出せる（`_buildNavHint`, `_cardinalFromBearing`）。
-- オフライン配布: Brotli 圧縮＋SHA-256 ハッシュ付き QR（分割にも対応）でエリアデータを物理的に配布可能（`qr/geojson_qr_codec.dart`）。
-- フルアラート: クリティカル通知＋ループアラーム音＋連続バイブで確実に気付ける。音量はユーザー設定反映。
+- オフライン配布: gzip 圧縮＋SHA-256 ハッシュ付き QRでエリアデータを物理的に配布可能（`qr/geojson_qr_codec.dart`）。
+- フルアラート: 無音の高重要度通知＋同梱 MP3 のループアラーム音＋連続バイブで気付けるようにする。音量はユーザー設定反映。
 - デベロッパーモード: エリア内でも距離/方位やログを確認でき、現地調査・検証に向く。
 
 ## 10. 弱み / リスク（現状コード由来）
-- ポーリング前提: OS ネイティブ geofence を使わず Geolocator の高頻度ストリーム依存。電池負荷と端末設定（省電力）に左右される。
-- 外部依存: QR エンコードは外部 `brotli` CLI が無いと失敗（デフォルトで同梱されない）。デコードは可能。
+- ストリーム前提: OS ネイティブ geofence を使わず Geolocator の高頻度ストリームに依存する。電池負荷と端末設定（省電力）に左右される。
+- 外部依存: QR エンコード/デコードに外部CLIは不要。
 - GeoJSON サポートの簡素さ: 最初のリングしか読まないため穴 (holes) や複数リングを無視。MultiPolygon も各ポリゴンの一番外側のみ。高精度ジオフェンスには不十分な場合がある。
 - 設定項目の遊休: `sample_distance_m` と `screen_wake_on_leave` は UI/ロジックで未使用。設定と実挙動が乖離する恐れ。
 - ログ永続化なし: UI ログはメモリ 200 件のみ、EventLogger もメモリのみ。`FileManager.openLogFile()` は未使用で実ファイルに残らない。
@@ -125,11 +126,11 @@
 - セキュリティ: ハッシュ検証は任意、署名なし。無効な GeoJSON は弾くが、改ざん防止はハッシュ頼み。
 
 ## 11. 運用メモ
-- Android では Foreground Service 通知が常に出る想定。端末設定で「常に位置情報」許可が必須。
+- Android では Foreground Service 通知が常に出る想定。監視開始には位置サービス有効と「常に位置情報」許可が必須。
 - iOS では Always 許可＋背景位置表示が有効化されている必要あり。拒否された場合の代替フローは無し。
 - GeoJSON を差し替えたら自動で監視停止→再起動しないので、利用者に「再度 START を押す」導線を用意すると親切。
 - アプリ終了時（detached）に QR 由来の一時 GeoJSON を自動削除するため、永続利用にはファイルピックを使う。
 
 ---
 
-上記は 2025-11-17 時点のコードを直接確認した内容です。挙動変更時は `lib/app_controller.dart`・`lib/state_machine/state_machine.dart`・`lib/qr/geojson_qr_codec.dart` 周辺のロジック更新に合わせて改訂してください。
+上記は 2026-06-17 時点のコードを直接確認した内容です。挙動変更時は `lib/app_controller.dart`・`lib/state_machine/state_machine.dart`・`lib/platform/`・`lib/qr/geojson_qr_codec.dart` 周辺のロジック更新に合わせて改訂してください。

@@ -6,6 +6,7 @@ MacBook の初回環境構築は [macbook_ios_setup.md](macbook_ios_setup.md) �
 
 ## 実装済みのiOS設定
 
+- App version: `0.5.0+1005`
 - Bundle ID: `com.argus.orienteering`
 - Minimum deployment target: iOS 15.0
 - Background Modes: `Location updates`, `Audio`
@@ -14,6 +15,9 @@ MacBook の初回環境構築は [macbook_ios_setup.md](macbook_ios_setup.md) �
 - 警告音: `ios/Runner/Resources/alarm.caf` をネイティブループ再生。iOS通知音は重複再生を避けるため無効
 - ネイティブアラーム: `argus/alarm` MethodChannel と `AVAudioPlayer` のループ再生
 - Privacy Manifest: `ios/Runner/PrivacyInfo.xcprivacy` を `Runner` target resources に含める
+- 位置情報: `Geolocator.getPositionStream` に一本化し、`allowBackgroundLocationUpdates: true`
+- QR: 標準 `agz1` で元ファイル名を保持し、既存 `gjz1` の読み取り互換を維持
+- 更新確認: 起動時に日本のApp Storeを確認し、設定画面に現在のversion/build番号を表示
 
 `Critical Alerts` はAppleへの個別申請が必要なので有効化していません。現在は通常配布可能な `Time Sensitive Notifications` を使います。
 
@@ -32,6 +36,19 @@ flutter build ios --simulator --debug
 ```
 
 `pod install` 後は `ios/Runner.xcworkspace` をXcodeで開いてください。`Runner.xcodeproj` ではなく workspace を使います。
+
+## Simulatorでの確認
+
+利用するSimulatorを明示的に起動してからFlutterテストを実行します。XCTest終了後はSimulatorが停止している場合があるため、UI smokeの直前にもboot状態を確認します。
+
+```bash
+simulator_id="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for xs in d.values() for x in xs if x["name"].startswith("iPhone")))')"
+xcrun simctl boot "$simulator_id" || true
+open -a Simulator
+xcrun simctl bootstatus "$simulator_id" -b
+flutter devices
+flutter test integration_test/ui_smoke_test.dart -d "$simulator_id"
+```
 
 ## Xcodeで必要な署名設定
 
@@ -91,6 +108,8 @@ xcrun devicectl device process launch \
 6. 警告音がループし、スヌーズとエリア復帰で停止する。
 7. サイレントモード、集中モード、画面ロック中の通知挙動を確認する。
 8. Xcodeの `Product > Test` で `RunnerTests` が通る。
+9. 設定画面に `0.5.0 (1005)` が表示される。
+10. `agz1` QRからGeoJSONと元ファイル名を復元でき、`gjz1` QRも読み込める。
 
 ## Archive前の確認
 
@@ -121,3 +140,12 @@ ARGUSは、利用者が読み込んだGeoJSONエリアを監視するアプリ�
 | エリア外でTime Sensitive通知と警告音が鳴る | 確認メモ |
 | スヌーズまたはエリア復帰で警告音が止まる | 確認メモ |
 | App Store Connect Privacy回答と審査メモを入力した | 入力者 / 日時 |
+
+## 2026-06-18 統合確認結果
+
+- Flutter 3.44.1 / Xcode 26.5 / CocoaPods 1.16.2
+- `flutter analyze`: 成功
+- `flutter test --coverage`: 303件成功、100.0% (2548/2548)
+- iPhone 17 Pro Simulator (iOS 26.5): Debug build成功、RunnerTests 3件成功、UI smoke 5件成功
+- KAITOのiPhone (iOS 26.0.1): Release署名・インストール・起動成功、`ARGUS 0.5.0 (1005)` と実行中processを確認
+- 権限ダイアログ、実移動中のbackground位置更新、音・振動・スヌーズは端末操作を伴うため、リリース前に上記チェックリストで官能確認する

@@ -1,5 +1,6 @@
 # Miscellaneous
 *.class
+*.iml
 *.lock
 !pubspec.lock
 *.log
@@ -7,10 +8,14 @@
 *.swp
 .buildlog/
 .history
+.idea/
 
 # 自走用
 codex-logs/
 tasks.md
+
+# Script/demo outputs
+scripts/output/
 
 # Flutter repo-specific
 /bin/cache/

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:argus/io/config.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
 import 'package:argus/app_controller.dart';
@@ -69,6 +70,13 @@ Future<void> _invokeSaveButton(WidgetTester tester) async {
 void main() {
   setUpAll(() async {
     await mockDefaultConfigAsset();
+    PackageInfo.setMockInitialValues(
+      appName: 'ARGUS',
+      packageName: 'com.argus.orienteering',
+      version: '0.4.1',
+      buildNumber: '1005',
+      buildSignature: '',
+    );
   });
 
   tearDown(() async {
@@ -103,6 +111,11 @@ void main() {
     expect(find.text('境界バッファ距離'), findsOneWidget);
     expect(find.text('プライバシーポリシー'), findsOneWidget);
     expect(find.textContaining('デフォルト:'), findsWidgets);
+    await _scrollUntilVisible(
+      tester,
+      find.byKey(const Key('appVersionLabel')),
+    );
+    expect(find.text('バージョン 0.4.1 (1005)'), findsOneWidget);
   });
 
   testWidgets('falls back when default config asset cannot load',

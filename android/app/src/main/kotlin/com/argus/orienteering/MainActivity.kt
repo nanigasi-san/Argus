@@ -1,6 +1,7 @@
 package com.argus.orienteering
 
 import android.content.Context
+import android.content.Intent
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
@@ -9,6 +10,7 @@ import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -46,6 +48,12 @@ class MainActivity : FlutterActivity() {
                         NativeVibrationPlayer.stop(applicationContext)
                         result.success(null)
                     }
+                    "getAlarmVolumeState" -> {
+                        result.success(NativeAlarmPlayer.getAlarmVolumeState(applicationContext))
+                    }
+                    "openSoundSettings" -> {
+                        result.success(openSoundSettings())
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -65,6 +73,20 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         private const val ALARM_CHANNEL = "argus/alarm"
+    }
+
+    private fun openSoundSettings(): Boolean {
+        return try {
+            startActivity(Intent(Settings.ACTION_SOUND_SETTINGS))
+            true
+        } catch (_: RuntimeException) {
+            try {
+                startActivity(Intent(Settings.ACTION_SETTINGS))
+                true
+            } catch (_: RuntimeException) {
+                false
+            }
+        }
     }
 }
 
@@ -169,6 +191,18 @@ private object NativeAlarmPlayer {
             releaseAudioFocus(audioManager)
             NativeVibrationPlayer.stop(appContext)
         }
+    }
+
+    fun getAlarmVolumeState(context: Context): Map<String, Any> {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val current = audioManager.getStreamVolume(AudioManager.STREAM_ALARM)
+        val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+        val percent = if (max > 0) current.toDouble() / max.toDouble() else 1.0
+        return mapOf(
+            "current" to current,
+            "max" to max,
+            "percent" to percent,
+        )
     }
 
     private fun requestAudioFocus(audioManager: AudioManager): Boolean {

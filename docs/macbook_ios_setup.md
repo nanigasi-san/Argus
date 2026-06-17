@@ -147,7 +147,10 @@ flutter doctor -v
 まず署名を必要としない Simulator ビルドを通します。
 
 ```bash
+simulator_id="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for xs in d.values() for x in xs if x["name"].startswith("iPhone")))')"
+xcrun simctl boot "$simulator_id" || true
 open -a Simulator
+xcrun simctl bootstatus "$simulator_id" -b
 flutter devices
 flutter analyze
 flutter test
@@ -167,6 +170,7 @@ xcodebuild build-for-testing \
 ```bash
 flutter devices
 flutter run -d <simulator-device-id>
+flutter test integration_test/ui_smoke_test.dart -d <simulator-device-id>
 ```
 
 位置情報、通知、バックグラウンド警告音の最終判定は Simulator だけでは完了しません。

@@ -25,6 +25,7 @@ class FileManager {
             documentsDirectoryProvider ?? getApplicationDocumentsDirectory,
         _loadDefaultConfig = defaultConfigLoader ?? AppConfig.loadDefault;
 
+  // coverage:ignore-start
   static Future<XFile?> _defaultFilePicker({
     List<XTypeGroup>? acceptedTypeGroups,
   }) async {
@@ -33,6 +34,7 @@ class FileManager {
     }
     return await openFile(acceptedTypeGroups: acceptedTypeGroups);
   }
+  // coverage:ignore-end
 
   final GeoJsonFilePicker _pickFile;
   final DocumentsDirectoryProvider _documentsDirectoryProvider;

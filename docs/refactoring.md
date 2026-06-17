@@ -375,6 +375,18 @@ void main() {
 
 抽象クラスを実装することで、テスト時にモックを注入できるようにします。
 
+### 8.4 共通 Fake / Harness
+
+テスト支援コードは `test/support` に集約します。AppController、Notifier、Permission、Alarm volume などの Fake は、unit / widget / integration で同じ fixture と同じ呼び名を使います。記録型 Fake は呼び出し回数だけでなく、呼び出し順、最後の引数、返却シナリオを保持できる形にします。
+
+### 8.5 契約テスト
+
+プラグイン境界や MethodChannel は、実機プラグインそのものではなく Argus が期待する契約をテストします。Android ではアラーム音量 50% 境界、`argus/alarm` MethodChannel、通知チャンネル、OUTER 通知 ID、Foreground Service 文言、権限要求順序を platform / controller / UI の適切な層で守ります。
+
+### 8.6 Platform seam と coverage
+
+本番挙動を変えずにテスト困難な platform settings だけ seam を追加できます。GPS、カメラ、file picker、通知プラグインの薄い wrapper は実機確認領域として `coverage:ignore` を許容しますが、アプリ側の判定と contract は Fake で検証します。カバレッジは `flutter test --coverage` と `scripts/parse_coverage.py` で 100% を目標にします。
+
 ---
 
 ## 9. コードの整理
@@ -433,6 +445,9 @@ String _normalizeToGeoJson(String fileName) {
 - [ ] 状態管理に`ChangeNotifier`または`ValueNotifier`を使用しているか
 - [ ] 公開APIにはドキュメントコメントが付いているか
 - [ ] テストが更新され、すべて通過しているか
+- [ ] 共通 Fake / Harness を再利用し、テストごとの重複 setup が増えていないか
+- [ ] Android の MethodChannel、通知、権限、Foreground Service 文言の contract が崩れていないか
+- [ ] 実機依存 wrapper を `coverage:ignore` した場合、周辺 contract test があるか
 - [ ] `flutter analyze`でエラーや警告がないか
 
 ---

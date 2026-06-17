@@ -16,6 +16,7 @@ abstract class PermissionGateway {
   Future<PermissionStatus> requestCamera();
 }
 
+// coverage:ignore-start
 class PermissionHandlerGateway implements PermissionGateway {
   const PermissionHandlerGateway();
 
@@ -49,6 +50,7 @@ class PermissionHandlerGateway implements PermissionGateway {
   @override
   Future<PermissionStatus> requestCamera() => Permission.camera.request();
 }
+// coverage:ignore-end
 
 class MonitoringPermissionState {
   const MonitoringPermissionState({

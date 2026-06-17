@@ -21,6 +21,7 @@ import 'package:path_provider_platform_interface/path_provider_platform_interfac
 import 'package:permission_handler/permission_handler.dart';
 
 import 'support/notifier_fakes.dart';
+import 'support/test_doubles.dart' as support;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -242,6 +243,140 @@ void main() {
       expect(
           controller.monitoringPermissionState.locationAlwaysGranted, isFalse);
       expect(coordinator.refreshCount, 1);
+    });
+
+    test('Android alarm volume allows monitoring at the 50 percent boundary',
+        () async {
+      final alarmVolumeClient = support.RecordingAlarmVolumeClient(
+        states: const [
+          AlarmVolumeState(current: 5, max: 10, percent: 0.5),
+        ],
+      );
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: FakeLocationService(),
+        fileManager: FakeFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+        alarmVolumeClient: alarmVolumeClient,
+        isAndroid: true,
+      );
+
+      final canStart = await controller.canStartWithCurrentAlarmVolume();
+
+      expect(canStart, isTrue);
+      expect(alarmVolumeClient.calls, ['getAlarmVolumeState']);
+    });
+
+    test('Android alarm volume below 50 percent blocks monitoring', () async {
+      final alarmVolumeClient = support.RecordingAlarmVolumeClient(
+        states: const [
+          AlarmVolumeState(current: 4, max: 10, percent: 0.4),
+        ],
+      );
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: FakeLocationService(),
+        fileManager: FakeFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+        alarmVolumeClient: alarmVolumeClient,
+        isAndroid: true,
+      );
+
+      final canStart = await controller.canStartWithCurrentAlarmVolume();
+
+      expect(canStart, isFalse);
+      expect(alarmVolumeClient.checkCount, 1);
+    });
+
+    test('alarm volume check failures allow monitoring and write a warning',
+        () async {
+      final alarmVolumeClient = support.RecordingAlarmVolumeClient(
+        throwOnCheck: true,
+      );
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: FakeLocationService(),
+        fileManager: FakeFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+        alarmVolumeClient: alarmVolumeClient,
+        isAndroid: true,
+      );
+
+      final canStart = await controller.canStartWithCurrentAlarmVolume();
+
+      expect(canStart, isTrue);
+      expect(
+        controller.logs.single.message,
+        startsWith('Failed to check alarm volume:'),
+      );
+      expect(controller.logs.single.level.name, 'warning');
+    });
+
+    test('non-Android skips alarm volume MethodChannel checks', () async {
+      final alarmVolumeClient = support.RecordingAlarmVolumeClient(
+        states: const [
+          AlarmVolumeState(current: 0, max: 10, percent: 0),
+        ],
+      );
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: FakeLocationService(),
+        fileManager: FakeFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+        alarmVolumeClient: alarmVolumeClient,
+        isAndroid: false,
+      );
+
+      final canStart = await controller.canStartWithCurrentAlarmVolume();
+
+      expect(canStart, isTrue);
+      expect(alarmVolumeClient.calls, isEmpty);
+    });
+
+    test('openAlarmSoundSettings returns false and logs when platform fails',
+        () async {
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: FakeLocationService(),
+        fileManager: FakeFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+        alarmVolumeClient: _ThrowingOpenAlarmVolumeClient(),
+        isAndroid: true,
+      );
+
+      final opened = await controller.openAlarmSoundSettings();
+
+      expect(opened, isFalse);
+      expect(
+        controller.logs.single.message,
+        startsWith('Failed to open sound settings:'),
+      );
+      expect(controller.logs.single.level.name, 'warning');
     });
 
     test('requestNotificationPermission updates permission state', () async {
@@ -732,7 +867,11 @@ void main() {
 
       // QRコードを生成
       final bundle = await encodeGeoJson(
-        const GeoJsonQrEncodeInput(geoJson: _squareGeoJson),
+        const GeoJsonQrEncodeInput(
+          geoJson: _squareGeoJson,
+          sourceFileName: 'hoge.geojson',
+          scheme: GeoJsonQrScheme.agz1,
+        ),
       );
       final qrText = bundle.qrTexts.first;
 
@@ -745,8 +884,7 @@ void main() {
         // 成功した場合のアサーション
         expect(controller.geoJsonLoaded, isTrue);
         expect(controller.geoJsonFileName, isNotNull);
-        expect(controller.geoJsonFileName, contains('temp_geojson_'));
-        expect(controller.geoJsonFileName, endsWith('.geojson'));
+        expect(controller.geoJsonFileName, 'hoge.geojson');
         expect(controller.snapshot.notes, 'GeoJSON loaded from QR code');
         expect(locationService.stopped, isTrue);
       } catch (e) {
@@ -870,7 +1008,7 @@ void main() {
 
       // 無効なペイロードを含むQRコード
       final loaded =
-          await controller.reloadGeoJsonFromQr('gjb1:invalid_payload');
+          await controller.reloadGeoJsonFromQr('gjz1:invalid_payload');
 
       expect(loaded, isFalse);
       expect(controller.lastErrorMessage, isNotNull);
@@ -1199,6 +1337,18 @@ class _GrantedPermissionCoordinator extends PermissionCoordinator {
   @override
   Future<MonitoringPermissionState> refreshMonitoringPermissionState() async {
     return _grantedMonitoringPermissionState();
+  }
+}
+
+class _ThrowingOpenAlarmVolumeClient implements AlarmVolumeClient {
+  @override
+  Future<AlarmVolumeState> getAlarmVolumeState() async {
+    return const AlarmVolumeState(current: 10, max: 10, percent: 1);
+  }
+
+  @override
+  Future<bool> openSoundSettings() async {
+    throw StateError('settings unavailable');
   }
 }
 

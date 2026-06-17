@@ -17,6 +17,9 @@ void main() {
 
     test('exportJsonl exports state change records', () async {
       final logger = EventLogger();
+      final events = <Map<String, dynamic>>[];
+      final subscription = logger.events.listen(events.add);
+      addTearDown(subscription.cancel);
       final snapshot = StateSnapshot(
         status: LocationStateStatus.inner,
         timestamp: DateTime.now(),
@@ -29,6 +32,8 @@ void main() {
       expect(decoded.length, 1);
       expect(decoded[0]['type'], 'state');
       expect(decoded[0]['status'], 'inner');
+      await pumpEventQueue();
+      expect(events.single['status'], 'inner');
     });
 
     test('exportJsonl exports location fix records', () async {

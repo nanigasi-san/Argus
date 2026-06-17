@@ -44,6 +44,19 @@ void main() {
       expect(notifier, isNot(contains("package:vibration")));
     });
 
+    test('exposes alarm volume checks and the Android sound settings route',
+        () {
+      final mainActivity = File(
+        'android/app/src/main/kotlin/com/argus/orienteering/MainActivity.kt',
+      ).readAsStringSync();
+
+      expect(mainActivity, contains('"getAlarmVolumeState"'));
+      expect(mainActivity, contains('AudioManager.STREAM_ALARM'));
+      expect(mainActivity, contains('"openSoundSettings"'));
+      expect(mainActivity, contains('Settings.ACTION_SOUND_SETTINGS'));
+      expect(mainActivity, contains('Settings.ACTION_SETTINGS'));
+    });
+
     test('keeps Android alert notifications visual-only', () {
       final notifier = File('lib/platform/notifier.dart').readAsStringSync();
 

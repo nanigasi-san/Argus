@@ -116,6 +116,15 @@ void main() {
       expect(frameworkInfo, contains('<string>15.0</string>'));
     });
 
+    test('uses the 0.5.0 release version and update-check dependencies', () {
+      final pubspec = File('pubspec.yaml').readAsStringSync();
+
+      expect(pubspec, contains('version: 0.5.0+1005'));
+      expect(pubspec, contains('package_info_plus: ^10.1.0'));
+      expect(pubspec, contains('upgrader: ^13.5.0'));
+      expect(pubspec, contains('share_plus: ^13.1.0'));
+    });
+
     test('keeps Podfile.lock trackable and executes native XCTests in CI', () {
       final gitignore = File('.gitignore').readAsStringSync();
       final workflow = File('.github/workflows/ios_ci.yml').readAsStringSync();

@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:brotli/brotli.dart' as brotli;
 import 'package:crypto/crypto.dart';
 import 'package:image/image.dart' as img;
 import 'package:qr/qr.dart';
@@ -11,6 +10,7 @@ import 'package:qr/qr.dart';
 class GeoJsonQrEncodeInput {
   const GeoJsonQrEncodeInput({
     required this.geoJson,
+    this.sourceFileName,
     this.scheme = GeoJsonQrScheme.gjz1,
     this.enableHash = true,
     this.maxQrTextLength = 2500,
@@ -23,6 +23,7 @@ class GeoJsonQrEncodeInput {
         assert(quietZoneModules >= 0, 'quietZoneModules must be >= 0');
 
   final String geoJson;
+  final String? sourceFileName;
   final GeoJsonQrScheme scheme;
   final bool enableHash;
   final int maxQrTextLength;
@@ -61,6 +62,14 @@ class GeoJsonQrBundle {
   final GeoJsonInfo info;
 }
 
+/// QRから復元したGeoJSONと、ペイロードに含まれる元ファイル名。
+class DecodedGeoJson {
+  const DecodedGeoJson({required this.geoJson, this.fileName});
+
+  final String geoJson;
+  final String? fileName;
+}
+
 /// GeoJSONの概要情報。
 class GeoJsonInfo {
   const GeoJsonInfo({required this.type, this.featureCount});
@@ -94,11 +103,59 @@ class CompressFailedException extends GeoJsonQrException {
 class DecompressFailedException extends GeoJsonQrException {
   DecompressFailedException(String message, [Object? cause])
       : super('E_DECOMPRESS_FAILED', message, cause);
+
+  DecompressFailedException.withCode(super.code, super.message, [super.cause]);
 }
 
 class DecodeFailedException extends GeoJsonQrException {
   DecodeFailedException(String message, [Object? cause])
       : super('E_DECODE_FAILED', message, cause);
+
+  DecodeFailedException.withCode(super.code, super.message, [super.cause]);
+}
+
+class Base64DecodeFailedException extends DecodeFailedException {
+  Base64DecodeFailedException(String message, [Object? cause])
+      : super.withCode('E_BASE64_DECODE_FAILED', message, cause);
+}
+
+class GzipDecompressFailedException extends DecompressFailedException {
+  GzipDecompressFailedException(String message, [Object? cause])
+      : super.withCode('E_GZIP_DECOMPRESS_FAILED', message, cause);
+}
+
+class InvalidDiffTextException extends GeoJsonQrException {
+  InvalidDiffTextException(String message, [Object? cause])
+      : super('E_INVALID_DIFF_TEXT', message, cause);
+}
+
+class InvalidScaleException extends GeoJsonQrException {
+  InvalidScaleException(String message, [Object? cause])
+      : super('E_INVALID_SCALE', message, cause);
+}
+
+class InvalidCoordinateException extends GeoJsonQrException {
+  InvalidCoordinateException(String message, [Object? cause])
+      : super('E_INVALID_COORDINATE', message, cause);
+}
+
+class TooFewPointsException extends GeoJsonQrException {
+  TooFewPointsException(String message) : super('E_TOO_FEW_POINTS', message);
+}
+
+class PolygonNotClosedException extends GeoJsonQrException {
+  PolygonNotClosedException(String message)
+      : super('E_POLYGON_NOT_CLOSED', message);
+}
+
+class UnsupportedGeometryException extends GeoJsonQrException {
+  UnsupportedGeometryException(String message)
+      : super('E_UNSUPPORTED_GEOMETRY', message);
+}
+
+class InvalidFileNameException extends GeoJsonQrException {
+  InvalidFileNameException(String message, [Object? cause])
+      : super('E_INVALID_FILENAME', message, cause);
 }
 
 class UnsupportedSchemeException extends GeoJsonQrException {
@@ -130,20 +187,20 @@ enum QrErrorCorrectionLevel {
 
 /// GeoJSON QRで使う圧縮/ペイロードスキーム。
 enum GeoJsonQrScheme {
-  /// Brotli圧縮。既存互換だが、生成には外部Brotli CLIが必要。
-  gjb1,
-
   /// gzip圧縮。Dart標準ライブラリのみで生成/復元できる。
   gjz1,
+
+  /// ARGUSの単一Polygonに特化した差分圧縮形式。
+  agz1,
 }
 
 extension GeoJsonQrSchemeName on GeoJsonQrScheme {
   String get wireName {
     switch (this) {
-      case GeoJsonQrScheme.gjb1:
-        return 'gjb1';
       case GeoJsonQrScheme.gjz1:
         return 'gjz1';
+      case GeoJsonQrScheme.agz1:
+        return 'agz1';
     }
   }
 
@@ -152,13 +209,26 @@ extension GeoJsonQrSchemeName on GeoJsonQrScheme {
 
 /// GeoJSON文字列をQRテキスト(とPNG)へ変換する。
 Future<GeoJsonQrBundle> encodeGeoJson(GeoJsonQrEncodeInput input) async {
+  final agzDiffText = input.scheme == GeoJsonQrScheme.agz1
+      ? _geoJsonToAgzDiffText(input.geoJson, input.sourceFileName)
+      : null;
   final minifyResult = minifyGeoJson(input.geoJson);
   final minimizedBytes =
       Uint8List.fromList(utf8.encode(minifyResult.minimized));
+  final bytesToCompress = switch (input.scheme) {
+    GeoJsonQrScheme.gjz1 => minimizedBytes,
+    GeoJsonQrScheme.agz1 => Uint8List.fromList(
+        utf8.encode(
+          agzDiffText!,
+        ),
+      ),
+  };
   final compressedBytes =
-      await _compressForScheme(input.scheme, minimizedBytes);
+      await _compressForScheme(input.scheme, bytesToCompress);
   final payload = base64UrlEncodeNoPad(compressedBytes);
-  final hashHex = input.enableHash ? computeSha256Hex(minimizedBytes) : null;
+  final hashHex = input.scheme == GeoJsonQrScheme.gjz1 && input.enableHash
+      ? computeSha256Hex(minimizedBytes)
+      : null;
 
   var qrTexts =
       _buildQrTexts(input.scheme, payload, hashHex, input.maxQrTextLength);
@@ -174,9 +244,13 @@ Future<GeoJsonQrBundle> encodeGeoJson(GeoJsonQrEncodeInput input) async {
           quietZoneModules: input.quietZoneModules,
         ),
       ];
+      // coverage:ignore-start
     } on PayloadTooLargeException catch (e) {
+      // The lower-level encoder already covers this limit; this branch keeps
+      // the bundle API error type stable if PNG generation is requested.
       throw QrGenerationException(e.message, e);
     }
+    // coverage:ignore-end
   }
 
   return GeoJsonQrBundle(
@@ -190,11 +264,19 @@ Future<GeoJsonQrBundle> encodeGeoJson(GeoJsonQrEncodeInput input) async {
 
 bool isSupportedGeoJsonQrText(String text) {
   final normalized = text.trim();
-  return normalized.startsWith('gjb1:') || normalized.startsWith('gjz1:');
+  return normalized.startsWith('gjz1:') || normalized.startsWith('agz1:');
 }
 
 /// QRテキストからGeoJSON文字列を復元する。
 Future<String> decodeGeoJson(GeoJsonQrDecodeInput input) async {
+  final decoded = await decodeGeoJsonWithMetadata(input);
+  return decoded.geoJson;
+}
+
+/// QRテキストからGeoJSON文字列と埋め込みファイル名を復元する。
+Future<DecodedGeoJson> decodeGeoJsonWithMetadata(
+  GeoJsonQrDecodeInput input,
+) async {
   final normalized = input.qrTexts
       .map((e) => e.trim())
       .where((element) => element.isNotEmpty)
@@ -205,20 +287,48 @@ Future<String> decodeGeoJson(GeoJsonQrDecodeInput input) async {
   }
 
   final payload = _parseQrPayload(normalized);
-  final compressedBytes = base64UrlDecodeNoPad(payload.payload);
-  final minimizedBytes = _decompressForScheme(payload.scheme, compressedBytes);
-  final minimized = utf8.decode(minimizedBytes);
+  late final Uint8List compressedBytes;
+  try {
+    compressedBytes = base64UrlDecodeNoPad(payload.payload);
+  } on DecodeFailedException catch (e) {
+    if (payload.scheme == GeoJsonQrScheme.agz1) {
+      throw Base64DecodeFailedException(e.message, e.cause);
+    }
+    rethrow;
+  }
+
+  late final Uint8List decompressedBytes;
+  try {
+    decompressedBytes = _decompressForScheme(payload.scheme, compressedBytes);
+  } on DecompressFailedException catch (e) {
+    if (payload.scheme == GeoJsonQrScheme.agz1) {
+      throw GzipDecompressFailedException(e.message, e.cause);
+    }
+    rethrow;
+  }
+
+  if (payload.scheme == GeoJsonQrScheme.agz1) {
+    try {
+      return _agzDiffTextToGeoJson(utf8.decode(decompressedBytes));
+    } on GeoJsonQrException {
+      rethrow;
+    } on FormatException catch (e) {
+      throw InvalidDiffTextException('AGZ diff text is not valid UTF-8', e);
+    }
+  }
+
+  final minimized = utf8.decode(decompressedBytes);
 
   validateGeoJsonStructure(jsonDecode(minimized));
 
   if (input.verifyHash && payload.hashHex != null) {
-    final currentHash = computeSha256Hex(minimizedBytes);
+    final currentHash = computeSha256Hex(decompressedBytes);
     if (!_constantTimeEquals(payload.hashHex!, currentHash)) {
       throw HashMismatchException('Hash mismatch detected');
     }
   }
 
-  return minimized;
+  return DecodedGeoJson(geoJson: minimized);
 }
 
 /// GeoJSON最小化と検証。
@@ -280,61 +390,15 @@ GeoJsonInfo validateGeoJsonStructure(dynamic decoded) {
   return GeoJsonInfo(type: type, featureCount: featureCount);
 }
 
-Future<Uint8List> brotliCompress(Uint8List bytes, {int quality = 11}) async {
-  try {
-    final executable = await _BrotliCli.instance.resolve();
-    final process = await Process.start(
-      executable,
-      ['--quality=$quality', '--stdout'],
-      runInShell: false,
-    );
-
-    final stdoutFuture = process.stdout.fold<List<int>>(
-      <int>[],
-      (previous, element) => previous..addAll(element),
-    );
-    final stderrFuture = process.stderr.fold<List<int>>(
-      <int>[],
-      (previous, element) => previous..addAll(element),
-    );
-
-    process.stdin.add(bytes);
-    await process.stdin.close();
-
-    final exitCode = await process.exitCode;
-    final stdoutBytes = Uint8List.fromList(await stdoutFuture);
-    final stderrBytes = Uint8List.fromList(await stderrFuture);
-
-    if (exitCode != 0) {
-      final message = stderrBytes.isEmpty
-          ? 'exit code $exitCode'
-          : utf8.decode(stderrBytes, allowMalformed: true);
-      throw CompressFailedException('Brotli CLI failed: $message');
-    }
-
-    return stdoutBytes;
-  } on GeoJsonQrException {
-    rethrow;
-  } catch (e) {
-    throw CompressFailedException('Brotli compression failed', e);
-  }
-}
-
 Uint8List gzipCompress(Uint8List bytes, {int level = 9}) {
   try {
     return Uint8List.fromList(GZipCodec(level: level).encode(bytes));
   } catch (e) {
+    // coverage:ignore-start
+    // Dart's gzip encoder does not expose a practical deterministic failure
+    // path for valid in-memory bytes.
     throw CompressFailedException('gzip compression failed', e);
-  }
-}
-
-Uint8List brotliDecompress(Uint8List bytes) {
-  try {
-    const decoder = brotli.BrotliDecoder();
-    final decompressed = decoder.convert(bytes);
-    return Uint8List.fromList(decompressed);
-  } catch (e) {
-    throw DecompressFailedException('Brotli decompression failed', e);
+    // coverage:ignore-end
   }
 }
 
@@ -374,18 +438,16 @@ Future<Uint8List> _compressForScheme(
   Uint8List bytes,
 ) {
   switch (scheme) {
-    case GeoJsonQrScheme.gjb1:
-      return brotliCompress(bytes);
     case GeoJsonQrScheme.gjz1:
+    case GeoJsonQrScheme.agz1:
       return Future.value(gzipCompress(bytes));
   }
 }
 
 Uint8List _decompressForScheme(GeoJsonQrScheme scheme, Uint8List bytes) {
   switch (scheme) {
-    case GeoJsonQrScheme.gjb1:
-      return brotliDecompress(bytes);
     case GeoJsonQrScheme.gjz1:
+    case GeoJsonQrScheme.agz1:
       return gzipDecompress(bytes);
   }
 }
@@ -416,15 +478,15 @@ String _buildSingleText(
   return '$prefix:$payload#$hashHex';
 }
 
-/// `gjb1` / `gjz1`テキストを解析する。
+/// `gjz1`テキストを解析する。
 QrPayload _parseQrPayload(List<String> texts) {
   if (texts.length == 1) {
     final text = texts.first;
-    if (text.startsWith('gjb1:')) {
-      return _parseSinglePayload(GeoJsonQrScheme.gjb1, text);
-    }
     if (text.startsWith('gjz1:')) {
       return _parseSinglePayload(GeoJsonQrScheme.gjz1, text);
+    }
+    if (text.startsWith('agz1:')) {
+      return _parseSinglePayload(GeoJsonQrScheme.agz1, text);
     }
   }
 
@@ -445,6 +507,9 @@ QrPayload _parseSinglePayload(GeoJsonQrScheme scheme, String text) {
     throw DecodeFailedException('Empty $prefix payload');
   }
   final split = _splitPayloadAndHash(payloadWithHash);
+  if (scheme == GeoJsonQrScheme.agz1 && split.hashHex != null) {
+    throw DecodeFailedException('agz1 does not support a hash suffix');
+  }
   return QrPayload(scheme, split.payload, split.hashHex);
 }
 
@@ -477,6 +542,226 @@ class QrPayload {
   final GeoJsonQrScheme scheme;
   final String payload;
   final String? hashHex;
+}
+
+const int _agzScale = 6;
+
+String _geoJsonToAgzDiffText(String geoJson, String? sourceFileName) {
+  final fileName = _normalizeGeoJsonFileName(sourceFileName);
+  final dynamic decoded = jsonDecode(geoJson);
+  if (decoded is! Map<String, dynamic> ||
+      decoded['type'] != 'FeatureCollection') {
+    throw UnsupportedGeometryException(
+      'agz1 requires a FeatureCollection',
+    );
+  }
+  final features = decoded['features'];
+  if (features is! List || features.length != 1) {
+    throw UnsupportedGeometryException(
+      'agz1 requires exactly one Feature',
+    );
+  }
+  final feature = features.single;
+  if (feature is! Map<String, dynamic>) {
+    throw UnsupportedGeometryException('Feature must be an object');
+  }
+  final geometry = feature['geometry'];
+  if (geometry is! Map<String, dynamic> || geometry['type'] != 'Polygon') {
+    throw UnsupportedGeometryException('agz1 supports only Polygon geometry');
+  }
+  final coordinates = geometry['coordinates'];
+  if (coordinates is! List || coordinates.length != 1) {
+    throw UnsupportedGeometryException(
+      'agz1 supports exactly one exterior ring and no holes',
+    );
+  }
+  final ring = coordinates.single;
+  if (ring is! List) {
+    throw InvalidCoordinateException('Polygon ring must be a list');
+  }
+  if (ring.length < 4) {
+    throw TooFewPointsException(
+      'Polygon must contain at least four points including closure',
+    );
+  }
+
+  final points = ring.map(_readCoordinate).toList(growable: false);
+  if (points.first.lon != points.last.lon ||
+      points.first.lat != points.last.lat) {
+    throw PolygonNotClosedException(
+      'Polygon final point must match its first point',
+    );
+  }
+
+  const factor = 1000000;
+  final integerPoints = points
+      .map(
+        (point) => _IntegerCoordinate(
+          (point.lon * factor).round(),
+          (point.lat * factor).round(),
+        ),
+      )
+      .toList(growable: false);
+  final first = integerPoints.first;
+  final deltas = <String>[];
+  var previous = first;
+  for (final point in integerPoints.skip(1)) {
+    deltas.add('${point.lon - previous.lon},${point.lat - previous.lat}');
+    previous = point;
+  }
+
+  final fileNameToken = base64UrlEncodeNoPad(
+    Uint8List.fromList(utf8.encode(fileName)),
+  );
+  return 'a3:$_agzScale:$fileNameToken:'
+      '${first.lon},${first.lat}|${deltas.join(';')}';
+}
+
+DecodedGeoJson _agzDiffTextToGeoJson(String diffText) {
+  final fields = diffText.split(':');
+  if (fields.length != 4 || fields.first != 'a3') {
+    throw InvalidDiffTextException(
+      'Expected a3:<scale>:<filename>:<coordinates>',
+    );
+  }
+
+  final scale = int.tryParse(fields[1]);
+  if (scale == null || scale < 0 || scale > 9) {
+    throw InvalidScaleException('AGZ scale must be an integer from 0 to 9');
+  }
+
+  final fileName = _decodeAgzFileName(fields[2]);
+  final coordinateSections = fields[3].split('|');
+  if (coordinateSections.length != 2 || coordinateSections[1].isEmpty) {
+    throw InvalidDiffTextException(
+      'AGZ coordinates must contain an absolute point and deltas',
+    );
+  }
+
+  final first = _parseIntegerCoordinate(coordinateSections[0]);
+  final points = <_IntegerCoordinate>[first];
+  var previous = first;
+  for (final deltaText in coordinateSections[1].split(';')) {
+    final delta = _parseIntegerCoordinate(deltaText);
+    final current = _IntegerCoordinate(
+      previous.lon + delta.lon,
+      previous.lat + delta.lat,
+    );
+    points.add(current);
+    previous = current;
+  }
+  if (points.length < 4) {
+    throw TooFewPointsException(
+      'Polygon must contain at least four points including closure',
+    );
+  }
+  if (points.first.lon != points.last.lon ||
+      points.first.lat != points.last.lat) {
+    throw PolygonNotClosedException(
+      'Polygon final point must match its first point',
+    );
+  }
+
+  var factor = 1.0;
+  for (var i = 0; i < scale; i++) {
+    factor *= 10;
+  }
+  final ring = points
+      .map((point) => <double>[point.lon / factor, point.lat / factor])
+      .toList(growable: false);
+  final geoJson = jsonEncode({
+    'type': 'FeatureCollection',
+    'features': [
+      {
+        'type': 'Feature',
+        'properties': <String, dynamic>{},
+        'geometry': {
+          'type': 'Polygon',
+          'coordinates': [ring],
+        },
+      },
+    ],
+  });
+  return DecodedGeoJson(geoJson: geoJson, fileName: fileName);
+}
+
+String _decodeAgzFileName(String token) {
+  if (token.isEmpty) {
+    throw InvalidFileNameException('AGZ filename is empty');
+  }
+  try {
+    final decoded = utf8.decode(base64UrlDecodeNoPad(token));
+    return _normalizeGeoJsonFileName(decoded);
+  } on InvalidFileNameException {
+    rethrow;
+  } on Object catch (e) {
+    throw InvalidFileNameException('Invalid AGZ filename', e);
+  }
+}
+
+String _normalizeGeoJsonFileName(String? value) {
+  if (value == null || value.trim().isEmpty) {
+    throw InvalidFileNameException('A source filename is required for agz1');
+  }
+  var name = value.trim().replaceAll('\\', '/').split('/').last;
+  final queryIndex = name.indexOf(RegExp(r'[?#]'));
+  if (queryIndex >= 0) {
+    name = name.substring(0, queryIndex);
+  }
+  final dotIndex = name.lastIndexOf('.');
+  final stem = (dotIndex > 0 ? name.substring(0, dotIndex) : name).trim();
+  if (stem.isEmpty || RegExp(r'[\x00-\x1f\x7f]').hasMatch(stem)) {
+    throw InvalidFileNameException('AGZ filename is invalid');
+  }
+  final normalized = '$stem.geojson';
+  if (utf8.encode(normalized).length > 255) {
+    throw InvalidFileNameException('AGZ filename is too long');
+  }
+  return normalized;
+}
+
+_Coordinate _readCoordinate(dynamic value) {
+  if (value is! List || value.length < 2) {
+    throw InvalidCoordinateException('Coordinate must contain lon and lat');
+  }
+  final lon = value[0];
+  final lat = value[1];
+  if (lon is! num || lat is! num) {
+    throw InvalidCoordinateException('Coordinate values must be numbers');
+  }
+  final lonValue = lon.toDouble();
+  final latValue = lat.toDouble();
+  if (!lonValue.isFinite || !latValue.isFinite) {
+    throw InvalidCoordinateException('Coordinate values must be finite');
+  }
+  return _Coordinate(lonValue, latValue);
+}
+
+_IntegerCoordinate _parseIntegerCoordinate(String value) {
+  final parts = value.split(',');
+  if (parts.length != 2) {
+    throw InvalidCoordinateException('Coordinate must contain two integers');
+  }
+  final lon = int.tryParse(parts[0]);
+  final lat = int.tryParse(parts[1]);
+  if (lon == null || lat == null) {
+    throw InvalidCoordinateException('Coordinate values must be integers');
+  }
+  return _IntegerCoordinate(lon, lat);
+}
+
+class _Coordinate {
+  const _Coordinate(this.lon, this.lat);
+
+  final double lon;
+  final double lat;
+}
+
+class _IntegerCoordinate {
+  const _IntegerCoordinate(this.lon, this.lat);
+
+  final int lon;
+  final int lat;
 }
 
 Uint8List generateQrPng(
@@ -522,7 +807,11 @@ Uint8List generateQrPng(
     throw PayloadTooLargeException(
         'QR payload too large for the selected configuration');
   } catch (e) {
+    // coverage:ignore-start
+    // Image encoding failures are defensive; QR sizing errors are covered by
+    // the InputTooLongException branch above.
     throw QrGenerationException('Failed to render QR image', e);
+    // coverage:ignore-end
   }
 }
 
@@ -538,82 +827,6 @@ extension on QrErrorCorrectionLevel {
       case QrErrorCorrectionLevel.high:
         return QrErrorCorrectLevel.H;
     }
-  }
-}
-
-/// Brotli CLI の検索パスを明示的に設定する。`null`でリセット。
-void configureBrotliCliPath(String? path) {
-  _BrotliCli.instance.override(path);
-}
-
-class _BrotliCli {
-  _BrotliCli._();
-
-  static final _BrotliCli instance = _BrotliCli._();
-
-  String? _overridePath;
-  String? _cachedPath;
-
-  void override(String? path) {
-    final normalized = path?.trim();
-    _overridePath =
-        (normalized != null && normalized.isNotEmpty) ? normalized : null;
-    _cachedPath = null;
-  }
-
-  Future<String> resolve() async {
-    final candidates = <String?>[
-      _overridePath,
-      Platform.environment['BROTLI_CLI'],
-      if (_cachedPath != null) _cachedPath,
-      if (Platform.isWindows) ...[
-        await _which('brotli.exe'),
-        await _which('brotli'),
-        'C:\\Program Files\\QGIS 3.40.5\\bin\\brotli.exe',
-      ] else ...[
-        await _which('brotli'),
-      ],
-    ];
-
-    for (final candidate in candidates) {
-      if (candidate == null || candidate.isEmpty) {
-        continue;
-      }
-      final file = File(candidate);
-      if (await file.exists()) {
-        _cachedPath = file.path;
-        return file.path;
-      }
-    }
-
-    throw CompressFailedException(
-      'Brotli CLI not found. Install "brotli" command or set BROTLI_CLI.',
-    );
-  }
-
-  Future<String?> _which(String command) async {
-    try {
-      final result = await Process.run(
-        Platform.isWindows ? 'where' : 'which',
-        [command],
-        runInShell: Platform.isWindows,
-      );
-      if (result.exitCode == 0) {
-        final stdout = result.stdout is String
-            ? result.stdout as String
-            : utf8.decode(result.stdout as List<int>, allowMalformed: true);
-        final candidate = stdout
-            .split(RegExp(r'\r?\n'))
-            .map((line) => line.trim())
-            .firstWhere((line) => line.isNotEmpty, orElse: () => '');
-        if (candidate.isNotEmpty) {
-          return candidate;
-        }
-      }
-    } catch (_) {
-      // ignore
-    }
-    return null;
   }
 }
 

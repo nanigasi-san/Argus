@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:geolocator/geolocator.dart';
 
 import 'package:argus/io/config.dart';
 import 'package:argus/platform/location_service.dart';
@@ -66,6 +67,55 @@ void main() {
       current.isAndroid || current.isIOS || current.isMacOS || !current.isApple,
       isTrue,
     );
+  });
+
+  test('LocationSettingsFactory builds the Android foreground service contract',
+      () {
+    const factory = LocationSettingsFactory();
+
+    final settings = factory.buildStreamSettings(
+      runtimePlatform: const RuntimePlatform(
+        isAndroid: true,
+        isIOS: false,
+        isMacOS: false,
+      ),
+      interval: const Duration(seconds: 3),
+    );
+
+    expect(settings, isA<AndroidSettings>());
+    final androidSettings = settings as AndroidSettings;
+    expect(androidSettings.accuracy, LocationAccuracy.best);
+    expect(androidSettings.distanceFilter, 0);
+    expect(androidSettings.forceLocationManager, isFalse);
+    expect(androidSettings.intervalDuration, const Duration(seconds: 3));
+    final foreground = androidSettings.foregroundNotificationConfig!;
+    expect(foreground.notificationTitle, 'ARGUSが位置情報を監視中です');
+    expect(foreground.notificationText, '画面を消しても位置情報の追跡は継続されます。');
+    expect(foreground.notificationChannelName, 'ARGUSバックグラウンド監視');
+    expect(foreground.enableWakeLock, isTrue);
+    expect(foreground.setOngoing, isTrue);
+  });
+
+  test('LocationSettingsFactory builds Apple background indicator settings',
+      () {
+    const factory = LocationSettingsFactory();
+
+    final settings = factory.buildStreamSettings(
+      runtimePlatform: const RuntimePlatform(
+        isAndroid: false,
+        isIOS: true,
+        isMacOS: false,
+      ),
+      interval: const Duration(seconds: 3),
+    );
+
+    expect(settings, isA<AppleSettings>());
+    final appleSettings = settings as AppleSettings;
+    expect(appleSettings.accuracy, LocationAccuracy.best);
+    expect(appleSettings.distanceFilter, 0);
+    expect(appleSettings.pauseLocationUpdatesAutomatically, isFalse);
+    expect(appleSettings.showBackgroundLocationIndicator, isTrue);
+    expect(appleSettings.allowBackgroundLocationUpdates, isTrue);
   });
 
   test('FakeLocationService emits updates and tracks lifecycle', () async {

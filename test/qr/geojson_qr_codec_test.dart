@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:argus/qr/geojson_qr_codec.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -19,10 +20,12 @@ void main() {
     expect(result.info.featureCount, 1);
   });
 
-  test('encode defaults to gjz1 and decodes with hash', () async {
+  test('default encode and decode gjz1 round trip with hash succeeds',
+      () async {
     final bundle =
         await encodeGeoJson(GeoJsonQrEncodeInput(geoJson: sampleGeoJson));
 
+    expect(bundle.qrTexts, hasLength(1));
     expect(bundle.qrTexts, hasLength(1));
     expect(bundle.qrTexts.first.startsWith('gjz1:'), isTrue);
     final payloadSection =
@@ -40,8 +43,7 @@ void main() {
     expect(restored, bundle.minimizedGeoJson);
   });
 
-  test('encode and decode explicit gjz1 round trip with hash succeeds',
-      () async {
+  test('encode and decode gjz1 round trip with hash succeeds', () async {
     final bundle = await encodeGeoJson(
       GeoJsonQrEncodeInput(
         geoJson: sampleGeoJson,
@@ -69,15 +71,301 @@ void main() {
     expect(GeoJsonQrScheme.gjz1.wireName, 'gjz1');
   });
 
-  test('decode keeps gjb1 legacy compatibility without Brotli CLI', () async {
-    const legacyQrText =
-        'gjb1:ixSAeyJ0eXBlIjoiRmVhdHVyZUNvbGxlY3Rpb24iLCJmZWF0dXJlcyI6W119Aw';
-
-    final restored = await decodeGeoJson(
-      const GeoJsonQrDecodeInput(qrTexts: [legacyQrText]),
+  test('agz1 round trip preserves six-digit coordinates and filename',
+      () async {
+    final bundle = await encodeGeoJson(
+      const GeoJsonQrEncodeInput(
+        geoJson: _agzGeoJson,
+        sourceFileName: r'C:\courses\hoge.json?download=1',
+        scheme: GeoJsonQrScheme.agz1,
+        generatePng: false,
+      ),
     );
 
-    expect(restored, '{"type":"FeatureCollection","features":[]}');
+    expect(bundle.qrTexts.single, startsWith('agz1:'));
+    expect(bundle.hashHex, isNull);
+    final payload = bundle.qrTexts.single.substring('agz1:'.length);
+    final diffText = utf8.decode(gzipDecompress(base64UrlDecodeNoPad(payload)));
+    expect(diffText, startsWith('a3:6:'));
+
+    final restored = await decodeGeoJsonWithMetadata(
+      GeoJsonQrDecodeInput(qrTexts: bundle.qrTexts),
+    );
+    expect(restored.fileName, 'hoge.geojson');
+    final decoded = jsonDecode(restored.geoJson) as Map<String, dynamic>;
+    final ring = ((decoded['features'] as List).single['geometry']
+            ['coordinates'] as List)
+        .single as List;
+    expect(
+      ring,
+      const [
+        [140.123456, 35.123456],
+        [140.223456, 35.123456],
+        [140.223456, 35.223456],
+        [140.123456, 35.123456],
+      ],
+    );
+  });
+
+  test('agz1 is smaller than the sample GeoJSON and is recognized', () async {
+    final bundle = await encodeGeoJson(
+      GeoJsonQrEncodeInput(
+        geoJson: sampleGeoJson,
+        sourceFileName: 'map.geojson',
+        scheme: GeoJsonQrScheme.agz1,
+        generatePng: false,
+      ),
+    );
+
+    expect(bundle.qrTexts.single.length,
+        lessThan(utf8.encode(sampleGeoJson).length));
+    expect(isSupportedGeoJsonQrText(bundle.qrTexts.single), isTrue);
+    expect(isSupportedGeoJsonQrText('gjz1:test'), isTrue);
+  });
+
+  test('agz1 rejects unsupported geometry shapes', () async {
+    Future<void> expectUnsupported(String geoJson) async {
+      await expectLater(
+        encodeGeoJson(
+          GeoJsonQrEncodeInput(
+            geoJson: geoJson,
+            sourceFileName: 'hoge.geojson',
+            scheme: GeoJsonQrScheme.agz1,
+            generatePng: false,
+          ),
+        ),
+        throwsA(isA<UnsupportedGeometryException>()),
+      );
+    }
+
+    await expectUnsupported(
+        _agzGeoJson.replaceFirst('"Polygon"', '"MultiPolygon"'));
+    await expectUnsupported(_featureCollectionWithFeatures('[{},{}]'));
+    await expectUnsupported(
+      _agzGeoJson.replaceFirst(
+        '[[[140.123456',
+        '[[[0,0],[1,0],[0,0]],[[140.123456',
+      ),
+    );
+  });
+
+  test('agz1 rejects missing filename, too few points, and open polygon',
+      () async {
+    await expectLater(
+      encodeGeoJson(
+        const GeoJsonQrEncodeInput(
+          geoJson: _agzGeoJson,
+          scheme: GeoJsonQrScheme.agz1,
+          generatePng: false,
+        ),
+      ),
+      throwsA(isA<InvalidFileNameException>()),
+    );
+    await expectLater(
+      encodeGeoJson(
+        const GeoJsonQrEncodeInput(
+          geoJson: _tooFewPointsGeoJson,
+          sourceFileName: 'hoge.geojson',
+          scheme: GeoJsonQrScheme.agz1,
+          generatePng: false,
+        ),
+      ),
+      throwsA(isA<TooFewPointsException>()),
+    );
+    await expectLater(
+      encodeGeoJson(
+        const GeoJsonQrEncodeInput(
+          geoJson: _openPolygonGeoJson,
+          sourceFileName: 'hoge.geojson',
+          scheme: GeoJsonQrScheme.agz1,
+          generatePng: false,
+        ),
+      ),
+      throwsA(isA<PolygonNotClosedException>()),
+    );
+  });
+
+  test('agz1 reports corrupt payload categories', () async {
+    await expectLater(
+      decodeGeoJsonWithMetadata(
+        const GeoJsonQrDecodeInput(qrTexts: ['agz1:@@@@']),
+      ),
+      throwsA(isA<Base64DecodeFailedException>()),
+    );
+    await expectLater(
+      decodeGeoJsonWithMetadata(
+        GeoJsonQrDecodeInput(
+          qrTexts: ['agz1:${base64UrlEncodeNoPad(utf8.encode('not gzip'))}'],
+        ),
+      ),
+      throwsA(isA<GzipDecompressFailedException>()),
+    );
+    await expectLater(
+      decodeGeoJsonWithMetadata(
+        GeoJsonQrDecodeInput(qrTexts: [_agzQrText('a2:6:x:1,1|1,1')]),
+      ),
+      throwsA(isA<InvalidDiffTextException>()),
+    );
+    await expectLater(
+      decodeGeoJsonWithMetadata(
+        GeoJsonQrDecodeInput(
+            qrTexts: [_agzQrText('a3:x:aG9nZS5nZW9qc29u:1,1|1,1;1,1;-2,-2')]),
+      ),
+      throwsA(isA<InvalidScaleException>()),
+    );
+    await expectLater(
+      decodeGeoJsonWithMetadata(
+        GeoJsonQrDecodeInput(
+            qrTexts: [_agzQrText('a3:6:aG9nZS5nZW9qc29u:1,x|1,1;1,1;-2,-2')]),
+      ),
+      throwsA(isA<InvalidCoordinateException>()),
+    );
+    await expectLater(
+      decodeGeoJsonWithMetadata(
+        GeoJsonQrDecodeInput(qrTexts: [_agzQrText('a3:6::1,1|1,1;1,1;-2,-2')]),
+      ),
+      throwsA(isA<InvalidFileNameException>()),
+    );
+  });
+
+  test('agz1 rejects hash suffix and invalid UTF-8 diff text', () async {
+    final valid = _agzQrText(
+      'a3:6:aG9nZS5nZW9qc29u:1,1|1,0;0,1;-1,-1',
+    );
+    await expectLater(
+      decodeGeoJsonWithMetadata(
+        GeoJsonQrDecodeInput(qrTexts: ['$valid#${'a' * 64}']),
+      ),
+      throwsA(isA<DecodeFailedException>()),
+    );
+    await expectLater(
+      decodeGeoJsonWithMetadata(
+        GeoJsonQrDecodeInput(qrTexts: [
+          _agzQrBytes([0xff])
+        ]),
+      ),
+      throwsA(isA<InvalidDiffTextException>()),
+    );
+  });
+
+  test('agz1 rejects malformed feature, ring, and coordinate structures',
+      () async {
+    Future<void> expectAgzError(String geoJson, Matcher matcher) {
+      return expectLater(
+        encodeGeoJson(
+          GeoJsonQrEncodeInput(
+            geoJson: geoJson,
+            sourceFileName: 'hoge.geojson',
+            scheme: GeoJsonQrScheme.agz1,
+            generatePng: false,
+          ),
+        ),
+        throwsA(matcher),
+      );
+    }
+
+    await expectAgzError(
+      '{"type":"Polygon","coordinates":[]}',
+      isA<UnsupportedGeometryException>(),
+    );
+    await expectAgzError(
+      _featureCollectionWithFeatures('[null]'),
+      isA<UnsupportedGeometryException>(),
+    );
+    await expectAgzError(
+      _polygonGeoJson('"not-a-ring"'),
+      isA<InvalidCoordinateException>(),
+    );
+    await expectAgzError(
+      _polygonGeoJson('[[0],[1,0],[1,1],[0]]'),
+      isA<InvalidCoordinateException>(),
+    );
+    await expectAgzError(
+      _polygonGeoJson('[[0,0],["x",0],[1,1],[0,0]]'),
+      isA<InvalidCoordinateException>(),
+    );
+  });
+
+  test('agz1 rejects malformed decoded polygons and filenames', () async {
+    const name = 'aG9nZS5nZW9qc29u';
+    await expectLater(
+      decodeGeoJsonWithMetadata(
+        GeoJsonQrDecodeInput(qrTexts: [_agzQrText('a3:6:$name:1,1')]),
+      ),
+      throwsA(isA<InvalidDiffTextException>()),
+    );
+    await expectLater(
+      decodeGeoJsonWithMetadata(
+        GeoJsonQrDecodeInput(
+          qrTexts: [_agzQrText('a3:6:$name:1,1|1,0;-1,0')],
+        ),
+      ),
+      throwsA(isA<TooFewPointsException>()),
+    );
+    await expectLater(
+      decodeGeoJsonWithMetadata(
+        GeoJsonQrDecodeInput(
+          qrTexts: [_agzQrText('a3:6:$name:1,1|1,0;0,1;0,1')],
+        ),
+      ),
+      throwsA(isA<PolygonNotClosedException>()),
+    );
+    await expectLater(
+      decodeGeoJsonWithMetadata(
+        GeoJsonQrDecodeInput(
+          qrTexts: [_agzQrText('a3:6:$name:1,1|1;0,1;-1,-1')],
+        ),
+      ),
+      throwsA(isA<InvalidCoordinateException>()),
+    );
+    final invalidName = base64UrlEncodeNoPad(
+      Uint8List.fromList(utf8.encode('ba\nd.geojson')),
+    );
+    await expectLater(
+      decodeGeoJsonWithMetadata(
+        GeoJsonQrDecodeInput(
+          qrTexts: [
+            _agzQrText('a3:6:$invalidName:1,1|1,0;0,1;-1,-1'),
+          ],
+        ),
+      ),
+      throwsA(isA<InvalidFileNameException>()),
+    );
+    await expectLater(
+      decodeGeoJsonWithMetadata(
+        GeoJsonQrDecodeInput(
+          qrTexts: [
+            _agzQrText('a3:6:@@@@:1,1|1,0;0,1;-1,-1'),
+          ],
+        ),
+      ),
+      throwsA(isA<InvalidFileNameException>()),
+    );
+    await expectLater(
+      encodeGeoJson(
+        GeoJsonQrEncodeInput(
+          geoJson: _agzGeoJson,
+          sourceFileName: '${'x' * 256}.geojson',
+          scheme: GeoJsonQrScheme.agz1,
+          generatePng: false,
+        ),
+      ),
+      throwsA(isA<InvalidFileNameException>()),
+    );
+    await expectLater(
+      encodeGeoJson(
+        const GeoJsonQrEncodeInput(
+          geoJson: '{"type":"FeatureCollection","features":['
+              '{"type":"Feature","properties":{},"geometry":{'
+              '"type":"Polygon","coordinates":['
+              '[[0,0],[1e999,0],[1,1],[0,0]]]}}]}',
+          sourceFileName: 'hoge.geojson',
+          scheme: GeoJsonQrScheme.agz1,
+          generatePng: false,
+        ),
+      ),
+      throwsA(isA<InvalidCoordinateException>()),
+    );
   });
 
   test('encode rejects payloads that exceed max text length', () async {
@@ -94,7 +382,7 @@ void main() {
     );
   });
 
-  test('decode default gjz1 fails on hash mismatch', () async {
+  test('decode fails on hash mismatch', () async {
     final bundle =
         await encodeGeoJson(GeoJsonQrEncodeInput(geoJson: sampleGeoJson));
     final tampered = List<String>.from(bundle.qrTexts);
@@ -168,8 +456,8 @@ void main() {
 
   test('decode rejects invalid base64 payload', () async {
     await expectLater(
-      decodeGeoJson(const GeoJsonQrDecodeInput(qrTexts: ['gjb1:@@@@'])),
-      throwsA(isA<DecodeFailedException>()),
+      decodeGeoJson(const GeoJsonQrDecodeInput(qrTexts: ['abc1:@@@@'])),
+      throwsA(isA<UnsupportedSchemeException>()),
     );
     await expectLater(
       decodeGeoJson(const GeoJsonQrDecodeInput(qrTexts: ['gjz1:@@@@'])),
@@ -215,13 +503,13 @@ void main() {
     expect(bundle.qrTexts.single.contains('#'), isFalse);
   });
 
-  test('decode rejects empty input and empty gjb1 payload', () async {
+  test('decode rejects empty input and empty gjz1 payload', () async {
     await expectLater(
       decodeGeoJson(const GeoJsonQrDecodeInput(qrTexts: [])),
       throwsA(isA<UnsupportedSchemeException>()),
     );
     await expectLater(
-      decodeGeoJson(const GeoJsonQrDecodeInput(qrTexts: ['gjb1:'])),
+      decodeGeoJson(const GeoJsonQrDecodeInput(qrTexts: ['gjz1:'])),
       throwsA(isA<DecodeFailedException>()),
     );
   });
@@ -254,9 +542,9 @@ void main() {
   test('decode rejects malformed hash suffix', () async {
     await expectLater(
       decodeGeoJson(
-        const GeoJsonQrDecodeInput(qrTexts: ['gjb1:payload#xyz']),
+        const GeoJsonQrDecodeInput(qrTexts: ['abc1:payload#xyz']),
       ),
-      throwsA(isA<DecodeFailedException>()),
+      throwsA(isA<UnsupportedSchemeException>()),
     );
     await expectLater(
       decodeGeoJson(
@@ -275,4 +563,37 @@ void main() {
       throwsA(isA<PayloadTooLargeException>()),
     );
   });
+}
+
+const _agzGeoJson = '{"type":"FeatureCollection","features":[{"type":"Feature",'
+    '"properties":{"ignored":true},"geometry":{"type":"Polygon",'
+    '"coordinates":[[[140.123456,35.123456],[140.223456,35.123456],'
+    '[140.223456,35.223456],[140.123456,35.123456]]]}}]}';
+
+const _tooFewPointsGeoJson =
+    '{"type":"FeatureCollection","features":[{"type":"Feature",'
+    '"properties":{},"geometry":{"type":"Polygon",'
+    '"coordinates":[[[0,0],[1,0],[0,0]]]}}]}';
+
+const _openPolygonGeoJson =
+    '{"type":"FeatureCollection","features":[{"type":"Feature",'
+    '"properties":{},"geometry":{"type":"Polygon",'
+    '"coordinates":[[[0,0],[1,0],[1,1],[0,1]]]}}]}';
+
+String _featureCollectionWithFeatures(String features) =>
+    '{"type":"FeatureCollection","features":$features}';
+
+String _polygonGeoJson(String ring) =>
+    '{"type":"FeatureCollection","features":[{"type":"Feature",'
+    '"properties":{},"geometry":{"type":"Polygon",'
+    '"coordinates":[$ring]}}]}';
+
+String _agzQrText(String diffText) {
+  final compressed = gzipCompress(Uint8List.fromList(utf8.encode(diffText)));
+  return 'agz1:${base64UrlEncodeNoPad(compressed)}';
+}
+
+String _agzQrBytes(List<int> bytes) {
+  final compressed = gzipCompress(Uint8List.fromList(bytes));
+  return 'agz1:${base64UrlEncodeNoPad(compressed)}';
 }

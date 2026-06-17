@@ -20,7 +20,7 @@ enum _LoadFileAction {
 }
 
 class HomePage extends StatelessWidget {
-  const HomePage({super.key});
+  const HomePage({super.key}); // coverage:ignore-line
 
   @override
   Widget build(BuildContext context) {
@@ -135,7 +135,10 @@ class _HomeScrollableContent extends StatelessWidget {
                                   LocationStateStatus.waitStart
                               ? () {
                                   if (controller.canStartMonitoring) {
-                                    controller.startMonitoring();
+                                    unawaited(_startMonitoringAfterAlarmCheck(
+                                      context,
+                                      controller,
+                                    ));
                                   } else {
                                     showBackgroundLocationDisclosure(context);
                                   }
@@ -215,6 +218,80 @@ class _HomeScrollableContent extends StatelessWidget {
       },
     );
   }
+}
+
+enum _AlarmVolumeDialogAction {
+  recheck,
+  cancel,
+}
+
+Future<void> _startMonitoringAfterAlarmCheck(
+  BuildContext context,
+  AppController controller,
+) async {
+  final canStart = await controller.canStartWithCurrentAlarmVolume();
+  if (!context.mounted) {
+    return;
+  }
+  if (canStart) {
+    await controller.startMonitoring();
+    return;
+  }
+
+  await _showAlarmVolumeGuidanceDialog(context, controller);
+}
+
+Future<void> _showAlarmVolumeGuidanceDialog(
+  BuildContext context,
+  AppController controller,
+) async {
+  final action = await showDialog<_AlarmVolumeDialogAction>(
+    context: context,
+    barrierDismissible: false,
+    builder: (dialogContext) {
+      return AlertDialog(
+        title: const Text('アラーム音量が低すぎます'),
+        content: const Text(
+          '端末のアラーム音量が５０％未満です。警報音が聞こえない可能性があるため、５０％以上に上げてから開始してください。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              final opened = await controller.openAlarmSoundSettings();
+              if (!dialogContext.mounted || opened) {
+                return;
+              }
+              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                const SnackBar(
+                  content: Text('音設定を開けませんでした。'),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            },
+            child: const Text('音設定を開く'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop(_AlarmVolumeDialogAction.recheck);
+            },
+            child: const Text('再確認'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop(_AlarmVolumeDialogAction.cancel);
+            },
+            child: const Text('キャンセル'),
+          ),
+        ],
+      );
+    },
+  );
+
+  if (!context.mounted || action != _AlarmVolumeDialogAction.recheck) {
+    return;
+  }
+
+  await _startMonitoringAfterAlarmCheck(context, controller);
 }
 
 class _DeveloperDetails extends StatelessWidget {
@@ -520,9 +597,13 @@ class _HoldToFinishRaceButtonState extends State<_HoldToFinishRaceButton>
   @override
   void didUpdateWidget(covariant _HoldToFinishRaceButton oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // coverage:ignore-start
+    // The production button duration is constant; this keeps the state object
+    // correct if tests or future callers provide a different duration.
     if (oldWidget.duration != widget.duration) {
       _controller.duration = widget.duration;
     }
+    // coverage:ignore-end
   }
 
   @override
@@ -580,7 +661,7 @@ class _HoldToFinishRaceButtonState extends State<_HoldToFinishRaceButton>
           behavior: HitTestBehavior.opaque,
           onPointerDown: (_) => _startHold(),
           onPointerUp: (_) => _cancelHold(),
-          onPointerCancel: (_) => _cancelHold(),
+          onPointerCancel: (_) => _cancelHold(), // coverage:ignore-line
           child: InkWell(
             splashColor: fillColor.withValues(alpha: 0.12),
             highlightColor: fillColor.withValues(alpha: 0.08),
