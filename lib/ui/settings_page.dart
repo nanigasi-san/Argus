@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
 import '../app_controller.dart';
@@ -492,6 +493,22 @@ class _SettingsPageState extends State<SettingsPage> {
                           );
                         },
                         child: const Text('ログを出力'),
+                      ),
+                      const SizedBox(height: 24),
+                      FutureBuilder<PackageInfo>(
+                        future: PackageInfo.fromPlatform(),
+                        builder: (context, snapshot) {
+                          final packageInfo = snapshot.data;
+                          final version = packageInfo == null
+                              ? '読み込み中'
+                              : '${packageInfo.version} (${packageInfo.buildNumber})';
+                          return Text(
+                            'バージョン $version',
+                            key: const Key('appVersionLabel'),
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodySmall,
+                          );
+                        },
                       ),
                     ],
                   ),

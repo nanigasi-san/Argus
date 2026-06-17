@@ -1,7 +1,7 @@
 name: argus
 description: Geo-fence monitoring app per spec.md
 publish_to: "none"
-version: 0.4.0+1005
+version: 0.4.1+1005
 environment:
   sdk: ">=3.2.0 <4.0.0"
 
@@ -26,6 +26,8 @@ dependencies:
   url_launcher: ^6.3.2
   share_plus: ^11.1.0
   gal: ^2.3.2
+  package_info_plus: ^8.3.1
+  upgrader: ^13.5.0
 
 dev_dependencies:
   flutter_test:
@@ -37,7 +39,6 @@ dev_dependencies:
 
 dependency_overrides:
   geolocator_linux: 0.2.3
-  package_info_plus: 8.3.1
 
 flutter:
   uses-material-design: true
