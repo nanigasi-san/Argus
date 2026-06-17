@@ -12,7 +12,7 @@
 
 ## 2. ユースケース価値
 - 端末完結の監視（ネット不要）で通信遮断時も動作。
-- QR コード経由で GeoJSON を安全に配布（gzip 圧縮＋Base64URL＋SHA-256 ハッシュ検証）。
+- QR コード経由で GeoJSON を安全に配布（ARGUS専用差分圧縮または汎用gzip圧縮）。
 - 「離脱確定までの猶予」(サンプル数 + 経過秒数) を設定でき、GPS ノイズによる誤検知を抑制。
 - 離脱時は無音の高重要度通知＋アラーム音＋連続バイブで確実に気付かせる。
 - Developer mode でエリア内でも距離・方位を確認でき、デバッグ／捜索補助に使える。
@@ -34,7 +34,7 @@
 2) 権限要求: 通知権限は警告を見逃さないための setup 対象。監視開始のブロック条件は位置サービス有効 + Always 位置権限で、PermissionCoordinator が foreground から background の順に確認・要求する。拒否/永久拒否時は app/location settings への導線を出す。  
 3) GeoJSON 取込:
    - ファイル: `FileManager.pickGeoJsonFile()` で `.geojson/.json/.bin` を選択しパース→`GeoModel`→`AreaIndex` 構築。ファイル名を `.geojson` 拡張子に正規化して保持。
-   - QR: `gjz1:` テキストを復元→gzip 伸長→構造バリデーション→一時ファイル保存（次回起動で消去）。  
+   - QR: `agz1:` / `gjz1:` テキストを復元→gzip 伸長→構造バリデーション→一時ファイル保存（次回起動で消去）。`agz1` は元ファイル名も復元する。
    ロード成功後の状態は `waitStart`、`navigationEnabled` は false にリセット、アラーム停止。
 4) 監視開始: `startMonitoring()` で Geolocator ストリーム購読開始。`sampleIntervalS['fast']`（デフォルト 3 秒）間隔・距離フィルタ 0m・`LocationAccuracy.best`。
 5) 評価ループ: 各 `LocationFix` を `StateMachine.evaluate()` に通し、UI/ログ/通知に反映。OUTER 確定時に通知＋アラーム。再入時に停止通知。
@@ -48,10 +48,10 @@
 - 新規ロード時は監視を一時停止し、AreaIndex も再構築。
 
 ### 5.2 QR コーデック（ライブラリ）
-- エンコード: GeoJSON を jsonEncode → gzip(level=9) → Base64URL（= 無パディング）→ `gjz1:<payload>[#hash]`。単一QRに収まらない場合は `PayloadTooLargeException`。オプションで PNG 生成（`qr` + `image` パッケージ）。
-- ハッシュ: デフォルトで SHA-256 を付与し、デコード時に検証 (`verifyHash=true`)。不一致なら `HashMismatchException`。
-- デコード: `gjz1` 以外は拒否。gzip 伸長後に GeoJSON 構造チェックを行い、無効なら `GeoJsonValidationException`。
-- 一時ファイル: QR 取込時のみ `temp_geojson_<timestamp>.geojson` を作成。次回起動(detached)または再読込時に削除。
+- 標準エンコード: 単一Feature・単一Polygonの外周座標をscale 6の差分列へ変換し、元ファイル名とともに `a3` 本文へ格納する。gzip(level=9) → Base64URL（= 無パディング）→ `agz1:<payload>` とし、画像名は `QR_<元名>.png`。
+- 互換形式: `gjz1:<payload>[#hash]` の生成APIと読み込みを維持する。`gjz1` のSHA-256検証も従来どおり行う。
+- デコード: `agz1` はGeoJSONと埋め込みファイル名を復元し、`gjz1` はGeoJSONのみ復元する。
+- 一時ファイル: QR取込時の実体は `temp_geojson_<timestamp>.geojson` として安全に管理し、表示名には `agz1` 内の元ファイル名を使う。次回起動(detached)または再読込時に削除する。
 
 ### 5.3 権限
 - 通知: 警告を見逃さないための setup 対象。拒否時は app settings への導線を表示するが、監視開始ブロック条件そのものではない。
@@ -85,7 +85,7 @@
 ### 5.8 UI
 - Home (`home_page.dart`): 大型ステータス円で状態表示（INNER/NEAR/OUTER 等、色付き）。`waitStart` ではタップで監視開始。GeoJSON ファイル名と GPS 精度を常時表示。OUTER（または Developer mode）で距離/方位ナビ表示。最新 5 件のアプリ内ログをカードで閲覧。エラーは Snackbar。
 - Settings (`settings_page.dart`): 設定フォーム（Inner buffer, GPS 精度閾値, Leave confirm サンプル/秒, Alarm 音量）。Developer mode トグル。ログ JSON エクスポート（メモリ上の `EventLogger` 内容をその場表示）。
-- QR Scanner (`qr_scanner_page.dart`): `mobile_scanner` で `gjz1` スキーム QR を読み取り、`AppController.reloadGeoJsonFromQr` へ連携。処理中オーバーレイとエラーバナーを表示。
+- QR Scanner (`qr_scanner_page.dart`): `mobile_scanner` で `agz1` / `gjz1` スキーム QR を読み取り、`AppController.reloadGeoJsonFromQr` へ連携。処理中オーバーレイとエラーバナーを表示。
 - テーマ: Material3、Seed color Blue。文言は日本語中心で一部英語残り。
 
 ## 6. データ/設定リファレンス

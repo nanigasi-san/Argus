@@ -352,14 +352,16 @@ class AppController extends ChangeNotifier {
     try {
       // QRテキストが対応スキームで始まることを確認
       if (!isSupportedGeoJsonQrText(qrText)) {
-        _lastErrorMessage = 'Invalid QR code format. Expected gjz1: scheme.';
+        _lastErrorMessage =
+            'Invalid QR code format. Expected gjz1: or agz1: scheme.';
         _logError('APP', _lastErrorMessage!);
         notifyListeners();
         return false;
       }
 
       // QRテキストからGeoJSONを復元
-      final restoredGeoJson = await compute(_decodeGeoJsonQrText, qrText);
+      final decoded = await compute(_decodeGeoJsonQrText, qrText);
+      final restoredGeoJson = decoded.geoJson;
 
       // 一時ディレクトリに保存
       final tempDir = await getTemporaryDirectory();
@@ -377,7 +379,7 @@ class AppController extends ChangeNotifier {
       final model = GeoModel.fromGeoJson(restoredGeoJson);
 
       _geoModel = model;
-      _geoJsonFileName = 'temp_geojson_$timestamp.geojson';
+      _geoJsonFileName = decoded.fileName ?? 'temp_geojson_$timestamp.geojson';
       _areaIndex = AreaIndex.build(model.polygons);
       stateMachine.updateGeometry(_geoModel, _areaIndex);
 
@@ -820,8 +822,8 @@ class AppController extends ChangeNotifier {
   }
 }
 
-Future<String> _decodeGeoJsonQrText(String qrText) {
-  return decodeGeoJson(
+Future<DecodedGeoJson> _decodeGeoJsonQrText(String qrText) {
+  return decodeGeoJsonWithMetadata(
     GeoJsonQrDecodeInput(
       qrTexts: [qrText],
       verifyHash: true,

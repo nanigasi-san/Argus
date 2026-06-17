@@ -19,8 +19,8 @@
 
 - **初回起動**: GeoJSON は自動ロードしない。状態は `waitGeoJson` で開始し、ユーザーがファイルまたは QR から読み込む。
 - **ファイルピッカー**: ユーザは FloatingActionButton（「Load GeoJSON」ラベル）またはファイルピッカーで `.geojson` / `.json` を再ロード可能。
-- **QRコード読み込み**: ユーザは FloatingActionButton（「Read QR code」ラベル）でQRコードをスキャンし、GeoJSONを読み込むことが可能。QRコードは `gjz1:` スキームで始まる必要がある。読み込んだGeoJSONは一時ファイルとして保存され、アプリ終了時に自動削除される。
-- **ファイル名処理**: 読み込んだファイル名は `.geojson` 拡張子に正規化され、UI に表示される。QRコードから読み込んだ場合は `temp_geojson_<timestamp>.geojson` という名前で一時ファイルとして保存される。
+- **QRコード読み込み**: ユーザは FloatingActionButton（「Read QR code」ラベル）でQRコードをスキャンし、GeoJSONを読み込むことが可能。QRコードは `agz1:` または互換用の `gjz1:` スキームで始まる必要がある。読み込んだGeoJSONは一時ファイルとして保存され、アプリ終了時に自動削除される。
+- **ファイル名処理**: 読み込んだファイル名は `.geojson` 拡張子に正規化され、UI に表示される。`agz1` では埋め込まれた元ファイル名を表示し、一時ファイルの実体は `temp_geojson_<timestamp>.geojson` として管理する。
 - **エラー処理**: 読み込み失敗はエラーバナーとログ（レベル ERROR）で通知。`FormatException` とその他の例外を区別して表示。QRコードの形式が無効な場合やデコードに失敗した場合も適切にエラーを表示する。
 
 ### 1.2 位置情報ストリーム
@@ -510,21 +510,22 @@ stateDiagram-v2
 
 ### 5.1.1 エンコード処理
 
-- **最小化**: GeoJSON文字列から不要な空白（改行、スペース、タブ）を除去し、構造を保持。
+- **標準形式**: 単一Feature・単一Polygon・外周リングをscale 6の整数差分列へ変換し、元ファイル名とともに `a3:<scale>:<filename>:<coordinates>` へ格納。
 - **圧縮**: gzip圧縮（level=9）を使用。外部CLIは不要。
 - **エンコード**: Base64URLエンコード（パディングなし、URL-safe文字）。
-- **ハッシュ**: 最小化されたGeoJSONのSHA256ハッシュを計算（16進数文字列）。
+- **ハッシュ**: `agz1` には付与しない。互換用`gjz1`では最小化されたGeoJSONのSHA256ハッシュを使用可能。
 - **QRテキスト形式**: 
-  - 単一QR: `gjz1:<base64url_payload>#<hash>`
+  - 標準: `agz1:<base64url(gzip(a3本文))>`
+  - 互換: `gjz1:<base64url_payload>[#<hash>]`
 - **容量制限**: QRテキスト長が`maxQrTextLength`（デフォルト2500文字）を超える場合、`PayloadTooLargeException`を返す。
-- **QR画像生成**: PNG形式でQRコード画像を生成（オプション、デフォルト有効）。
+- **QR画像生成**: PNG形式でQRコード画像を生成（オプション、デフォルト有効）。画像名は `QR_<GeoJSONのstem>.png`。
 
 ### 5.1.2 デコード処理
 
-- **スキーム検証**: QRテキストが`gjz1:`で始まることを確認。
+- **スキーム検証**: QRテキストが`agz1:`または`gjz1:`で始まることを確認。
 - **Base64URLデコード**: パディングを自動補完してデコード。
 - **gzip展開**: Dart標準の`GZipCodec`で展開。
-- **ハッシュ検証**: 復元されたGeoJSONのハッシュを計算し、QRテキストに含まれるハッシュと比較（`verifyHash=true`の場合）。
+- **ハッシュ検証**: `gjz1`では復元されたGeoJSONのハッシュをQRテキストと比較（`verifyHash=true`の場合）。
 - **GeoJSON検証**: 復元された文字列が有効なGeoJSONであることを確認（`type`フィールドの存在）。
 
 ### 5.1.3 エラーハンドリング
@@ -536,11 +537,15 @@ stateDiagram-v2
 - **HashMismatchException**: ハッシュが一致しない場合。
 - **UnsupportedSchemeException**: サポートされていないスキームの場合。
 - **PayloadTooLargeException**: QRコードの容量を超える場合。
+- **Base64DecodeFailedException / GzipDecompressFailedException**: `agz1`外装の破損。
+- **InvalidDiffTextException / InvalidScaleException / InvalidCoordinateException**: `a3`本文の破損。
+- **TooFewPointsException / PolygonNotClosedException / UnsupportedGeometryException**: AGZ対象外のPolygon構造。
+- **InvalidFileNameException**: 埋め込みファイル名が空、不正、または長すぎる場合。
 
 ### 5.1.4 一時ファイル管理
 
 - **保存場所**: `getTemporaryDirectory()`で取得した一時ディレクトリ。
-- **ファイル名**: `temp_geojson_<timestamp>.geojson`（`timestamp`はミリ秒単位のエポック時刻）。
+- **ファイル名**: 実体は `temp_geojson_<timestamp>.geojson`（`timestamp`はミリ秒単位のエポック時刻）。`agz1`の表示名は埋め込まれた元ファイル名。
 - **クリーンアップ**: アプリが完全終了時（`AppLifecycleState.detached`）に自動削除。新しいQRコードを読み込む際も既存の一時ファイルを削除。
 
 ---

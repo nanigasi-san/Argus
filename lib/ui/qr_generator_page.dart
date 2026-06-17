@@ -68,11 +68,13 @@ class _QrGeneratorPageState extends State<QrGeneratorPage> {
       }
 
       final rawGeoJson = await selected.readAsString();
+      final sourceFileName = _displayFileName(selected);
       final bundle = await widget.encoder(
         GeoJsonQrEncodeInput(
           geoJson: rawGeoJson,
-          scheme: GeoJsonQrScheme.gjz1,
-          enableHash: true,
+          sourceFileName: sourceFileName,
+          scheme: GeoJsonQrScheme.agz1,
+          enableHash: false,
           maxQrTextLength: 2500,
           eccLevel: QrErrorCorrectionLevel.quartile,
           generatePng: true,
@@ -96,7 +98,7 @@ class _QrGeneratorPageState extends State<QrGeneratorPage> {
       setState(() {
         _isGenerating = false;
         _generatedQr = _GeneratedQr(
-          fileName: _displayFileName(selected),
+          fileName: sourceFileName,
           imageBytes: bundle.pngImages.single,
           info: bundle.info,
           schemeLabel: _schemeLabel(bundle.qrTexts.single),
@@ -144,7 +146,7 @@ class _QrGeneratorPageState extends State<QrGeneratorPage> {
     try {
       await widget.gallerySaver(
         generated.imageBytes,
-        generated.outputBaseName,
+        generated.outputFileName,
       );
       if (!mounted) {
         return;
@@ -180,7 +182,7 @@ class _QrGeneratorPageState extends State<QrGeneratorPage> {
     try {
       await widget.shareHandler(
         generated.imageBytes,
-        '${generated.outputBaseName}.png',
+        generated.outputFileName,
         context,
       );
     } catch (e) {
@@ -418,12 +420,13 @@ class _GeneratedQr {
   final int minimizedBytes;
   final int qrTextBytes;
 
-  String get outputBaseName {
+  String get outputFileName {
     final withoutExtension = path.basenameWithoutExtension(fileName);
-    final normalized =
-        withoutExtension.replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '_');
+    final normalized = withoutExtension
+        .replaceAll(RegExp(r'[<>:"/\\|?*\x00-\x1f]+'), '_')
+        .replaceAll(RegExp(r'[. ]+$'), '');
     final safeName = normalized.isEmpty ? 'geojson' : normalized;
-    return 'argus_qr_$safeName';
+    return 'QR_$safeName.png';
   }
 }
 
@@ -443,7 +446,10 @@ Future<void> _saveQrToGallery(Uint8List bytes, String name) async {
   if (!hasAccess) {
     throw Exception('写真へのアクセスが許可されていません。');
   }
-  await Gal.putImageBytes(bytes, name: name);
+  // galのAndroid実装は検出した拡張子を自動付与するため、二重拡張子を避ける。
+  final galleryName =
+      Platform.isAndroid ? path.basenameWithoutExtension(name) : name;
+  await Gal.putImageBytes(bytes, name: galleryName);
 }
 
 Future<void> _shareQrImage(
