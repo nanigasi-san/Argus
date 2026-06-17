@@ -867,7 +867,11 @@ void main() {
 
       // QRコードを生成
       final bundle = await encodeGeoJson(
-        const GeoJsonQrEncodeInput(geoJson: _squareGeoJson),
+        const GeoJsonQrEncodeInput(
+          geoJson: _squareGeoJson,
+          sourceFileName: 'hoge.geojson',
+          scheme: GeoJsonQrScheme.agz1,
+        ),
       );
       final qrText = bundle.qrTexts.first;
 
@@ -880,8 +884,7 @@ void main() {
         // 成功した場合のアサーション
         expect(controller.geoJsonLoaded, isTrue);
         expect(controller.geoJsonFileName, isNotNull);
-        expect(controller.geoJsonFileName, contains('temp_geojson_'));
-        expect(controller.geoJsonFileName, endsWith('.geojson'));
+        expect(controller.geoJsonFileName, 'hoge.geojson');
         expect(controller.snapshot.notes, 'GeoJSON loaded from QR code');
         expect(locationService.stopped, isTrue);
       } catch (e) {

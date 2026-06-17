@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:argus/qr/geojson_qr_codec.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -68,6 +69,163 @@ void main() {
 
   test('gjz1 helper exposes wire name', () {
     expect(GeoJsonQrScheme.gjz1.wireName, 'gjz1');
+  });
+
+  test('agz1 round trip preserves six-digit coordinates and filename',
+      () async {
+    final bundle = await encodeGeoJson(
+      const GeoJsonQrEncodeInput(
+        geoJson: _agzGeoJson,
+        sourceFileName: r'C:\courses\hoge.json',
+        scheme: GeoJsonQrScheme.agz1,
+        generatePng: false,
+      ),
+    );
+
+    expect(bundle.qrTexts.single, startsWith('agz1:'));
+    expect(bundle.hashHex, isNull);
+    final payload = bundle.qrTexts.single.substring('agz1:'.length);
+    final diffText = utf8.decode(gzipDecompress(base64UrlDecodeNoPad(payload)));
+    expect(diffText, startsWith('a3:6:'));
+
+    final restored = await decodeGeoJsonWithMetadata(
+      GeoJsonQrDecodeInput(qrTexts: bundle.qrTexts),
+    );
+    expect(restored.fileName, 'hoge.geojson');
+    final decoded = jsonDecode(restored.geoJson) as Map<String, dynamic>;
+    final ring = ((decoded['features'] as List).single['geometry']
+            ['coordinates'] as List)
+        .single as List;
+    expect(
+      ring,
+      const [
+        [140.123456, 35.123456],
+        [140.223456, 35.123456],
+        [140.223456, 35.223456],
+        [140.123456, 35.123456],
+      ],
+    );
+  });
+
+  test('agz1 is smaller than the sample GeoJSON and is recognized', () async {
+    final bundle = await encodeGeoJson(
+      GeoJsonQrEncodeInput(
+        geoJson: sampleGeoJson,
+        sourceFileName: 'map.geojson',
+        scheme: GeoJsonQrScheme.agz1,
+        generatePng: false,
+      ),
+    );
+
+    expect(bundle.qrTexts.single.length,
+        lessThan(utf8.encode(sampleGeoJson).length));
+    expect(isSupportedGeoJsonQrText(bundle.qrTexts.single), isTrue);
+    expect(isSupportedGeoJsonQrText('gjz1:test'), isTrue);
+  });
+
+  test('agz1 rejects unsupported geometry shapes', () async {
+    Future<void> expectUnsupported(String geoJson) async {
+      await expectLater(
+        encodeGeoJson(
+          GeoJsonQrEncodeInput(
+            geoJson: geoJson,
+            sourceFileName: 'hoge.geojson',
+            scheme: GeoJsonQrScheme.agz1,
+            generatePng: false,
+          ),
+        ),
+        throwsA(isA<UnsupportedGeometryException>()),
+      );
+    }
+
+    await expectUnsupported(
+        _agzGeoJson.replaceFirst('"Polygon"', '"MultiPolygon"'));
+    await expectUnsupported(_featureCollectionWithFeatures('[{},{}]'));
+    await expectUnsupported(
+      _agzGeoJson.replaceFirst(
+        '[[[140.123456',
+        '[[[0,0],[1,0],[0,0]],[[140.123456',
+      ),
+    );
+  });
+
+  test('agz1 rejects missing filename, too few points, and open polygon',
+      () async {
+    await expectLater(
+      encodeGeoJson(
+        const GeoJsonQrEncodeInput(
+          geoJson: _agzGeoJson,
+          scheme: GeoJsonQrScheme.agz1,
+          generatePng: false,
+        ),
+      ),
+      throwsA(isA<InvalidFileNameException>()),
+    );
+    await expectLater(
+      encodeGeoJson(
+        const GeoJsonQrEncodeInput(
+          geoJson: _tooFewPointsGeoJson,
+          sourceFileName: 'hoge.geojson',
+          scheme: GeoJsonQrScheme.agz1,
+          generatePng: false,
+        ),
+      ),
+      throwsA(isA<TooFewPointsException>()),
+    );
+    await expectLater(
+      encodeGeoJson(
+        const GeoJsonQrEncodeInput(
+          geoJson: _openPolygonGeoJson,
+          sourceFileName: 'hoge.geojson',
+          scheme: GeoJsonQrScheme.agz1,
+          generatePng: false,
+        ),
+      ),
+      throwsA(isA<PolygonNotClosedException>()),
+    );
+  });
+
+  test('agz1 reports corrupt payload categories', () async {
+    await expectLater(
+      decodeGeoJsonWithMetadata(
+        const GeoJsonQrDecodeInput(qrTexts: ['agz1:@@@@']),
+      ),
+      throwsA(isA<Base64DecodeFailedException>()),
+    );
+    await expectLater(
+      decodeGeoJsonWithMetadata(
+        GeoJsonQrDecodeInput(
+          qrTexts: ['agz1:${base64UrlEncodeNoPad(utf8.encode('not gzip'))}'],
+        ),
+      ),
+      throwsA(isA<GzipDecompressFailedException>()),
+    );
+    await expectLater(
+      decodeGeoJsonWithMetadata(
+        GeoJsonQrDecodeInput(qrTexts: [_agzQrText('a2:6:x:1,1|1,1')]),
+      ),
+      throwsA(isA<InvalidDiffTextException>()),
+    );
+    await expectLater(
+      decodeGeoJsonWithMetadata(
+        GeoJsonQrDecodeInput(
+            qrTexts: [_agzQrText('a3:x:aG9nZS5nZW9qc29u:1,1|1,1;1,1;-2,-2')]),
+      ),
+      throwsA(isA<InvalidScaleException>()),
+    );
+    await expectLater(
+      decodeGeoJsonWithMetadata(
+        GeoJsonQrDecodeInput(
+            qrTexts: [_agzQrText('a3:6:aG9nZS5nZW9qc29u:1,x|1,1;1,1;-2,-2')]),
+      ),
+      throwsA(isA<InvalidCoordinateException>()),
+    );
+    await expectLater(
+      decodeGeoJsonWithMetadata(
+        GeoJsonQrDecodeInput(qrTexts: [_agzQrText('a3:6::1,1|1,1;1,1;-2,-2')]),
+      ),
+      throwsA(isA<InvalidFileNameException>()),
+    );
   });
 
   test('encode rejects payloads that exceed max text length', () async {
@@ -265,4 +423,27 @@ void main() {
       throwsA(isA<PayloadTooLargeException>()),
     );
   });
+}
+
+const _agzGeoJson = '{"type":"FeatureCollection","features":[{"type":"Feature",'
+    '"properties":{"ignored":true},"geometry":{"type":"Polygon",'
+    '"coordinates":[[[140.123456,35.123456],[140.223456,35.123456],'
+    '[140.223456,35.223456],[140.123456,35.123456]]]}}]}';
+
+const _tooFewPointsGeoJson =
+    '{"type":"FeatureCollection","features":[{"type":"Feature",'
+    '"properties":{},"geometry":{"type":"Polygon",'
+    '"coordinates":[[[0,0],[1,0],[0,0]]]}}]}';
+
+const _openPolygonGeoJson =
+    '{"type":"FeatureCollection","features":[{"type":"Feature",'
+    '"properties":{},"geometry":{"type":"Polygon",'
+    '"coordinates":[[[0,0],[1,0],[1,1],[0,1]]]}}]}';
+
+String _featureCollectionWithFeatures(String features) =>
+    '{"type":"FeatureCollection","features":$features}';
+
+String _agzQrText(String diffText) {
+  final compressed = gzipCompress(Uint8List.fromList(utf8.encode(diffText)));
+  return 'agz1:${base64UrlEncodeNoPad(compressed)}';
 }

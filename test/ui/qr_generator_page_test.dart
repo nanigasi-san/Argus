@@ -21,7 +21,10 @@ void main() {
       (tester) async {
     var saved = false;
     var shared = false;
+    String? savedName;
+    String? sharedName;
     GeoJsonQrScheme? requestedScheme;
+    String? requestedFileName;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -34,8 +37,9 @@ void main() {
           ),
           encoder: (input) async {
             requestedScheme = input.scheme;
+            requestedFileName = input.sourceFileName;
             return GeoJsonQrBundle(
-              qrTexts: const ['gjz1:test'],
+              qrTexts: const ['agz1:test'],
               pngImages: [qrPng],
               minimizedGeoJson: '{"type":"FeatureCollection","features":[]}',
               hashHex: 'a' * 64,
@@ -47,9 +51,11 @@ void main() {
           },
           gallerySaver: (bytes, name) async {
             saved = true;
+            savedName = name;
           },
           shareHandler: (bytes, fileName, context) async {
             shared = true;
+            sharedName = fileName;
           },
         ),
       ),
@@ -63,20 +69,23 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('generated_qr_image')), findsOneWidget);
-    expect(requestedScheme, GeoJsonQrScheme.gjz1);
+    expect(requestedScheme, GeoJsonQrScheme.agz1);
+    expect(requestedFileName, 'course.geojson');
     expect(find.text('保存'), findsOneWidget);
     expect(find.text('共有'), findsOneWidget);
     expect(find.text('course.geojson'), findsOneWidget);
-    expect(find.text('gjz1'), findsOneWidget);
+    expect(find.text('agz1'), findsOneWidget);
 
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
     expect(saved, isTrue);
+    expect(savedName, 'QR_course.png');
     expect(find.text('写真に保存しました'), findsOneWidget);
 
     await tester.tap(find.text('共有'));
     await tester.pumpAndSettle();
     expect(shared, isTrue);
+    expect(sharedName, 'QR_course.png');
   });
 
   testWidgets('rejects encoder output without a single PNG image',
