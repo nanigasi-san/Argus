@@ -209,6 +209,9 @@ extension GeoJsonQrSchemeName on GeoJsonQrScheme {
 
 /// GeoJSON文字列をQRテキスト(とPNG)へ変換する。
 Future<GeoJsonQrBundle> encodeGeoJson(GeoJsonQrEncodeInput input) async {
+  final agzDiffText = input.scheme == GeoJsonQrScheme.agz1
+      ? _geoJsonToAgzDiffText(input.geoJson, input.sourceFileName)
+      : null;
   final minifyResult = minifyGeoJson(input.geoJson);
   final minimizedBytes =
       Uint8List.fromList(utf8.encode(minifyResult.minimized));
@@ -216,7 +219,7 @@ Future<GeoJsonQrBundle> encodeGeoJson(GeoJsonQrEncodeInput input) async {
     GeoJsonQrScheme.gjz1 => minimizedBytes,
     GeoJsonQrScheme.agz1 => Uint8List.fromList(
         utf8.encode(
-          _geoJsonToAgzDiffText(input.geoJson, input.sourceFileName),
+          agzDiffText!,
         ),
       ),
   };
@@ -504,6 +507,9 @@ QrPayload _parseSinglePayload(GeoJsonQrScheme scheme, String text) {
     throw DecodeFailedException('Empty $prefix payload');
   }
   final split = _splitPayloadAndHash(payloadWithHash);
+  if (scheme == GeoJsonQrScheme.agz1 && split.hashHex != null) {
+    throw DecodeFailedException('agz1 does not support a hash suffix');
+  }
   return QrPayload(scheme, split.payload, split.hashHex);
 }
 
@@ -542,12 +548,7 @@ const int _agzScale = 6;
 
 String _geoJsonToAgzDiffText(String geoJson, String? sourceFileName) {
   final fileName = _normalizeGeoJsonFileName(sourceFileName);
-  dynamic decoded;
-  try {
-    decoded = jsonDecode(geoJson);
-  } on FormatException catch (e) {
-    throw GeoJsonValidationException('Invalid JSON format', e);
-  }
+  final dynamic decoded = jsonDecode(geoJson);
   if (decoded is! Map<String, dynamic> ||
       decoded['type'] != 'FeatureCollection') {
     throw UnsupportedGeometryException(
