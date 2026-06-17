@@ -240,7 +240,7 @@ void main() {
       expect(find.text('GeoJSON QR コードではありません。'), findsNothing);
     });
 
-    testWidgets('valid QR displays controller error when load fails',
+    testWidgets('valid agz1 QR is accepted by scanner',
         (WidgetTester tester) async {
       final controller = _RecordingQrController()
         ..loadedResult = false
@@ -258,7 +258,7 @@ void main() {
                   child: ElevatedButton(
                     onPressed: () => onDetect(
                       const BarcodeCapture(
-                        barcodes: [Barcode(rawValue: 'gjz1:test')],
+                        barcodes: [Barcode(rawValue: 'agz1:test')],
                       ),
                     ),
                     child: const Text('Emit Valid'),
@@ -274,7 +274,7 @@ void main() {
       await tester.tap(find.text('Emit Valid'));
       await tester.pumpAndSettle();
 
-      expect(controller.scannedTexts, ['gjz1:test']);
+      expect(controller.scannedTexts, ['agz1:test']);
       expect(find.text('GeoJSON の読込に失敗しました。'), findsOneWidget);
     });
 

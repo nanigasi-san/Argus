@@ -1,6 +1,6 @@
 # GeoJSON ↔ QRコード（完全オフライン）機能 要件定義書
 
-最終更新: 2025-11-06 / 作成者: ChatGPT
+最終更新: 2026-06-17
 
 ---
 
@@ -12,7 +12,7 @@
 ## 1. 用語定義
 - **GeoJSON**: IETF RFC 7946に準拠したJSON形式の地理空間データ。
 - **QRテキスト**: QRコードに格納するUTF-8文字列。`<scheme>:<payload>`形式。
-- **スキーム（scheme）**: 符号化・圧縮方式の識別子。現行実装は `gjz1`。
+- **スキーム（scheme）**: 符号化・圧縮方式の識別子。標準は `agz1`、後方互換形式は `gjz1`。
 - **完全オフライン**: 生成・復元の全工程がネットワーク接続なしで完結すること。
 
 ---
@@ -52,35 +52,39 @@
 
 ## 6. 機能要件（FR）
 
-### FR-1: GeoJSON最小化
-- 入力GeoJSONをパースし、`json.dumps(..., separators=(",", ":"))`相当で最小化する。
-- 目的: 圧縮効率・ハッシュ安定性の向上。
+### FR-1: ARGUS Polygon差分化
+- `agz1` はFeatureCollection、Feature 1個、Polygon 1個、外周リングのみを対象とする。
+- 座標を小数6桁の整数へ変換し、先頭点以外を前点との差分として保存する。propertiesは保持しない。
+- 元ファイル名はパスを除去して `.geojson` に正規化し、UTF-8のBase64URLとして本文へ格納する。
 
 ### FR-2: スキーム別エンコード
-- **`gjz1:`**: `gzip`圧縮 → Base64（URL-safe, `=`パディング省略）でエンコード。
+- **`agz1:`**: `a3:<scale>:<filename>:<coordinates>` → gzip → Base64URL（`=`パディング省略）でエンコード。
+- **`gjz1:`**: 最小化GeoJSON → gzip → Base64URLでエンコードする後方互換形式。
 - **`<scheme>:<payload>`** に連結し、ASCII互換の連続文字列とする。
 
 ### FR-3: 整合性オプション
-- ハッシュ付与を選択可。形式: `...#<sha256_hex>`
-- 対象は**圧縮前の最小化GeoJSON**。
-- 復元時に一致検証（オプション）。
+- `agz1` はgzip CRCとQR誤り訂正を使用し、SHA-256接尾辞を付けない。
+- `gjz1` は圧縮前の最小化GeoJSONに対するSHA-256を `#<sha256_hex>` として付与・検証できる。
 
 ### FR-4: 容量超過時の扱い
 - 単一QRに収まらない場合、分割は行わず `E_PAYLOAD_TOO_LARGE` を返す。
 - 利用者にはGeoJSONの簡略化、対象エリアの分割、またはファイル読み込みを案内する。
 
 ### FR-5: 復号処理
-- 入力が`gjz1:`なら直接復号。
+- `agz1:` と `gjz1:` を識別して復号する。
+- `agz1` はPolygon GeoJSONと埋め込み元ファイル名を復元する。
 - Base64URLはパディングを自動補完。
 - 圧縮展開に失敗した場合、適切なエラーを返却。
 
 ### FR-6: GeoJSON妥当性検査
-- 復元後、`type`が`FeatureCollection`/`Feature`/`GeometryCollection`/`Point`/`LineString`/`Polygon`/`MultiPoint`/`MultiLineString`/`MultiPolygon`のいずれかであることを確認。
+- `agz1` エンコード時は単一Feature、単一Polygon、穴なし、4点以上、閉じたリングであることを確認する。
+- `gjz1` 復元後は従来どおりGeoJSONのtypeを検証する。
 
 ### FR-7: QR画像生成
 - 誤り訂正レベル: 既定**Q**、選択肢にL/M/Q/H。
 - バージョン自動。サイズ制約超過時は容量超過エラーを返す。
 - 画像フォーマット: PNG（透過背景可）。
+- 保存・共有ファイル名: 入力が `hoge.geojson` の場合は `QR_hoge.png`。
 - 物理設計指針: モジュール≥0.3mm、余白（クワイエットゾーン）既定4モジュール。
 
 ### FR-8: 入出力I/O
@@ -133,11 +137,18 @@
 | E_DECOMPRESS_FAILED  | 圧縮展開失敗   | gzipエラー        | スキーム誤り/データ破損           |
 | E_INVALID_GEOJSON    | JSON妥当性NG   | `type`欠落        | 入力源見直し/再作成               |
 | E_PAYLOAD_TOO_LARGE  | 単一QR超過     | Version上限超     | 簡略化/ファイル読込               |
+| E_BASE64_DECODE_FAILED | AGZ外装復号失敗 | Base64URL破損 | 再スキャン/再生成 |
+| E_GZIP_DECOMPRESS_FAILED | AGZ展開失敗 | gzip破損 | 再スキャン/再生成 |
+| E_INVALID_DIFF_TEXT / E_INVALID_SCALE | a3本文不正 | 版・scale不正 | 対応版で再生成 |
+| E_INVALID_COORDINATE | 座標不正 | 数値以外の座標 | 元GeoJSONを修正 |
+| E_TOO_FEW_POINTS / E_POLYGON_NOT_CLOSED | Polygon不正 | 点不足・非閉鎖 | Polygonを修正 |
+| E_UNSUPPORTED_GEOMETRY | AGZ対象外 | 複数Feature・穴・MultiPolygon | 対象を単一Polygonへ変換 |
+| E_INVALID_FILENAME | ファイル名不正 | 空・長すぎる名前 | 元ファイル名を修正 |
 
 ---
 
 ## 9. 容量と印刷設計ガイド
-- 目安：最小化GeoJSON 100点 ≈ 4KB（素のJSON）。`gjz1`圧縮後 ≈ 1–2KB。
+- `agz1` はGeoJSONの構造名とpropertiesを除去するため、対象Polygonでは `gjz1` より短いQRテキストになる。
 - 単一QRでの実運用は **2〜3KB** 程度までが安全域（誤り訂正Q, 品質良）。
 - それ以上はGeoJSONの簡略化、対象エリアの分割、またはファイル読み込みを推奨。
 - 物理印刷：A6でも可だが、読み取り距離を考慮してサイズ・コントラスト確保。
@@ -146,9 +157,9 @@
 
 ## 10. I/O仕様（ファイル/テキスト）
 - **入力（エンコード）**: `.geojson`/`.json` or 標準入力（UTF-8）
-- **出力（エンコード）**: `out.png` + `qr_texts.txt`
-- **入力（デコード）**: `gjz1:`の行（ファイル/標準入力）
-- **出力（デコード）**: `restored.geojson`（UTF-8）
+- **出力（エンコード）**: `QR_<入力ファイルのstem>.png`
+- **入力（デコード）**: `agz1:` または `gjz1:` のQRテキスト
+- **出力（デコード）**: `agz1` は埋め込み名、`gjz1` は一時名のGeoJSON（UTF-8）
 
 ---
 
@@ -160,19 +171,19 @@
 ---
 
 ## 12. 品質保証（テスト計画）
-- **単体**: 最小化、圧縮/展開、Base64URL、ハッシュ、QR生成の各関数。
-- **結合**: `geojson → gjz1 → QR → gjz1 → geojson`往復同値性。
-- **異常系**: スキーム不正、Base破損、圧縮形式不一致、容量超過。
+- **単体**: a3差分化、圧縮/展開、Base64URL、ファイル名、gjz1ハッシュ、QR生成。
+- **結合**: `geojson → agz1 → QR → agz1 → geojson` と既存 `gjz1` の往復同値性。
+- **異常系**: スキーム、Base64、gzip、a3、scale、座標、非閉鎖Polygon、非対応Geometry、ファイル名、容量超過。
 - **負荷**: 1KB/2KB/4KB/8KB/16KBの代表パターン。
 - **デバイス**: 主要解像度/画面輝度/印刷品質で読み取り試験。
 
 ---
 
 ## 13. 受け入れ基準（Acceptance Criteria）
-- AC-1: 既知のGeoJSON（サンプル3件以上）で往復同値性が成立する。
+- AC-1: 小数6桁以内の対象Polygonで座標と元ファイル名の往復同値性が成立する。
 - AC-2: 2KB, 4KB, 8KBケースで単一QR生成または容量超過エラーが規定通りに返る。
 - AC-3: 容量超過時に`E_PAYLOAD_TOO_LARGE`を返す。
-- AC-4: `--hash/--verify-hash`相当の整合性検証が成功/失敗で判定できる。
+- AC-4: 既存 `gjz1` のハッシュ検証が引き続き成功/失敗で判定できる。
 - AC-5: 誤り訂正Qで名刺サイズ相当の印刷から実機読み取りが可能。
 
 ---
@@ -191,7 +202,7 @@
 ---
 
 ## 16. 変更管理（MoSCoW）
-- **Must**: `gjz1`単一、ハッシュ任意、復元、QR生成、エラーハンドリング。
+- **Must**: `agz1`生成・復元・ファイル名保持、`gjz1`読取互換、QR生成、エラーハンドリング。
 - **Should**: 大容量GeoJSON向けの案内表示、進行表示。
 - **Could**: 署名/暗号化、TopoJSON/Polyline前処理、GUIランチャ。
 - **Won't (v1)**: オンライン配布、短縮URL、サーバ連携。
@@ -206,7 +217,8 @@
 ---
 
 ## 18. 付録（参考フォーマット）
-- 単一: `gjz1:<base64url_no_pad_of_gzip(minified_json)>[#<sha256>]`
+- 標準: `agz1:<base64url_no_pad_of_gzip(a3:<scale>:<filename>:<coordinates>)>`
+- 互換: `gjz1:<base64url_no_pad_of_gzip(minified_json)>[#<sha256>]`
 
 ---
 
