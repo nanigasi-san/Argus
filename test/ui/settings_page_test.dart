@@ -73,7 +73,7 @@ void main() {
     PackageInfo.setMockInitialValues(
       appName: 'ARGUS',
       packageName: 'com.argus.orienteering',
-      version: '0.4.0',
+      version: '0.4.1',
       buildNumber: '1005',
       buildSignature: '',
     );
@@ -115,7 +115,7 @@ void main() {
       tester,
       find.byKey(const Key('appVersionLabel')),
     );
-    expect(find.text('バージョン 0.4.0 (1005)'), findsOneWidget);
+    expect(find.text('バージョン 0.4.1 (1005)'), findsOneWidget);
   });
 
   testWidgets('falls back when default config asset cannot load',
