@@ -85,11 +85,27 @@ void main() {
       expect(appDelegate, contains('AVAudioSession.sharedInstance()'));
       expect(appDelegate, contains('session.setCategory(.playback'));
       expect(appDelegate, contains('AVAudioSession.interruptionNotification'));
-      expect(appDelegate, contains('InterruptionOptions'));
+      expect(appDelegate, contains('guard isAlarming else'));
       expect(appDelegate, contains('AudioServicesPlaySystemSound'));
       expect(appDelegate, contains('kSystemSoundID_Vibrate'));
       expect(appDelegate, contains('case "startVibration"'));
       expect(appDelegate, contains('case "stopVibration"'));
+      expect(appDelegate, contains('case "getAlarmVolumeState"'));
+      expect(appDelegate, contains('"supported": false'));
+      expect(appDelegate, contains('case "openSoundSettings"'));
+      expect(appDelegate, contains('UIApplication.openSettingsURLString'));
+      expect(
+        RegExp(
+          r'case "stop":\s+alarmPlayer\.stop\(\)\s+vibrationPlayer\.stop\(\)',
+        ).hasMatch(appDelegate),
+        isTrue,
+      );
+      expect(
+        appDelegate,
+        isNot(contains('options.contains(.shouldResume)')),
+      );
+      final notifier = File('lib/platform/notifier.dart').readAsStringSync();
+      expect(notifier, contains("sound: 'alarm.caf'"));
       expect(appDelegate, contains('FlutterImplicitEngineDelegate'));
       expect(appDelegate, contains('didInitializeImplicitFlutterEngine'));
       expect(appDelegate,

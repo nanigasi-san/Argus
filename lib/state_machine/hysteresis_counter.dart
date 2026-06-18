@@ -12,21 +12,31 @@ class HysteresisCounter {
   final Duration requiredDuration;
 
   int _sampleCount = 0;
-  DateTime? _firstSampleAt;
+  Duration? _firstSampleAt;
+
+  int get sampleCount => _sampleCount;
+
+  Duration elapsedAt(Duration now) {
+    final firstSampleAt = _firstSampleAt;
+    if (firstSampleAt == null || now < firstSampleAt) {
+      return Duration.zero;
+    }
+    return now - firstSampleAt;
+  }
 
   /// 新しいサンプルを追加し、ヒステリシス閾値を満たしている場合はtrueを返します。
-  bool addSample(DateTime timestamp) {
+  bool addSample(Duration observedAt) {
     _sampleCount += 1;
-    _firstSampleAt ??= timestamp;
-    return isSatisfied(timestamp);
+    _firstSampleAt ??= observedAt;
+    return isSatisfied(observedAt);
   }
 
   /// サンプル数と経過時間の両方の閾値を満たしている場合にtrueを返します。
-  bool isSatisfied(DateTime now) {
+  bool isSatisfied(Duration now) {
     if (_firstSampleAt == null) {
       return false;
     }
-    final elapsed = now.difference(_firstSampleAt!);
+    final elapsed = elapsedAt(now);
     return _sampleCount >= requiredSamples && elapsed >= requiredDuration;
   }
 

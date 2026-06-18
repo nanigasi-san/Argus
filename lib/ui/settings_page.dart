@@ -305,7 +305,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         decoration: InputDecoration(
                           labelText: 'GPS取得間隔',
                           helperText:
-                              '位置情報を継続取得する間隔です。範囲: ${AppConfig.minSampleIntervalS}-${AppConfig.maxSampleIntervalS} 秒\nデフォルト: ${_defaultConfig?.sampleIntervalS['fast'] ?? AppConfig.defaultFastSampleIntervalS} 秒（空欄でデフォルト値）',
+                              '位置情報を継続取得する目安の間隔です。iOSでは更新頻度を厳密に保証できません。範囲: ${AppConfig.minSampleIntervalS}-${AppConfig.maxSampleIntervalS} 秒\nデフォルト: ${_defaultConfig?.sampleIntervalS['fast'] ?? AppConfig.defaultFastSampleIntervalS} 秒（空欄でデフォルト値）',
                           border: const OutlineInputBorder(),
                         ),
                         keyboardType: TextInputType.number,

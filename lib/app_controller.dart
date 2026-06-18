@@ -161,6 +161,7 @@ class AppController extends ChangeNotifier {
       return;
     }
 
+    stateMachine.resetMonitoring();
     await _subscription?.cancel();
     final runId = ++_monitoringRunId;
     _subscription = locationService.stream.listen(
@@ -226,6 +227,19 @@ class AppController extends ChangeNotifier {
     await locationService.stop();
     await cleanupTempGeoJsonFile();
     _logInfo('APP', 'Application terminated. Monitoring and alert stopped.');
+  }
+
+  Future<void> handleAppResumed() async {
+    await refreshMonitoringPermissionState();
+    if (_snapshot.status != LocationStateStatus.outer || _isAlarmSnoozed) {
+      return;
+    }
+    try {
+      await notifier.reassertAlarm();
+      _logInfo('ALERT', 'Alarm playback reasserted after app resume.');
+    } catch (error) {
+      _logWarning('ALERT', 'Failed to reassert alarm after app resume: $error');
+    }
   }
 
   /// 開発者モードの有効/無効を切り替えます。

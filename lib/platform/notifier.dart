@@ -95,6 +95,7 @@ class Notifier {
     const iosDetails = DarwinNotificationDetails(
       presentAlert: true,
       presentSound: false,
+      sound: 'alarm.caf',
       interruptionLevel: InterruptionLevel.timeSensitive,
     );
     const notificationDetails = NotificationDetails(
@@ -131,6 +132,27 @@ class Notifier {
 
   Future<void> resumeAlarm() async {
     await _resumeAlarm(_generation);
+  }
+
+  Future<void> reassertAlarm() async {
+    if (!_isAlarming) {
+      await _resumeAlarm(_generation);
+      return;
+    }
+
+    final generation = _generation;
+    try {
+      await _alarmPlayer.start();
+      if (generation != _generation) {
+        await _alarmPlayer.stop();
+        return;
+      }
+      await _vibrationPlayer.stop();
+      await _vibrationPlayer.start();
+    } catch (_) {
+      _isAlarming = false;
+      rethrow;
+    }
   }
 
   Future<void> _resumeAlarm(int generation) async {

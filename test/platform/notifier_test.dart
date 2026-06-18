@@ -131,6 +131,24 @@ void main() {
       expect(vibration.startCount, 1);
     });
 
+    test('reassertAlarm restarts native playback while already alarming',
+        () async {
+      final alarm = FakeAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+
+      await notifier.notifyOuter();
+      await notifier.reassertAlarm();
+
+      expect(alarm.playCount, 2);
+      expect(vibration.stopCount, 1);
+      expect(vibration.startCount, 2);
+    });
+
     test('dismissOuterAlert cancels notification and stops alarm', () async {
       final notifications = FakeLocalNotificationsClient();
       final alarm = FakeAlarmPlayer();
@@ -188,7 +206,7 @@ void main() {
       expect(notifier.badgeState.value, LocationStateStatus.near);
     });
 
-    test('notifyOuter uses visual time-sensitive iOS notification', () async {
+    test('notifyOuter uses audible time-sensitive iOS notification', () async {
       final notifications = FakeLocalNotificationsClient();
       final notifier = Notifier(
         notificationsClient: notifications,
@@ -201,7 +219,10 @@ void main() {
       expect(notifications.lastShownDetails?.android?.playSound, isFalse);
       expect(notifications.lastShownDetails?.android?.sound, isNull);
       expect(notifications.lastShownDetails?.iOS?.presentSound, isFalse);
-      expect(notifications.lastShownDetails?.iOS?.sound, isNull);
+      expect(
+        notifications.lastShownDetails?.iOS?.sound,
+        'alarm.caf',
+      );
       expect(
         notifications.lastShownDetails?.iOS?.interruptionLevel,
         InterruptionLevel.timeSensitive,

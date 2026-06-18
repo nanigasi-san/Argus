@@ -26,7 +26,7 @@
 ### 1.2 位置情報ストリーム
 
 - **Geolocator 設定**: `getPositionStream` を利用。
-  - **サンプリング間隔**: `AppConfig.sampleIntervalS['fast']` を優先使用。存在しない場合は最小値を選択。デフォルトは 3 秒。
+  - **サンプリング間隔**: `AppConfig.sampleIntervalS['fast']` を優先使用。存在しない場合は最小値を選択。デフォルトは 3 秒。iOSではOSが更新頻度を管理するため、この値は厳密な配信間隔を保証しない。
   - **距離フィルタ**: 0m（すべての位置更新を受信）。
 - **Android 設定**:
   - `AndroidSettings` を使用
@@ -60,7 +60,7 @@
   3. 精度良好の場合: エリア内/外を判定
      - エリア内: `inner`/`near`（距離に応じて）に遷移、ヒステリシスリセット
      - エリア外: ヒステリシスカウンタを更新。条件を満たせば `outer`、満たさなければ `outerPending`
-- **ヒステリシス**: OUTER 確定には `leaveConfirmSamples` 回の連続サンプル AND `leaveConfirmSeconds` 秒の経過が必要。内側に戻ると即座にリセット。
+- **ヒステリシス**: OUTER 確定には `leaveConfirmSamples` 回の連続サンプル AND 最初の有効なエリア外判定から `leaveConfirmSeconds` 秒の実経過時間が必要。GPSサンプルのtimestampは判定時間に使わない。内側に戻ると即座にリセット。
 - **空間インデックス**: `AreaIndex` がポリゴンの境界ボックスを使用して候補ポリゴンを絞り込み、評価対象を最適化。
 
 ### 1.4 点とポリゴンの判定
@@ -84,10 +84,10 @@
   - Android: `Importance.max`, `Priority.max`, `category: AndroidNotificationCategory.alarm`, `playSound: false`, `enableVibration: false`
   - iOS: 視覚通知は `interruptionLevel: InterruptionLevel.timeSensitive`。音は `AVAudioPlayer` のネイティブループ再生に一本化。
 - **Foreground Service 通知**: Android 背景計測用にチャンネル名 `ARGUSバックグラウンド監視`、タイトル「ARGUSが位置情報を監視中です」、本文「画面を消しても位置情報の追跡は継続されます。」を表示する。
-- **アラーム音**: Android / iOS は `argus/alarm` MethodChannel のネイティブループ再生を使用。音源はアプリにバンドルしたローカルファイルのみ使用し、その他の対応プラットフォームではアラーム音再生をサポートしない。`Notifier.stopAlarm()` で停止。
+- **アラーム音**: Android / iOS は `argus/alarm` MethodChannel のネイティブループ再生を使用。iOSは画面ロック中の到達性を確保するため、Time Sensitiveローカル通知にもバンドル済み `alarm.caf` を設定する。フォアグラウンドでは通知音を提示せずネイティブ再生を使う。`Notifier.stopAlarm()` で停止。
 - **バイブレーション**: Android / iOS は `argus/alarm` MethodChannel のネイティブ実装を使用。Android は `VibrationEffect` の波形、iOS は `AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)` の繰り返しで警告中のバイブを制御する。
 - **音量チェック**: Android は監視開始前に端末のアラーム音量を確認し、`percent >= 0.5` なら開始可、50% 未満なら開始をブロックして「５０％以上」警告と音設定画面への導線を表示する。取得失敗時は warning ログを残し、監視開始はブロックしない。
-- **音設定**: MethodChannel `argus/alarm` の `openSoundSettings` を呼ぶ。Android 側は `ACTION_SOUND_SETTINGS` を開き、失敗時は `ACTION_SETTINGS` にフォールバックする。
+- **音設定**: MethodChannel `argus/alarm` の `openSoundSettings` を呼ぶ。Android 側は `ACTION_SOUND_SETTINGS` を開き、失敗時は `ACTION_SETTINGS` にフォールバックする。iOS 側はアプリの設定画面を開く。iOS では警告音量をアプリ内から正確に取得できないため、`getAlarmVolumeState` は非対応である旨の代替応答を返す。
 - **復帰通知**: INNER/NEAR 復帰時に通知をキャンセルし、アラームを停止。
 - **権限要求**: 通知・位置情報の権限状態は `PermissionCoordinator` が確認・要求する。`Notifier` は通知権限を直接要求しない。監視開始ブロック条件は位置サービス有効 + Always 位置権限。
 
@@ -424,7 +424,7 @@ graph TD
      - 外側なら OUTER を維持（距離情報は最善努力で提供）
 3. **包含判定**: `AreaIndex.lookup` で候補ポリゴンを絞り込み、`PointInPolygon.evaluatePoint` で判定
    - エリア内: `inner`/`near`（距離に応じて）に遷移、ヒステリシスリセット
-   - エリア外: ヒステリシスカウンタを更新（`_hysteresis.addSample(fix.timestamp)`）
+   - エリア外: GPS timestampではなく、監視開始後の単調増加する実経過時間でヒステリシスカウンタを更新
      - 条件を満たせば `outer`
      - 満たさなければ `outerPending`
 4. **距離・方位角計算**: 包含判定と同時に `PointInPolygon` が最寄り境界点・距離・方位角を計算。`StateSnapshot` に格納。
@@ -489,7 +489,7 @@ stateDiagram-v2
 ### 4.4 ヒステリシスカウンタ
 
 - **実装**: `HysteresisCounter` クラス
-- **条件**: `requiredSamples` 回の連続サンプル AND `requiredDuration` 秒の経過
+- **条件**: `requiredSamples` 回の連続サンプル AND 最初の有効なエリア外判定から `requiredDuration` 秒の実経過
 - **リセット**: エリア内に戻ったとき、または `StateMachine.updateGeometry()` が呼ばれたとき
 
 ---

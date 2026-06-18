@@ -57,7 +57,27 @@ import UserNotifications
       }
     case "stop":
       alarmPlayer.stop()
+      vibrationPlayer.stop()
       result(nil)
+    case "getAlarmVolumeState":
+      result([
+        "supported": false,
+        "message": "iOSではアプリ内から警告音量を正確に確認できません。端末の音量とサイレントモードを確認してください。",
+      ])
+    case "openSoundSettings":
+      guard let url = URL(string: UIApplication.openSettingsURLString) else {
+        result(
+          FlutterError(
+            code: "settings_unavailable",
+            message: "設定画面を開けませんでした",
+            details: nil
+          )
+        )
+        return
+      }
+      UIApplication.shared.open(url) { opened in
+        result(opened)
+      }
     case "startVibration":
       vibrationPlayer.start()
       result(nil)
@@ -152,11 +172,6 @@ private final class IOSAlarmPlayer: NSObject {
       player?.pause()
     case .ended:
       guard isAlarming else {
-        return
-      }
-      let rawOptions = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
-      let options = AVAudioSession.InterruptionOptions(rawValue: rawOptions)
-      guard options.contains(.shouldResume) else {
         return
       }
       do {

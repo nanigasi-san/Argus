@@ -60,13 +60,13 @@
 ### 5.4 位置サンプリング（`lib/platform/location_service.dart`）
 - Android: Foreground Service 通知チャンネル名「ARGUSバックグラウンド監視」、タイトル「ARGUSが位置情報を監視中です」、本文「画面を消しても位置情報の追跡は継続されます。」。`enableWakeLock: true`、`setOngoing: true`。
 - iOS/macOS: `showBackgroundLocationIndicator: true`、`pauseLocationUpdatesAutomatically: false`、`allowBackgroundLocationUpdates: true`。
-- Stream 値: `latitude/longitude/timestamp/accuracyMeters/batteryPercent?` を `LocationFix` として配信。
+- Stream 値: `latitude/longitude/timestamp/accuracyMeters/monitoringElapsed` を `LocationFix` として配信。監視開始前の古い測位は除外する。
 
 ### 5.5 状態機械（`state_machine.dart`）
 - 状態: `waitGeoJson` → `waitStart` → `inner / near / outerPending / outer / gpsBad`。
 - 距離閾値: `innerBufferM`（デフォルト 30m）より内側で `near`、それ以上は `inner`。
 - GPS 精度: `accuracyMeters == null` または `> gpsAccuracyBadMeters`（デフォルト 40m）のとき `gpsBad`。ただし直前が OUTER の場合は「外にいる前提」で最寄り境界距離だけ更新し OUTER 維持。精度が悪くても内側に戻ったと判定できれば `inner/near` に復帰しヒステリシスリセット。
-- OUTER 確定条件: `_hysteresis.addSample(timestamp)` が `leaveConfirmSamples` 回（デフォルト 3）かつ `leaveConfirmSeconds` 秒（デフォルト 10 秒）経過。未達時は `outerPending`。
+- OUTER 確定条件: 最初の有効なエリア外判定から、単調増加する実経過時間で `leaveConfirmSeconds` 秒（デフォルト 10 秒）かつ `leaveConfirmSamples` 回（デフォルト 3）に到達すること。GPS timestampは確定時間に使わない。未達時は `outerPending`。
 - ポリゴン探索: AreaIndex の軸平行バウンディングボックスで候補絞り込み、ray-cast で包含判定。最短距離/方位を常に計算し `StateSnapshot` に積む。
 - ナビゲーション表示: OUTER になったタイミングで `navigationEnabled=true`。Developer mode ではエリア内でもナビ表示可。それ以外は OUTER 以降のみ距離/方位ヒントを UI に出す。
 
