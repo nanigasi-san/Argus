@@ -89,6 +89,9 @@ void main() {
     }
 
     expect(snapshot.status, LocationStateStatus.outer);
+    expect(snapshot.distanceToBoundaryM, isNotNull);
+    expect(snapshot.nearestBoundaryPoint, isNotNull);
+    expect(snapshot.bearingToBoundaryDeg, isNotNull);
   });
 
   test('GPS timestamp cannot satisfy monotonic leave duration early', () {
@@ -407,6 +410,9 @@ void main() {
 
     expect(snapshot.status, LocationStateStatus.outer);
     expect(snapshot.notes, contains('maintaining OUTER'));
+    expect(snapshot.distanceToBoundaryM, isNotNull);
+    expect(snapshot.nearestBoundaryPoint, isNotNull);
+    expect(snapshot.bearingToBoundaryDeg, isNotNull);
   });
 
   test('confirms OUTER using bounds distance when no polygon is nearby', () {

@@ -94,6 +94,8 @@ class Notifier {
     );
     const iosDetails = DarwinNotificationDetails(
       presentAlert: true,
+      // Foreground playback uses AVAudioPlayer. The bundled notification
+      // sound remains set so iOS can alert while the screen is locked.
       presentSound: false,
       sound: 'alarm.caf',
       interruptionLevel: InterruptionLevel.timeSensitive,

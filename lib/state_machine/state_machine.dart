@@ -341,15 +341,14 @@ class StateMachine {
     PointInPolygonEvaluation? inside;
     PointInPolygonEvaluation? nearest;
     for (final polygon in polygons) {
-      if (!_pip.containsPoint(latitude, longitude, polygon)) {
-        continue;
-      }
       final evaluation = _pip.evaluatePoint(latitude, longitude, polygon);
       if (nearest == null ||
           evaluation.distanceToBoundaryM < nearest.distanceToBoundaryM) {
         nearest = evaluation;
       }
-      inside ??= evaluation;
+      if (evaluation.contains) {
+        inside ??= evaluation;
+      }
     }
 
     return _PolygonEvaluationResult(inside: inside, nearest: nearest);

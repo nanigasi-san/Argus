@@ -313,6 +313,7 @@ class AppController extends ChangeNotifier {
 
       final raw = await file.readAsString();
       final model = GeoModel.fromGeoJson(raw);
+      _requireMonitorableGeometry(model);
 
       _geoModel = model;
       // ファイル名をpathから抽出し、拡張子を.geojsonに統一
@@ -376,6 +377,8 @@ class AppController extends ChangeNotifier {
       // QRテキストからGeoJSONを復元
       final decoded = await compute(_decodeGeoJsonQrText, qrText);
       final restoredGeoJson = decoded.geoJson;
+      final model = GeoModel.fromGeoJson(restoredGeoJson);
+      _requireMonitorableGeometry(model);
 
       // 一時ディレクトリに保存
       final tempDir = await getTemporaryDirectory();
@@ -388,9 +391,6 @@ class AppController extends ChangeNotifier {
 
       // 新しい一時ファイルパスを保存
       _tempGeoJsonFilePath = tempFile.path;
-
-      // GeoModelを生成
-      final model = GeoModel.fromGeoJson(restoredGeoJson);
 
       _geoModel = model;
       _geoJsonFileName = decoded.fileName ?? 'temp_geojson_$timestamp.geojson';
@@ -420,14 +420,10 @@ class AppController extends ChangeNotifier {
       notifyListeners();
       return false;
     } on FormatException catch (e) {
-      // coverage:ignore-start
-      // decodeGeoJson validates structure first; this remains as a defensive
-      // guard for future decoder changes.
       _lastErrorMessage = 'Failed to parse GeoJSON: ${e.message}';
       _logError('APP', _lastErrorMessage!);
       notifyListeners();
       return false;
-      // coverage:ignore-end
     } catch (e) {
       _lastErrorMessage =
           'Unable to load GeoJSON from QR code: ${e.toString()}';
@@ -833,6 +829,14 @@ class AppController extends ChangeNotifier {
     final normalized = (bearing % 360 + 360) % 360;
     final index = ((normalized + 22.5) ~/ 45) % labels.length;
     return labels[index];
+  }
+}
+
+void _requireMonitorableGeometry(GeoModel model) {
+  if (!model.hasGeometry) {
+    throw const FormatException(
+      'GeoJSONに監視可能なPolygon/MultiPolygonがありません。',
+    );
   }
 }
 

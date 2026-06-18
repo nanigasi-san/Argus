@@ -1033,6 +1033,52 @@ void main() {
       expect(controller.lastErrorMessage, contains('Failed to parse GeoJSON'));
     });
 
+    test('reloadGeoJsonFromPicker rejects GeoJSON without polygons', () async {
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: FakeLocationService(),
+        fileManager: _EmptyGeoJsonFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+      );
+
+      await controller.reloadGeoJsonFromPicker();
+
+      expect(controller.geoJsonLoaded, isFalse);
+      expect(controller.lastErrorMessage,
+          contains('監視可能なPolygon/MultiPolygonがありません'));
+    });
+
+    test('reloadGeoJsonFromQr rejects GeoJSON without polygons', () async {
+      final config = _testConfig();
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: FakeLocationService(),
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+      );
+      final bundle = await encodeGeoJson(
+        const GeoJsonQrEncodeInput(
+          geoJson: '{"type":"FeatureCollection","features":[]}',
+          scheme: GeoJsonQrScheme.gjz1,
+        ),
+      );
+
+      final loaded = await controller.reloadGeoJsonFromQr(bundle.qrTexts.first);
+
+      expect(loaded, isFalse);
+      expect(controller.geoJsonLoaded, isFalse);
+      expect(controller.lastErrorMessage,
+          contains('監視可能なPolygon/MultiPolygonがありません'));
+    });
+
     test('reloadGeoJsonFromPicker ignores user cancellation', () async {
       final controller = AppController(
         stateMachine: StateMachine(config: _testConfig()),
@@ -1555,6 +1601,19 @@ class _InvalidGeoJsonFileManager extends FakeFileManager {
     return XFile.fromData(
       utf8.encode('not-json'),
       name: 'broken.geojson',
+      mimeType: 'application/geo+json',
+    );
+  }
+}
+
+class _EmptyGeoJsonFileManager extends FakeFileManager {
+  _EmptyGeoJsonFileManager({required super.config});
+
+  @override
+  Future<XFile?> pickGeoJsonFile() async {
+    return XFile.fromData(
+      utf8.encode('{"type":"FeatureCollection","features":[]}'),
+      name: 'empty.geojson',
       mimeType: 'application/geo+json',
     );
   }

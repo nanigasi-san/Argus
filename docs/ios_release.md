@@ -6,7 +6,7 @@ MacBook の初回環境構築は [macbook_ios_setup.md](macbook_ios_setup.md) �
 
 ## 実装済みのiOS設定
 
-- App version: `0.5.0+1005`
+- App version: `0.5.0+1006`
 - Bundle ID: `com.argus.orienteering`
 - Minimum deployment target: iOS 15.0
 - Background Modes: `Location updates`, `Audio`
@@ -110,7 +110,7 @@ xcrun devicectl device process launch \
 8. サイレントモード、集中モード、画面ロック中の通知挙動を確認する。
 9. 音量案内からiOSのARGUSアプリ設定画面を開ける。
 10. Xcodeの `Product > Test` で `RunnerTests` が通る。
-11. 設定画面に `0.5.0 (1005)` が表示される。
+11. 設定画面に `0.5.0 (1006)` が表示される。
 12. `agz1` QRからGeoJSONと元ファイル名を復元でき、`gjz1` QRも読み込める。
 
 ## Archive前の確認
@@ -151,5 +151,6 @@ ARGUSは、利用者が読み込んだGeoJSONエリアを監視するアプリ�
 - `flutter analyze`: 成功
 - `flutter test --coverage`: 303件成功、100.0% (2548/2548)
 - iPhone 17 Pro Simulator (iOS 26.5): Debug build成功、RunnerTests 3件成功、UI smoke 5件成功
-- KAITOのiPhone (iOS 26.0.1): Release署名・インストール・起動成功、`ARGUS 0.5.0 (1005)` と実行中processを確認
-- 権限ダイアログ、実移動中のbackground位置更新、音・振動・スヌーズは端末操作を伴うため、リリース前に上記チェックリストで官能確認する
+- KAITOのiPhone (iOS 26.5): Release署名・インストール・起動成功。初回確認時は `ARGUS 0.5.0 (1005)`、再提出用の現行buildは `1006`
+- 画面ロック中のエリア外検知、Time Sensitive通知、通知音を実機確認済み
+- バイブ停止、エリア復帰、サイレント/集中モード、電話/Siri/Bluetooth割り込み復帰は端末操作を伴うため、merge前に上記チェックリストで官能確認する
