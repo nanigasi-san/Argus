@@ -127,6 +127,8 @@ void main() {
         project,
         contains('PRODUCT_BUNDLE_IDENTIFIER = com.argus.orienteering;'),
       );
+      expect(project, contains('TARGETED_DEVICE_FAMILY = 1;'));
+      expect(project, isNot(contains('TARGETED_DEVICE_FAMILY = "1,2";')));
       expect(project, isNot(contains('com.argus.argus')));
       expect(project, isNot(contains('IPHONEOS_DEPLOYMENT_TARGET = 13.0;')));
       expect(frameworkInfo, contains('<string>15.0</string>'));
@@ -135,7 +137,7 @@ void main() {
     test('uses the 0.5.0 release version and update-check dependencies', () {
       final pubspec = File('pubspec.yaml').readAsStringSync();
 
-      expect(pubspec, contains('version: 0.5.0+1005'));
+      expect(pubspec, contains('version: 0.5.0+1006'));
       expect(pubspec, contains('package_info_plus: ^10.1.0'));
       expect(pubspec, contains('upgrader: ^13.5.0'));
       expect(pubspec, contains('share_plus: ^13.1.0'));
