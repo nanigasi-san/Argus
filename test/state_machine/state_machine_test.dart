@@ -130,6 +130,8 @@ void main() {
       ),
     );
     expect(machine.pendingSampleCount, 1);
+    expect(machine.pendingElapsed(const Duration(seconds: 3)),
+        const Duration(seconds: 3));
 
     machine.resetMonitoring();
 

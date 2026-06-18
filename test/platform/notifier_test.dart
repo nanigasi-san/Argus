@@ -149,6 +149,54 @@ void main() {
       expect(vibration.startCount, 2);
     });
 
+    test('reassertAlarm starts playback when alarm is not active', () async {
+      final alarm = FakeAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+
+      await notifier.reassertAlarm();
+
+      expect(alarm.playCount, 1);
+      expect(vibration.startCount, 1);
+    });
+
+    test('stopAlarm suppresses an in-flight alarm reassertion', () async {
+      final alarm = _BlockOnSecondStartAlarmPlayer();
+      final notifier = Notifier(
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: alarm,
+        vibrationPlayer: FakeVibrationPlayer(),
+      );
+      await notifier.notifyOuter();
+
+      final reassertFuture = notifier.reassertAlarm();
+      await alarm.secondStartEntered.future;
+      final stopFuture = notifier.stopAlarm();
+      alarm.allowSecondStart.complete();
+      await Future.wait([reassertFuture, stopFuture]);
+
+      expect(alarm.stopCount, greaterThanOrEqualTo(2));
+    });
+
+    test('failed reassertion allows a later retry', () async {
+      final alarm = _FailSecondStartAlarmPlayer();
+      final notifier = Notifier(
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: alarm,
+        vibrationPlayer: FakeVibrationPlayer(),
+      );
+      await notifier.notifyOuter();
+
+      await expectLater(notifier.reassertAlarm(), throwsStateError);
+      await notifier.reassertAlarm();
+
+      expect(alarm.playCount, 3);
+    });
+
     test('dismissOuterAlert cancels notification and stops alarm', () async {
       final notifications = FakeLocalNotificationsClient();
       final alarm = FakeAlarmPlayer();
@@ -629,6 +677,30 @@ class _BlockingAlarmPlayer extends FakeAlarmPlayer {
       startEntered.complete();
     }
     await allowStart.future;
+  }
+}
+
+class _BlockOnSecondStartAlarmPlayer extends FakeAlarmPlayer {
+  final Completer<void> secondStartEntered = Completer<void>();
+  final Completer<void> allowSecondStart = Completer<void>();
+
+  @override
+  Future<void> start() async {
+    playCount += 1;
+    if (playCount == 2) {
+      secondStartEntered.complete();
+      await allowSecondStart.future;
+    }
+  }
+}
+
+class _FailSecondStartAlarmPlayer extends FakeAlarmPlayer {
+  @override
+  Future<void> start() async {
+    playCount += 1;
+    if (playCount == 2) {
+      throw StateError('reassert failed');
+    }
   }
 }
 

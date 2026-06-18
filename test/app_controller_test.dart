@@ -506,6 +506,94 @@ void main() {
       expect(description, contains('(1.00000,2.00000)'));
     });
 
+    test('handleAppResumed reasserts an active outer alarm', () async {
+      final config = _testConfig();
+      final alarm = FakeAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: FakeLocationService(),
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: notifier,
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+      );
+      controller.debugSeed(
+        config: config,
+        snapshot: StateSnapshot(
+          status: LocationStateStatus.outer,
+          timestamp: DateTime.utc(2024, 1, 1),
+          geoJsonLoaded: true,
+        ),
+      );
+      await notifier.notifyOuter();
+
+      await controller.handleAppResumed();
+
+      expect(alarm.playCount, 2);
+      expect(vibration.startCount, 2);
+      expect(controller.logs.last.message,
+          'Alarm playback reasserted after app resume.');
+    });
+
+    test('handleAppResumed logs reassertion failures', () async {
+      final config = _testConfig();
+      final alarm = _AppControllerFailSecondStartAlarmPlayer();
+      final notifier = Notifier(
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: alarm,
+        vibrationPlayer: FakeVibrationPlayer(),
+      );
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: FakeLocationService(),
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: notifier,
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+      );
+      controller.debugSeed(
+        config: config,
+        snapshot: StateSnapshot(
+          status: LocationStateStatus.outer,
+          timestamp: DateTime.utc(2024, 1, 1),
+          geoJsonLoaded: true,
+        ),
+      );
+      await notifier.notifyOuter();
+
+      await controller.handleAppResumed();
+
+      expect(controller.logs.last.message,
+          startsWith('Failed to reassert alarm after app resume:'));
+    });
+
+    test('handleAppResumed does not start an alarm outside OUTER', () async {
+      final config = _testConfig();
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: FakeLocationService(),
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+      );
+      controller.debugSeed(config: config);
+
+      await controller.handleAppResumed();
+
+      expect(controller.snapshot.status, isNot(LocationStateStatus.outer));
+    });
+
     testWidgets(
         'snoozeAlarmForOneMinute stops alert and resumes after 1 minute when still outer',
         (tester) async {
@@ -1349,6 +1437,16 @@ class _ThrowingOpenAlarmVolumeClient implements AlarmVolumeClient {
   @override
   Future<bool> openSoundSettings() async {
     throw StateError('settings unavailable');
+  }
+}
+
+class _AppControllerFailSecondStartAlarmPlayer extends FakeAlarmPlayer {
+  @override
+  Future<void> start() async {
+    playCount += 1;
+    if (playCount == 2) {
+      throw StateError('reassert failed');
+    }
   }
 }
 
