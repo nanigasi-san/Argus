@@ -1,6 +1,6 @@
 # Mobile UI Smoke Checks
 
-This directory contains Android device/emulator smoke tests for ARGUS. Detailed behavior is covered by unit and widget tests; this suite only confirms that important screens can render and navigate on a real Android runtime.
+This directory contains Android and iOS device/emulator smoke tests for ARGUS. Detailed behavior is covered by unit and widget tests; this suite confirms that important screens can render and navigate on a mobile runtime.
 
 ## What Is Covered
 
@@ -56,10 +56,15 @@ Saved files:
 - If multiple devices are connected, always pass `-d <android-device-id>`.
 - GPS and camera hardware behavior should be treated as manual/device verification; app-side permission and error flows are covered by tests.
 
-## Run on iOS simulator
+## Run on iOS Simulator
 
 macOS と Xcode が必要です。
 
 ```bash
-flutter test integration_test/ui_smoke_test.dart -d <ios-simulator-id>
+flutter drive \
+  --driver=test_driver/ui_smoke_driver.dart \
+  --target=integration_test/ui_smoke_test.dart \
+  -d <ios-simulator-id>
 ```
+
+iOSでは、単一「続ける」ボタンの位置情報説明画面と、設定画面の「警告音をテスト」も検証します。上記コマンドで取得したスクリーンショットはAndroidと同じ出力先に保存されます。

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -26,6 +28,7 @@ class _SettingsPageState extends State<SettingsPage> {
   double _alarmVolume = 0.5;
   bool _isSaving = false;
   AppConfig? _defaultConfig;
+  AppController? _controller;
 
   @override
   void initState() {
@@ -42,6 +45,12 @@ class _SettingsPageState extends State<SettingsPage> {
     });
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _controller ??= Provider.of<AppController>(context, listen: false);
+  }
+
   Future<void> _openPrivacyPolicy() async {
     final launched = await openPrivacyPolicy();
     if (!mounted || launched) {
@@ -50,6 +59,18 @@ class _SettingsPageState extends State<SettingsPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('プライバシーポリシーを開けませんでした。'),
+      ),
+    );
+  }
+
+  Future<void> _openPermissionSettings(AppController controller) async {
+    final opened = await controller.openPermissionSettings();
+    if (!mounted || opened) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('アプリ設定を開けませんでした。'),
       ),
     );
   }
@@ -121,12 +142,33 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   void dispose() {
+    final controller = _controller;
+    if (controller != null && controller.isAlarmPreviewPlaying) {
+      unawaited(controller.stopAlarmPreview());
+    }
     _innerBufferController.dispose();
     _pollingIntervalController.dispose();
     _gpsAccuracyThresholdController.dispose();
     _leaveConfirmSamplesController.dispose();
     _leaveConfirmSecondsController.dispose();
     super.dispose();
+  }
+
+  Future<void> _toggleAlarmPreview(AppController controller) async {
+    if (controller.isAlarmPreviewPlaying) {
+      await controller.stopAlarmPreview();
+      return;
+    }
+
+    final started = await controller.startAlarmPreview(_alarmVolume);
+    if (!mounted || started) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('警告音を再生できませんでした。'),
+      ),
+    );
   }
 
   Future<void> _applySettings() async {
@@ -143,6 +185,10 @@ class _SettingsPageState extends State<SettingsPage> {
       final currentConfig = controller.config;
       if (currentConfig == null) {
         return;
+      }
+
+      if (controller.isAlarmPreviewPlaying) {
+        await controller.stopAlarmPreview();
       }
 
       // デフォルト値を取得（まだ読み込まれていない場合）
@@ -229,6 +275,7 @@ class _SettingsPageState extends State<SettingsPage> {
       builder: (context, controller, _) {
         final config = controller.config;
         final viewPadding = MediaQuery.viewPaddingOf(context);
+        final isIOS = Theme.of(context).platform == TargetPlatform.iOS;
         return Scaffold(
           appBar: AppBar(
             title: const Text('設定'),
@@ -249,6 +296,9 @@ class _SettingsPageState extends State<SettingsPage> {
                         onRequestNotifications:
                             controller.requestNotificationPermission,
                         onRefresh: controller.refreshMonitoringPermissionState,
+                        onOpenSettings: isIOS
+                            ? () => _openPermissionSettings(controller)
+                            : null,
                       ),
                       const SizedBox(height: 16),
                       ListTile(
@@ -439,6 +489,34 @@ class _SettingsPageState extends State<SettingsPage> {
                             '音量: ${(_alarmVolume * 100).round()}% (デフォルト: 50%)',
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
+                          if (isIOS) ...[
+                            const SizedBox(height: 12),
+                            OutlinedButton.icon(
+                              key: const Key('alarmPreviewButton'),
+                              onPressed: controller.isAlarmPreviewPlaying ||
+                                      controller.canPreviewAlarm
+                                  ? () => _toggleAlarmPreview(controller)
+                                  : null,
+                              icon: Icon(
+                                controller.isAlarmPreviewPlaying
+                                    ? Icons.stop_circle_outlined
+                                    : Icons.volume_up_outlined,
+                              ),
+                              label: Text(
+                                controller.isAlarmPreviewPlaying
+                                    ? 'テストを停止'
+                                    : '警告音をテスト',
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              controller.canPreviewAlarm ||
+                                      controller.isAlarmPreviewPlaying
+                                  ? '再生中にホーム画面へ移動しても、停止するまで警告音が続きます。'
+                                  : '監視中は警告音をテストできません。',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
                         ],
                       ),
                       const SizedBox(height: 24),

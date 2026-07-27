@@ -36,7 +36,10 @@ class Notifier {
 
   bool _initialized = false;
   bool _isAlarming = false;
+  bool _isAlarmPreviewPlaying = false;
   int _generation = 0;
+
+  bool get isAlarmPreviewPlaying => _isAlarmPreviewPlaying;
 
   /// アラーム音量を設定します（0.0～1.0）。
   void setAlarmVolume(double volume) {
@@ -46,6 +49,36 @@ class Notifier {
         volume: volume.clamp(0.0, 1.0).toDouble(),
       );
     }
+  }
+
+  Future<void> startAlarmPreview() async {
+    final generation = ++_generation;
+    _isAlarmPreviewPlaying = false;
+    _isAlarming = false;
+    await _alarmPlayer.stop();
+    await _vibrationPlayer.stop();
+    if (generation != _generation) {
+      return;
+    }
+
+    try {
+      await _alarmPlayer.start();
+      if (generation != _generation) {
+        await _alarmPlayer.stop();
+        return;
+      }
+      _isAlarmPreviewPlaying = true;
+    } catch (_) {
+      _isAlarmPreviewPlaying = false;
+      await _alarmPlayer.stop();
+      rethrow;
+    }
+  }
+
+  Future<void> stopAlarmPreview() async {
+    _generation += 1;
+    _isAlarmPreviewPlaying = false;
+    await _alarmPlayer.stop();
   }
 
   Future<void> initialize() async {
@@ -79,6 +112,9 @@ class Notifier {
   }
 
   Future<void> notifyOuter() async {
+    if (_isAlarmPreviewPlaying) {
+      await stopAlarmPreview();
+    }
     await initialize();
     final generation = _generation;
     const androidDetails = AndroidNotificationDetails(
@@ -128,6 +164,7 @@ class Notifier {
   Future<void> stopAlarm() async {
     _generation += 1;
     _isAlarming = false;
+    _isAlarmPreviewPlaying = false;
     await _alarmPlayer.stop();
     await _vibrationPlayer.stop();
   }
@@ -158,19 +195,24 @@ class Notifier {
   }
 
   Future<void> _resumeAlarm(int generation) async {
-    if (_isAlarming || generation != _generation) {
+    var activeGeneration = generation;
+    if (_isAlarmPreviewPlaying) {
+      await stopAlarmPreview();
+      activeGeneration = _generation;
+    }
+    if (_isAlarming || activeGeneration != _generation) {
       return;
     }
     _isAlarming = true;
     try {
       await _alarmPlayer.start();
-      if (generation != _generation) {
+      if (activeGeneration != _generation) {
         await _alarmPlayer.stop();
         _isAlarming = false;
         return;
       }
       await _vibrationPlayer.start();
-      if (generation != _generation) {
+      if (activeGeneration != _generation) {
         await _alarmPlayer.stop();
         await _vibrationPlayer.stop();
         _isAlarming = false;
@@ -190,6 +232,7 @@ class Notifier {
   Future<void> dismissOuterAlert() async {
     _generation += 1;
     _isAlarming = false;
+    _isAlarmPreviewPlaying = false;
     await initialize();
     await _notifications.cancel(_outerNotificationId);
     await _alarmPlayer.stop();

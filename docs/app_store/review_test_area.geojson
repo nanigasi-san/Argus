@@ -1,0 +1,23 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "App Review background monitoring test area"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-0.001, -0.001],
+            [0.001, -0.001],
+            [0.001, 0.001],
+            [-0.001, 0.001],
+            [-0.001, -0.001]
+          ]
+        ]
+      }
+    }
+  ]
+}

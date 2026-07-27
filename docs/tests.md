@@ -36,8 +36,8 @@ Android 音量チェックの重要契約:
 - `MethodChannelAlarmClient`: method 名、payload、null / invalid response。
 - `AlarmVolumeState.fromMap`: 必須値、型、範囲 validation。
 - `NativeAlarmPlayer`: Android / iOS のネイティブ再生、volume clamp、copyWith、stop の contract。
-- `Notifier`: channel ID / name / description / importance / playSound / vibration、OUTER 通知 ID `1001`、通知キャンセル、alarm / vibration stop の冪等性。
-- `PermissionCoordinator`: refresh は要求しない、foreground から background の順に要求する、拒否時は app / location settings 導線に進む、camera denied/manual settings flow を維持する。
+- `Notifier`: channel ID / name / description / importance / playSound / vibration、OUTER 通知 ID `1001`、通知キャンセル、alarm / vibration stop の冪等性、通知・バイブなしの警告音preview。
+- `PermissionCoordinator`: refresh は要求しない、foreground から background の順に要求する、iOSは拒否後に設定を自動表示しない、Androidは既存の app / location settings 導線を維持する、camera denied/manual settings flow を維持する。
 - `GeolocatorLocationService`: Android foreground notification 文言、wake lock、ongoing、interval、iOS background update 設定を `LocationSettingsFactory` で検証する。
 
 ### UI
@@ -49,6 +49,7 @@ Widget test はユーザーから見える文言と導線を守る。
 - 音設定 open 失敗時は snackbar を表示する。
 - 音量を上げた後の再確認で監視開始に進む。
 - Home の permission card、developer details、file loader sheet、Settings、QR permission error を表示単位で守る。
+- iOSの位置情報説明が「続ける」だけで閉じられないこと、明示的な設定導線、Settingsの警告音テスト開始・停止を守る。
 
 ### Integration Smoke
 

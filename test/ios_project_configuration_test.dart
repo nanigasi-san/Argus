@@ -9,6 +9,7 @@ void main() {
       final infoPlist = File('ios/Runner/Info.plist').readAsStringSync();
 
       expect(infoPlist, contains('<key>NSCameraUsageDescription</key>'));
+      expect(infoPlist, contains('<key>ITSAppUsesNonExemptEncryption</key>'));
       expect(infoPlist,
           contains('<key>NSLocationWhenInUseUsageDescription</key>'));
       expect(
@@ -55,6 +56,26 @@ void main() {
         entitlements,
         contains('com.apple.developer.usernotifications.time-sensitive'),
       );
+    });
+
+    test('uses an ARGUS launch image instead of Flutter placeholders', () {
+      final launchImages = [
+        File('ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage.png'),
+        File(
+          'ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage@2x.png',
+        ),
+        File(
+          'ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage@3x.png',
+        ),
+      ];
+      final launchScreen = File('ios/Runner/Base.lproj/LaunchScreen.storyboard')
+          .readAsStringSync();
+
+      for (final image in launchImages) {
+        expect(image.lengthSync(), greaterThan(10000));
+      }
+      expect(launchScreen, contains('contentMode="scaleAspectFit"'));
+      expect(launchScreen, contains('constant="168"'));
     });
 
     test('bundles the app privacy manifest in Runner resources', () {
@@ -139,7 +160,7 @@ void main() {
     test('uses the 0.5.0 release version and update-check dependencies', () {
       final pubspec = File('pubspec.yaml').readAsStringSync();
 
-      expect(pubspec, contains('version: 0.5.0+1006'));
+      expect(pubspec, contains('version: 0.5.0+1007'));
       expect(pubspec, contains('package_info_plus: ^10.1.0'));
       expect(pubspec, contains('upgrader: ^13.5.0'));
       expect(pubspec, contains('share_plus: ^13.1.0'));

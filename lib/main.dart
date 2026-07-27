@@ -76,6 +76,7 @@ class _ArgusAppState extends State<ArgusApp> with WidgetsBindingObserver {
       value: widget.controller,
       child: MaterialApp(
         title: 'Argus',
+        debugShowCheckedModeBanner: false,
         theme: AppTheme.light(),
         home: home,
       ),

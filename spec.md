@@ -55,7 +55,7 @@
 
 ### 5.3 権限
 - 通知: 警告を見逃さないための setup 対象。拒否時は app settings への導線を表示するが、監視開始ブロック条件そのものではない。
-- 位置: 位置サービス有効 + `locationAlways` を監視開始条件とする。`whileInUse` から foreground → background の順に要求し、拒否時は app/location settings への導線を表示する。
+- 位置: 位置サービス有効 + `locationAlways` を監視開始条件とする。`whileInUse` から foreground → background の順に要求する。iOSの事前説明は単一の「続ける」のみとし、拒否時は自動遷移せず明示的な app settings 導線を表示する。Androidは従来どおり拒否後に app/location settings を開く。
 
 ### 5.4 位置サンプリング（`lib/platform/location_service.dart`）
 - Android: Foreground Service 通知チャンネル名「ARGUSバックグラウンド監視」、タイトル「ARGUSが位置情報を監視中です」、本文「画面を消しても位置情報の追跡は継続されます。」。`enableWakeLock: true`、`setOngoing: true`。
@@ -80,11 +80,12 @@
 - OUTER: ローカル通知＋同梱警報音のネイティブループ再生＋ネイティブ連続バイブを開始する。Android は `MediaPlayer` と `VibrationEffect`、iOS は `AVAudioPlayer` と `AudioServicesPlaySystemSound` を使用し、通知との重複再生を避ける。
 - 復帰: OUTER 通知をキャンセルし、アラーム停止のみ。ログに “Returned to safe zone.” を出力。
 - 音量: ユーザー設定 0.0–1.0 を `AlarmPlayer` に反映（初期 0.5）。警報音源自体は増幅済みの MP3 を同梱する。Android では監視開始前に端末のアラーム音量を確認し、`percent >= 0.5` なら開始可、50% 未満なら開始せず「５０％以上」警告と音設定への導線を出す。音量取得失敗時は warning ログを残し、監視開始はブロックしない。
+- iOS警告音テスト: Settingsから現在のスライダー音量で音声だけを再生する。通知・バイブは発生させず、ホーム画面でも継続し、停止操作・Settings終了・監視開始・アプリ終了で停止する。
 - 音設定: MethodChannel `argus/alarm` の `openSoundSettings` を呼ぶ。Android 側は `ACTION_SOUND_SETTINGS` を開き、失敗時は `ACTION_SETTINGS` にフォールバックする。
 
 ### 5.8 UI
 - Home (`home_page.dart`): 大型ステータス円で状態表示（INNER/NEAR/OUTER 等、色付き）。`waitStart` ではタップで監視開始。GeoJSON ファイル名と GPS 精度を常時表示。OUTER（または Developer mode）で距離/方位ナビ表示。最新 5 件のアプリ内ログをカードで閲覧。エラーは Snackbar。
-- Settings (`settings_page.dart`): 設定フォーム（Inner buffer, GPS 精度閾値, Leave confirm サンプル/秒, Alarm 音量）。Developer mode トグル。ログ JSON エクスポート（メモリ上の `EventLogger` 内容をその場表示）。
+- Settings (`settings_page.dart`): 設定フォーム（Inner buffer, GPS 精度閾値, Leave confirm サンプル/秒, Alarm 音量）。iOSでは警告音の開始・停止テストを表示する。Developer mode トグル。ログ JSON エクスポート（メモリ上の `EventLogger` 内容をその場表示）。
 - QR Scanner (`qr_scanner_page.dart`): `mobile_scanner` で `agz1` / `gjz1` スキーム QR を読み取り、`AppController.reloadGeoJsonFromQr` へ連携。処理中オーバーレイとエラーバナーを表示。
 - テーマ: Material3、Seed color Blue。文言は日本語中心で一部英語残り。
 

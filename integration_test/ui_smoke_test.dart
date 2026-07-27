@@ -3,6 +3,7 @@ import 'package:argus/state_machine/state.dart';
 import 'package:argus/ui/qr_scanner_page.dart';
 import 'package:argus/ui/settings_page.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -64,7 +65,14 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('バックグラウンド位置情報の開示'), findsOneWidget);
-      expect(find.text('同意して位置情報の設定へ進む'), findsOneWidget);
+      expect(
+        find.text(
+          defaultTargetPlatform == TargetPlatform.iOS
+              ? '続ける'
+              : '同意して位置情報の設定へ進む',
+        ),
+        findsOneWidget,
+      );
 
       await _tryTakeScreenshot(binding, 'background-location-disclosure');
     });
@@ -76,7 +84,10 @@ void main() {
       await tester.pumpWidget(
         ChangeNotifierProvider.value(
           value: controller,
-          child: const MaterialApp(home: SettingsPage()),
+          child: const MaterialApp(
+            debugShowCheckedModeBanner: false,
+            home: SettingsPage(),
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -84,6 +95,15 @@ void main() {
       expect(find.text('設定'), findsOneWidget);
       expect(find.text('監視を開始できる状態です。'), findsOneWidget);
       expect(find.text('境界バッファ距離'), findsOneWidget);
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('alarmPreviewButton')),
+          300,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('警告音をテスト'), findsOneWidget);
+      }
 
       await _tryTakeScreenshot(binding, 'settings-form');
     });
@@ -99,6 +119,7 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          debugShowCheckedModeBanner: false,
           home: ChangeNotifierProvider.value(
             value: controller,
             child: QrScannerPage(

@@ -85,11 +85,12 @@
   - iOS: 視覚通知は `interruptionLevel: InterruptionLevel.timeSensitive`。音は `AVAudioPlayer` のネイティブループ再生に一本化。
 - **Foreground Service 通知**: Android 背景計測用にチャンネル名 `ARGUSバックグラウンド監視`、タイトル「ARGUSが位置情報を監視中です」、本文「画面を消しても位置情報の追跡は継続されます。」を表示する。
 - **アラーム音**: Android / iOS は `argus/alarm` MethodChannel のネイティブループ再生を使用。iOSは画面ロック中の到達性を確保するため、Time Sensitiveローカル通知にもバンドル済み `alarm.caf` を設定する。フォアグラウンドでは通知音を提示せずネイティブ再生を使う。`Notifier.stopAlarm()` で停止。
+- **iOS警告音テスト**: 設定画面から現在のスライダー音量で音声だけを開始・停止できる。通知・バイブは発生せず、ホーム画面でも継続する。設定画面終了、監視開始、アプリ終了では停止する。
 - **バイブレーション**: Android / iOS は `argus/alarm` MethodChannel のネイティブ実装を使用。Android は `VibrationEffect` の波形、iOS は `AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)` の繰り返しで警告中のバイブを制御する。
 - **音量チェック**: Android は監視開始前に端末のアラーム音量を確認し、`percent >= 0.5` なら開始可、50% 未満なら開始をブロックして「５０％以上」警告と音設定画面への導線を表示する。取得失敗時は warning ログを残し、監視開始はブロックしない。
 - **音設定**: MethodChannel `argus/alarm` の `openSoundSettings` を呼ぶ。Android 側は `ACTION_SOUND_SETTINGS` を開き、失敗時は `ACTION_SETTINGS` にフォールバックする。iOS 側はアプリの設定画面を開く。iOS では警告音量をアプリ内から正確に取得できないため、`getAlarmVolumeState` は非対応である旨の代替応答を返す。
 - **復帰通知**: INNER/NEAR 復帰時に通知をキャンセルし、アラームを停止。
-- **権限要求**: 通知・位置情報の権限状態は `PermissionCoordinator` が確認・要求する。`Notifier` は通知権限を直接要求しない。監視開始ブロック条件は位置サービス有効 + Always 位置権限。
+- **権限要求**: 通知・位置情報の権限状態は `PermissionCoordinator` が確認・要求する。iOSの事前説明は単一の「続ける」のみで、拒否後に設定アプリを自動表示しない。設定はユーザーが権限カードから明示的に開く。Androidの拒否後導線は従来どおり維持する。`Notifier` は通知権限を直接要求しない。監視開始ブロック条件は位置サービス有効 + Always 位置権限。
 
 ### 1.7 退避ナビゲーション
 
@@ -138,7 +139,7 @@
 - **パフォーマンス**: 位置取得・状態評価・ログ記録はいずれも非同期処理で UI スレッドを阻害しない。`AreaIndex` による空間インデックスで評価対象ポリゴンを絞り込み。
 - **電力消費**: Android は WakeLock を活用しつつも位置リクエスト間隔は設定値で調整可能。iOS はバックグラウンド許可前提。
 - **データ永続化**: 設定はアプリドキュメントディレクトリの `config.json` に保存。存在しない場合はデフォルト設定をロード。ログはメモリのみで保持し、最大 200 件のリングバッファ管理（`AppController._logs`）。
-- **権限**: `PermissionCoordinator` が通知・位置情報（常時）許可を順序立てて確認・要求する。拒否時はアプリ設定画面への誘導。
+- **権限**: `PermissionCoordinator` が通知・位置情報（常時）許可を順序立てて確認・要求する。iOSは拒否後に明示操作で設定を開き、Androidは従来の自動設定導線を維持する。
 - **ローカライズ**: 通知文言、位置許可文言、UI 文言は日本語がデフォルト。
 
 ---

@@ -90,6 +90,9 @@ class AppController extends ChangeNotifier {
   bool get isAlarmSnoozed => _isAlarmSnoozed;
   bool get canSnoozeAlarm =>
       _snapshot.status == LocationStateStatus.outer && !_isAlarmSnoozed;
+  bool get isAlarmPreviewPlaying => notifier.isAlarmPreviewPlaying;
+  bool get canPreviewAlarm =>
+      _subscription == null && _snapshot.status != LocationStateStatus.outer;
   MonitoringPermissionState get monitoringPermissionState =>
       _monitoringPermissionState;
   bool get _isAndroid => _isAndroidOverride ?? (!kIsWeb && Platform.isAndroid);
@@ -141,6 +144,9 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> startMonitoring() async {
+    if (isAlarmPreviewPlaying) {
+      await stopAlarmPreview();
+    }
     if (_config == null || !geoJsonLoaded) {
       return;
     }
@@ -195,6 +201,39 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  Future<bool> startAlarmPreview(double volume) async {
+    if (!canPreviewAlarm) {
+      return false;
+    }
+
+    try {
+      notifier.setAlarmVolume(volume);
+      await notifier.startAlarmPreview();
+      _logInfo('ALERT', 'Alarm preview started.');
+      notifyListeners();
+      return notifier.isAlarmPreviewPlaying;
+    } catch (error) {
+      notifier.setAlarmVolume(
+        _config?.alarmVolume ?? AppConfig.defaultAlarmVolume,
+      );
+      _logWarning('ALERT', 'Failed to start alarm preview: $error');
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<void> stopAlarmPreview() async {
+    final wasPlaying = notifier.isAlarmPreviewPlaying;
+    await notifier.stopAlarmPreview();
+    notifier.setAlarmVolume(
+      _config?.alarmVolume ?? AppConfig.defaultAlarmVolume,
+    );
+    if (wasPlaying) {
+      _logInfo('ALERT', 'Alarm preview stopped.');
+    }
+    notifyListeners();
+  }
+
   /// 位置情報の監視を停止します。
   Future<void> stopMonitoring() async {
     _monitoringRunId += 1;
@@ -221,6 +260,9 @@ class AppController extends ChangeNotifier {
   Future<void> handleAppTermination() async {
     _monitoringRunId += 1;
     _clearAlarmSnooze();
+    if (isAlarmPreviewPlaying) {
+      await stopAlarmPreview();
+    }
     await notifier.dismissOuterAlert();
     await _subscription?.cancel();
     _subscription = null;

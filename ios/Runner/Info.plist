@@ -22,6 +22,8 @@
   <string>$(FLUTTER_BUILD_NUMBER)</string>
   <key>LSRequiresIPhoneOS</key>
   <true/>
+  <key>ITSAppUsesNonExemptEncryption</key>
+  <false/>
   <key>NSLocationWhenInUseUsageDescription</key>
   <string>監視開始時に現在地と競技エリアの位置関係を確認するため、位置情報を使用します。</string>
   <key>NSCameraUsageDescription</key>

@@ -13,6 +13,15 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(Set(modes ?? []), Set(["audio", "location"]))
   }
 
+  func testLocationPurposeStringsExplainBackgroundMonitoring() {
+    let whenInUse = Bundle.main.object(forInfoDictionaryKey: "NSLocationWhenInUseUsageDescription") as? String
+    let always = Bundle.main.object(forInfoDictionaryKey: "NSLocationAlwaysAndWhenInUseUsageDescription") as? String
+
+    XCTAssertTrue(whenInUse?.contains("競技エリア") == true)
+    XCTAssertTrue(always?.contains("画面ロック中") == true)
+    XCTAssertTrue(always?.contains("離脱を検知") == true)
+  }
+
   func testSceneLifecycleIsConfigured() {
     let manifest = Bundle.main.object(forInfoDictionaryKey: "UIApplicationSceneManifest") as? [String: Any]
     XCTAssertEqual(manifest?["UIApplicationSupportsMultipleScenes"] as? Bool, false)

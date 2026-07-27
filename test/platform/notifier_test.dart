@@ -17,6 +17,102 @@ void main() {
       expect(notifier.badgeState.value, LocationStateStatus.waitGeoJson);
     });
 
+    test('alarm preview plays audio without notification or vibration',
+        () async {
+      final notifications = FakeLocalNotificationsClient();
+      final alarm = FakeAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: notifications,
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+
+      await notifier.startAlarmPreview();
+
+      expect(notifier.isAlarmPreviewPlaying, isTrue);
+      expect(alarm.playCount, 1);
+      expect(vibration.startCount, 0);
+      expect(notifications.shownIds, isEmpty);
+
+      await notifier.stopAlarmPreview();
+
+      expect(notifier.isAlarmPreviewPlaying, isFalse);
+      expect(alarm.stopCount, greaterThanOrEqualTo(2));
+      expect(vibration.startCount, 0);
+    });
+
+    test('real outer alert replaces an active alarm preview', () async {
+      final notifications = FakeLocalNotificationsClient();
+      final alarm = FakeAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: notifications,
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+
+      await notifier.startAlarmPreview();
+      await notifier.notifyOuter();
+
+      expect(notifier.isAlarmPreviewPlaying, isFalse);
+      expect(notifications.shownIds, [1001]);
+      expect(alarm.playCount, 2);
+      expect(vibration.startCount, 1);
+    });
+
+    test('failed alarm preview can be stopped and retried', () async {
+      final alarm = _FailOnceAlarmPlayer();
+      final notifier = Notifier(
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: alarm,
+        vibrationPlayer: FakeVibrationPlayer(),
+      );
+
+      await expectLater(notifier.startAlarmPreview(), throwsStateError);
+      expect(notifier.isAlarmPreviewPlaying, isFalse);
+
+      await notifier.startAlarmPreview();
+
+      expect(notifier.isAlarmPreviewPlaying, isTrue);
+      expect(alarm.playCount, 2);
+    });
+
+    test('stopping an in-flight alarm preview suppresses playback', () async {
+      final alarm = _BlockingAlarmPlayer();
+      final notifier = Notifier(
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: alarm,
+        vibrationPlayer: FakeVibrationPlayer(),
+      );
+
+      final previewFuture = notifier.startAlarmPreview();
+      await alarm.startEntered.future;
+      final stopFuture = notifier.stopAlarmPreview();
+      alarm.allowStart.complete();
+      await Future.wait([previewFuture, stopFuture]);
+
+      expect(notifier.isAlarmPreviewPlaying, isFalse);
+      expect(alarm.stopCount, greaterThanOrEqualTo(2));
+    });
+
+    test('resumeAlarm replaces an active alarm preview', () async {
+      final alarm = FakeAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+
+      await notifier.startAlarmPreview();
+      await notifier.resumeAlarm();
+
+      expect(notifier.isAlarmPreviewPlaying, isFalse);
+      expect(alarm.playCount, 2);
+      expect(vibration.startCount, 1);
+    });
+
     test('outer -> inner -> outer toggles alarm playback', () async {
       final notifications = FakeLocalNotificationsClient();
       final alarm = FakeAlarmPlayer();

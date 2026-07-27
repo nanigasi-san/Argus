@@ -95,6 +95,110 @@ void main() {
       expect(controller.lastErrorMessage, isNull);
     });
 
+    test('alarm preview stops before monitoring starts', () async {
+      final alarm = FakeAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final locationService = FakeLocationService();
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: locationService,
+        fileManager: FakeFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: alarm,
+          vibrationPlayer: vibration,
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+      );
+      controller.debugSeed(
+        config: _testConfig(),
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+
+      final started = await controller.startAlarmPreview(0.4);
+
+      expect(started, isTrue);
+      expect(controller.isAlarmPreviewPlaying, isTrue);
+      expect(alarm.playCount, 1);
+      expect(vibration.startCount, 0);
+
+      await controller.startMonitoring();
+
+      expect(controller.isAlarmPreviewPlaying, isFalse);
+      expect(alarm.stopCount, greaterThanOrEqualTo(2));
+      expect(locationService.started, isTrue);
+    });
+
+    test('alarm preview failure is reported without leaving preview active',
+        () async {
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: FakeLocationService(),
+        fileManager: FakeFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: _AlwaysFailAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+      );
+      controller.debugSeed(config: _testConfig());
+
+      final started = await controller.startAlarmPreview(0.4);
+
+      expect(started, isFalse);
+      expect(controller.isAlarmPreviewPlaying, isFalse);
+      expect(controller.logs.first.message, contains('Failed to start'));
+    });
+
+    test('alarm preview stops when application terminates', () async {
+      final alarm = FakeAlarmPlayer();
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: FakeLocationService(),
+        fileManager: FakeFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: alarm,
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+      );
+      controller.debugSeed(config: _testConfig());
+      expect(await controller.startAlarmPreview(0.4), isTrue);
+
+      await controller.handleAppTermination();
+
+      expect(controller.isAlarmPreviewPlaying, isFalse);
+      expect(alarm.stopCount, greaterThanOrEqualTo(3));
+    });
+
+    test('openPermissionSettings returns coordinator result and handles errors',
+        () async {
+      final successCoordinator = _TrackingPermissionCoordinator(
+        openSettingsResult: true,
+      );
+      final successController = _buildController(
+        permissionCoordinator: successCoordinator,
+      );
+
+      expect(await successController.openPermissionSettings(), isTrue);
+      expect(successCoordinator.openSettingsCount, 1);
+
+      final failingCoordinator = _TrackingPermissionCoordinator(
+        openSettingsError: StateError('settings unavailable'),
+      );
+      final failingController = _buildController(
+        permissionCoordinator: failingCoordinator,
+      );
+
+      expect(await failingController.openPermissionSettings(), isFalse);
+      expect(failingCoordinator.openSettingsCount, 1);
+      expect(failingController.logs.first.message, contains('Failed to open'));
+    });
+
     test('startMonitoring sets blocked error when permission is missing',
         () async {
       final coordinator = _TrackingPermissionCoordinator(
@@ -1434,7 +1538,9 @@ MonitoringPermissionState _grantedMonitoringPermissionState() {
   );
 }
 
-AppController _buildController() {
+AppController _buildController({
+  PermissionCoordinator? permissionCoordinator,
+}) {
   final config = _testConfig();
   final stateMachine = StateMachine(config: config);
   final fileManager = FakeFileManager(config: config);
@@ -1448,6 +1554,7 @@ AppController _buildController() {
     fileManager: fileManager,
     logger: FakeEventLogger(),
     notifier: notifier,
+    permissionCoordinator: permissionCoordinator,
   );
 }
 
@@ -1496,11 +1603,21 @@ class _AppControllerFailSecondStartAlarmPlayer extends FakeAlarmPlayer {
   }
 }
 
+class _AlwaysFailAlarmPlayer extends FakeAlarmPlayer {
+  @override
+  Future<void> start() async {
+    playCount += 1;
+    throw StateError('preview failed');
+  }
+}
+
 class _TrackingPermissionCoordinator extends PermissionCoordinator {
   _TrackingPermissionCoordinator({
     MonitoringPermissionState? refreshState,
     MonitoringPermissionState? completeState,
     MonitoringPermissionState? notificationState,
+    this.openSettingsResult = false,
+    this.openSettingsError,
   })  : _refreshState = refreshState ?? _grantedMonitoringPermissionState(),
         _completeState = completeState ?? _grantedMonitoringPermissionState(),
         _notificationState =
@@ -1509,10 +1626,22 @@ class _TrackingPermissionCoordinator extends PermissionCoordinator {
   final MonitoringPermissionState _refreshState;
   final MonitoringPermissionState _completeState;
   final MonitoringPermissionState _notificationState;
+  final bool openSettingsResult;
+  final Object? openSettingsError;
 
   int refreshCount = 0;
   int completeSetupCount = 0;
   int requestNotificationCount = 0;
+  int openSettingsCount = 0;
+
+  @override
+  Future<bool> openSettings() async {
+    openSettingsCount += 1;
+    if (openSettingsError != null) {
+      throw openSettingsError!;
+    }
+    return openSettingsResult;
+  }
 
   @override
   Future<MonitoringPermissionState> refreshMonitoringPermissionState() async {
