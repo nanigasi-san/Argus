@@ -17,6 +17,8 @@ ARGUSは、利用者が読み込んだGeoJSON競技エリアを監視するア�
 
 位置情報を拒否した場合、ARGUSは設定アプリを自動的に開きません。ユーザーが監視機能を使うために権限を変更するときだけ、権限カードの「アプリ設定を開く」を明示的に押します。
 
+QRコード画像の読み込みでは、iOSのファイル選択に画像用のUTTypeを明示しました。iPadでも「QRコード画像を読み込む」を押すと画像ファイル選択画面が開き、選択したQRコード画像を読み込めます。
+
 ## English
 
 ARGUS monitors a GeoJSON competition area selected by the user. Background location starts only after the user explicitly starts monitoring. It is required to detect leaving the competition area while the screen is locked or another app is in use. Location data is processed only on the device and is never sent to the developer's server.
@@ -31,6 +33,8 @@ To verify background audio:
 4. Return to ARGUS and tap “テストを停止” to stop it.
 
 If location permission is denied, ARGUS does not open Settings automatically. The Settings app opens only after the user explicitly taps “アプリ設定を開く” while trying to enable monitoring.
+
+For QR image import, the iOS file picker now declares the image UTType explicitly. On iPad, tapping “QRコード画像を読み込む” opens the image file picker and allows the selected QR image to be imported.
 
 ## 提出時の添付物
 
