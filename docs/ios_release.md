@@ -6,7 +6,7 @@ MacBook の初回環境構築は [macbook_ios_setup.md](macbook_ios_setup.md) �
 
 ## 実装済みのiOS設定
 
-- App version: `0.5.0+1007`
+- App version: `0.6.0+1008`
 - Bundle ID: `com.argus.orienteering`
 - Minimum deployment target: iOS 15.0
 - Background Modes: `Location updates`, `Audio`
@@ -114,7 +114,7 @@ xcrun devicectl device process launch \
 11. サイレントモード、集中モード、画面ロック中の通知挙動を確認する。
 12. 音量案内からiOSのARGUSアプリ設定画面を開ける。
 13. Xcodeの `Product > Test` で `RunnerTests` が通る。
-14. 設定画面に `0.5.0 (1007)` が表示される。
+14. 設定画面に `0.6.0 (1008)` が表示される。
 15. `agz1` QRからGeoJSONと元ファイル名を復元でき、`gjz1` QRも読み込める。
 
 ## Archive前の確認
