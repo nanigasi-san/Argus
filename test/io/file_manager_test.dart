@@ -65,6 +65,10 @@ void main() {
         containsAll(<String>['png', 'jpg', 'jpeg', 'webp']));
     expect(capturedGroups!.single.mimeTypes,
         containsAll(<String>['image/png', 'image/jpeg', 'image/webp']));
+    expect(
+      capturedGroups!.single.uniformTypeIdentifiers,
+      contains('public.image'),
+    );
   });
 
   test('getConfigFile creates config file with default config when missing',
