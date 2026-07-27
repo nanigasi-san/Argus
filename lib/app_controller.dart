@@ -733,6 +733,15 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<bool> openPermissionSettings() async {
+    try {
+      return await permissionCoordinator.openSettings();
+    } catch (error) {
+      _logWarning('APP', 'Failed to open permission settings: $error');
+      return false;
+    }
+  }
+
   Future<void> completeMonitoringPermissionSetup() async {
     _monitoringPermissionState =
         await permissionCoordinator.completeMonitoringSetup();

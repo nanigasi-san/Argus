@@ -27,6 +27,7 @@ class HomePage extends StatelessWidget {
     return Consumer<AppController>(
       builder: (context, controller, _) {
         final snapshot = controller.snapshot;
+        final isIOS = Theme.of(context).platform == TargetPlatform.iOS;
         final showNav = (controller.developerMode ||
                 snapshot.status == LocationStateStatus.outer) &&
             controller.navigationEnabled;
@@ -54,6 +55,9 @@ class HomePage extends StatelessWidget {
                 onRequestNotifications:
                     controller.requestNotificationPermission,
                 onRefresh: controller.refreshMonitoringPermissionState,
+                onOpenSettings: isIOS
+                    ? () => _openPermissionSettings(context, controller)
+                    : null,
               )
             : null;
 
@@ -84,6 +88,22 @@ class HomePage extends StatelessWidget {
       },
     );
   }
+}
+
+Future<void> _openPermissionSettings(
+  BuildContext context,
+  AppController controller,
+) async {
+  final opened = await controller.openPermissionSettings();
+  if (!context.mounted || opened) {
+    return;
+  }
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text('アプリ設定を開けませんでした。'),
+      behavior: SnackBarBehavior.floating,
+    ),
+  );
 }
 
 class _HomeScrollableContent extends StatelessWidget {

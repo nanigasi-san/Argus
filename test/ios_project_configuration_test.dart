@@ -19,6 +19,8 @@ void main() {
           infoPlist, contains('<key>NSPhotoLibraryAddUsageDescription</key>'));
       expect(infoPlist, contains('<string>audio</string>'));
       expect(infoPlist, contains('<string>location</string>'));
+      expect(infoPlist, contains('監視開始時に現在地と競技エリアの位置関係を確認'));
+      expect(infoPlist, contains('画面ロック中や他のアプリ使用中でも競技エリアからの離脱を検知'));
       expect(infoPlist, contains('<key>UIApplicationSceneManifest</key>'));
       expect(infoPlist,
           contains('<key>UIApplicationSupportsMultipleScenes</key>'));

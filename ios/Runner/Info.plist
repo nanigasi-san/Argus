@@ -23,13 +23,13 @@
   <key>LSRequiresIPhoneOS</key>
   <true/>
   <key>NSLocationWhenInUseUsageDescription</key>
-  <string>アプリを使用中に安全エリアを監視するため、位置情報へのアクセスが必要です。</string>
+  <string>監視開始時に現在地と競技エリアの位置関係を確認するため、位置情報を使用します。</string>
   <key>NSCameraUsageDescription</key>
   <string>GeoJSONを含むQRコードを読み取るため、カメラへのアクセスが必要です。</string>
   <key>NSLocationAlwaysUsageDescription</key>
-  <string>バックグラウンド実行中も安全エリアを監視するため、常時の位置情報アクセスが必要です。</string>
+  <string>監視開始後、画面ロック中や他のアプリ使用中でも競技エリアからの離脱を検知して警告するため、位置情報を使用します。</string>
   <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-  <string>安全エリアからの離脱を検知するため、常に位置情報を取得します。</string>
+  <string>監視開始後、画面ロック中や他のアプリ使用中でも競技エリアからの離脱を検知して警告するため、位置情報を使用します。</string>
   <key>NSPhotoLibraryAddUsageDescription</key>
   <string>生成したQRコード画像を写真ライブラリに保存するために使用します。</string>
   <key>NSPhotoLibraryUsageDescription</key>

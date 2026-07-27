@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart' as geolocator;
 import 'package:permission_handler/permission_handler.dart';
 
@@ -58,6 +61,7 @@ class MonitoringPermissionState {
     required this.locationWhenInUseStatus,
     required this.locationAlwaysStatus,
     required this.locationServicesEnabled,
+    this.shouldOfferSettings = false,
   });
 
   const MonitoringPermissionState.unknown()
@@ -66,12 +70,14 @@ class MonitoringPermissionState {
           locationWhenInUseStatus: PermissionStatus.denied,
           locationAlwaysStatus: PermissionStatus.denied,
           locationServicesEnabled: true,
+          shouldOfferSettings: false,
         );
 
   final PermissionStatus notificationStatus;
   final PermissionStatus locationWhenInUseStatus;
   final PermissionStatus locationAlwaysStatus;
   final bool locationServicesEnabled;
+  final bool shouldOfferSettings;
 
   bool get notificationGranted => _isGranted(notificationStatus);
 
@@ -116,6 +122,7 @@ class MonitoringPermissionState {
     PermissionStatus? locationWhenInUseStatus,
     PermissionStatus? locationAlwaysStatus,
     bool? locationServicesEnabled,
+    bool? shouldOfferSettings,
   }) {
     return MonitoringPermissionState(
       notificationStatus: notificationStatus ?? this.notificationStatus,
@@ -124,6 +131,7 @@ class MonitoringPermissionState {
       locationAlwaysStatus: locationAlwaysStatus ?? this.locationAlwaysStatus,
       locationServicesEnabled:
           locationServicesEnabled ?? this.locationServicesEnabled,
+      shouldOfferSettings: shouldOfferSettings ?? this.shouldOfferSettings,
     );
   }
 
@@ -160,17 +168,22 @@ class PermissionCoordinator {
     OpenAppSettingsCallback? openSettings,
     OpenLocationSettingsCallback? openLocationSettings,
     LocationServicesEnabledCallback? locationServicesEnabled,
+    bool? isIOS,
   })  : _gateway = gateway ?? const PermissionHandlerGateway(),
         _openAppSettings = openSettings ?? openAppSettings,
         _openLocationSettings =
             openLocationSettings ?? geolocator.Geolocator.openLocationSettings,
         _locationServicesEnabled = locationServicesEnabled ??
-            geolocator.Geolocator.isLocationServiceEnabled;
+            geolocator.Geolocator.isLocationServiceEnabled,
+        _isIOSOverride = isIOS;
 
   final PermissionGateway _gateway;
   final OpenAppSettingsCallback _openAppSettings;
   final OpenLocationSettingsCallback _openLocationSettings;
   final LocationServicesEnabledCallback _locationServicesEnabled;
+  final bool? _isIOSOverride;
+
+  bool get _isIOS => _isIOSOverride ?? (!kIsWeb && Platform.isIOS);
 
   Future<MonitoringPermissionState> refreshMonitoringPermissionState() async {
     final locationServicesEnabled = await _locationServicesEnabled();
@@ -183,6 +196,9 @@ class PermissionCoordinator {
       locationWhenInUseStatus: locationWhenInUseStatus,
       locationAlwaysStatus: locationAlwaysStatus,
       locationServicesEnabled: locationServicesEnabled,
+      shouldOfferSettings: !locationServicesEnabled ||
+          _needsManualSettings(locationWhenInUseStatus) ||
+          _needsManualSettings(locationAlwaysStatus),
     );
   }
 
@@ -194,17 +210,20 @@ class PermissionCoordinator {
   Future<MonitoringPermissionState> completeMonitoringSetup() async {
     var state = await refreshMonitoringPermissionState();
     if (!state.locationServicesEnabled) {
-      await _openLocationSettings();
-      return state;
+      if (!_isIOS) {
+        await _openLocationSettings();
+      }
+      return state.copyWith(shouldOfferSettings: _isIOS);
     }
 
     if (!state.locationWhenInUseGranted) {
       await _gateway.requestLocationWhenInUse();
       state = await refreshMonitoringPermissionState();
-      if (!state.locationWhenInUseGranted &&
-          _needsManualSettings(state.locationWhenInUseStatus)) {
-        await _openAppSettings();
-        return state;
+      if (!state.locationWhenInUseGranted) {
+        if (!_isIOS && _needsManualSettings(state.locationWhenInUseStatus)) {
+          await _openAppSettings();
+        }
+        return state.copyWith(shouldOfferSettings: _isIOS);
       }
     }
 
@@ -212,8 +231,10 @@ class PermissionCoordinator {
       await _gateway.requestLocationAlways();
       state = await refreshMonitoringPermissionState();
       if (!state.locationAlwaysGranted) {
-        await _openAppSettings();
-        return state;
+        if (!_isIOS) {
+          await _openAppSettings();
+        }
+        return state.copyWith(shouldOfferSettings: _isIOS);
       }
     }
 
