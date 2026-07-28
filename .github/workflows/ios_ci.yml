@@ -1,0 +1,61 @@
+name: iOS CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["*"]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  ios-simulator-build:
+    runs-on: macos-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Analyze Dart code
+        run: flutter analyze
+
+      - name: Run iOS-focused Dart tests
+        run: >
+          flutter test
+          test/ios_project_configuration_test.dart
+          test/platform/notifier_test.dart
+          test/platform/permission_coordinator_test.dart
+          test/platform/location_service_test.dart
+          test/app_lifecycle_test.dart
+          test/app_controller_test.dart
+          test/qr/geojson_qr_codec_test.dart
+
+      - name: Build iOS simulator app
+        run: flutter build ios --simulator --debug
+
+      - name: Run native XCTest target
+        run: |
+          set -euo pipefail
+          simulator_udid="$(
+            xcrun simctl list devices available -j |
+              python3 -c 'import json, sys; devices = json.load(sys.stdin)["devices"]; print(next(device["udid"] for runtime in devices.values() for device in runtime if device["name"].startswith("iPhone")))'
+          )"
+          xcrun simctl boot "$simulator_udid" || true
+          xcrun simctl bootstatus "$simulator_udid" -b
+          xcodebuild test \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,id=$simulator_udid" \
+            CODE_SIGNING_ALLOWED=NO

@@ -38,6 +38,18 @@ class StateMachine {
   /// 現在の状態を取得します。
   LocationStateStatus get current => _current;
 
+  int get pendingSampleCount => _hysteresis.sampleCount;
+
+  Duration pendingElapsed(Duration observedAt) =>
+      _hysteresis.elapsedAt(observedAt);
+
+  void resetMonitoring() {
+    _hysteresis.reset();
+    _current = _geoModel.hasGeometry
+        ? LocationStateStatus.waitStart
+        : LocationStateStatus.waitGeoJson;
+  }
+
   /// 設定を更新します。
   ///
   /// 設定が更新されると、ヒステリシスカウンタも新しい設定値で再初期化されます。
@@ -67,12 +79,14 @@ class StateMachine {
   /// 位置情報の精度、エリア内外の判定、ヒステリシス条件などを考慮して
   /// 適切な状態を決定します。
   StateSnapshot evaluate(LocationFix fix) {
-    final snapshot = _evaluateInternal(fix);
+    final observedAt = fix.monitoringElapsed ??
+        Duration(microseconds: fix.timestamp.microsecondsSinceEpoch);
+    final snapshot = _evaluateInternal(fix, observedAt);
     _current = snapshot.status;
     return snapshot;
   }
 
-  StateSnapshot _evaluateInternal(LocationFix fix) {
+  StateSnapshot _evaluateInternal(LocationFix fix, Duration observedAt) {
     if (!_geoModel.hasGeometry) {
       _current = LocationStateStatus.waitGeoJson;
       return StateSnapshot(
@@ -176,7 +190,7 @@ class StateMachine {
         fix.longitude,
       );
       final distance = boundsEval?.distanceToBoundaryM;
-      final reached = _hysteresis.addSample(fix.timestamp) && distance != null;
+      final reached = _hysteresis.addSample(observedAt) && distance != null;
 
       return StateSnapshot(
         status: reached
@@ -188,7 +202,7 @@ class StateMachine {
         geoJsonLoaded: true,
         nearestBoundaryPoint: boundsEval?.nearestPoint,
         bearingToBoundaryDeg: boundsEval?.bearingToBoundaryDeg,
-        notes: reached ? 'Confirmed exit' : 'Monitoring exit hysteresis',
+        notes: reached ? 'Confirmed exit' : _pendingNotes(observedAt),
       );
     }
 
@@ -216,7 +230,7 @@ class StateMachine {
     }
 
     final distance = polygonEval.nearest?.distanceToBoundaryM;
-    final reached = _hysteresis.addSample(fix.timestamp);
+    final reached = _hysteresis.addSample(observedAt);
 
     if (!reached) {
       return StateSnapshot(
@@ -227,7 +241,7 @@ class StateMachine {
         geoJsonLoaded: true,
         nearestBoundaryPoint: polygonEval.nearest?.nearestPoint,
         bearingToBoundaryDeg: polygonEval.nearest?.bearingToBoundaryDeg,
-        notes: 'Monitoring exit hysteresis',
+        notes: _pendingNotes(observedAt),
       );
     }
 
@@ -244,6 +258,14 @@ class StateMachine {
 
     // outer になった場合は GPS_BAD の精度チェックでは取り消さない。
     return outerSnapshot;
+  }
+
+  String _pendingNotes(Duration observedAt) {
+    final elapsedMs = _hysteresis.elapsedAt(observedAt).inMilliseconds;
+    return 'Monitoring exit hysteresis: '
+        'samples=${_hysteresis.sampleCount}/${_config.leaveConfirmSamples} '
+        'elapsed=${(elapsedMs / 1000).toStringAsFixed(1)}/'
+        '${_config.leaveConfirmSeconds}s';
   }
 
   List<GeoPolygon> _candidatePolygons(double latitude, double longitude) {
@@ -319,15 +341,14 @@ class StateMachine {
     PointInPolygonEvaluation? inside;
     PointInPolygonEvaluation? nearest;
     for (final polygon in polygons) {
-      if (!_pip.containsPoint(latitude, longitude, polygon)) {
-        continue;
-      }
       final evaluation = _pip.evaluatePoint(latitude, longitude, polygon);
       if (nearest == null ||
           evaluation.distanceToBoundaryM < nearest.distanceToBoundaryM) {
         nearest = evaluation;
       }
-      inside ??= evaluation;
+      if (evaluation.contains) {
+        inside ??= evaluation;
+      }
     }
 
     return _PolygonEvaluationResult(inside: inside, nearest: nearest);

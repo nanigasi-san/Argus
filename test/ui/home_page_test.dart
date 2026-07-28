@@ -18,12 +18,16 @@ import '../support/test_doubles.dart';
 
 Future<void> _pumpHome(
   WidgetTester tester,
-  AppController controller,
-) async {
+  AppController controller, {
+  TargetPlatform platform = TargetPlatform.android,
+}) async {
   await tester.pumpWidget(
     ChangeNotifierProvider.value(
       value: controller,
-      child: const MaterialApp(home: HomePage()),
+      child: MaterialApp(
+        theme: ThemeData(platform: platform),
+        home: const HomePage(),
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -430,6 +434,68 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('バックグラウンド位置情報の開示'), findsOneWidget);
+  });
+
+  testWidgets('iOS permission card opens settings only after user action',
+      (tester) async {
+    final coordinator = _SettingsPermissionCoordinator();
+    final controller = buildTestController(
+      hasGeoJson: true,
+      permissionCoordinator: coordinator,
+      permissionState: const MonitoringPermissionState(
+        notificationStatus: PermissionStatus.granted,
+        locationWhenInUseStatus: PermissionStatus.permanentlyDenied,
+        locationAlwaysStatus: PermissionStatus.permanentlyDenied,
+        locationServicesEnabled: true,
+        shouldOfferSettings: true,
+      ),
+    );
+
+    await _pumpHome(tester, controller, platform: TargetPlatform.iOS);
+    expect(coordinator.openSettingsCount, 0);
+    await tester.tap(find.text('アプリ設定を開く'));
+    await tester.pumpAndSettle();
+
+    expect(coordinator.openSettingsCount, 1);
+  });
+
+  testWidgets('iOS permission settings failure shows guidance', (tester) async {
+    final coordinator = _SettingsPermissionCoordinator(result: false);
+    final controller = buildTestController(
+      hasGeoJson: true,
+      permissionCoordinator: coordinator,
+      permissionState: const MonitoringPermissionState(
+        notificationStatus: PermissionStatus.granted,
+        locationWhenInUseStatus: PermissionStatus.permanentlyDenied,
+        locationAlwaysStatus: PermissionStatus.permanentlyDenied,
+        locationServicesEnabled: true,
+        shouldOfferSettings: true,
+      ),
+    );
+
+    await _pumpHome(tester, controller, platform: TargetPlatform.iOS);
+    await tester.tap(find.text('アプリ設定を開く'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('アプリ設定を開けませんでした。'), findsOneWidget);
+  });
+
+  testWidgets('iOS hides settings before a permission request is denied',
+      (tester) async {
+    final controller = buildTestController(
+      hasGeoJson: true,
+      permissionState: const MonitoringPermissionState(
+        notificationStatus: PermissionStatus.granted,
+        locationWhenInUseStatus: PermissionStatus.denied,
+        locationAlwaysStatus: PermissionStatus.denied,
+        locationServicesEnabled: true,
+      ),
+    );
+
+    await _pumpHome(tester, controller, platform: TargetPlatform.iOS);
+
+    expect(find.text('監視開始前に設定する'), findsOneWidget);
+    expect(find.text('アプリ設定を開く'), findsNothing);
   });
 
   testWidgets('tapping wait-start status starts monitoring when permitted',
@@ -839,5 +905,18 @@ class _GrantedPermissionCoordinator extends PermissionCoordinator {
       locationAlwaysStatus: PermissionStatus.granted,
       locationServicesEnabled: true,
     );
+  }
+}
+
+class _SettingsPermissionCoordinator extends PermissionCoordinator {
+  _SettingsPermissionCoordinator({this.result = true});
+
+  final bool result;
+  int openSettingsCount = 0;
+
+  @override
+  Future<bool> openSettings() async {
+    openSettingsCount += 1;
+    return result;
   }
 }

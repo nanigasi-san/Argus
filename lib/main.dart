@@ -55,7 +55,7 @@ class _ArgusAppState extends State<ArgusApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
-      widget.controller.refreshMonitoringPermissionState();
+      unawaited(widget.controller.handleAppResumed());
     } else if (state == AppLifecycleState.detached) {
       // タスク終了時は監視と警報を停止する
       unawaited(widget.controller.handleAppTermination());
@@ -76,6 +76,7 @@ class _ArgusAppState extends State<ArgusApp> with WidgetsBindingObserver {
       value: widget.controller,
       child: MaterialApp(
         title: 'Argus',
+        debugShowCheckedModeBanner: false,
         theme: AppTheme.light(),
         home: home,
       ),

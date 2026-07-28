@@ -25,6 +25,7 @@ Future<bool?> showBackgroundLocationDisclosure(BuildContext context) {
 class _BackgroundLocationDisclosurePageState
     extends State<BackgroundLocationDisclosurePage> {
   bool _isSubmitting = false;
+  bool _allowPop = false;
 
   Future<void> _handleContinue(AppController controller) async {
     if (_isSubmitting) {
@@ -40,6 +41,9 @@ class _BackgroundLocationDisclosurePageState
       if (!mounted) {
         return;
       }
+      setState(() {
+        _allowPop = true;
+      });
       Navigator.of(context).pop(true);
     } finally {
       if (mounted) {
@@ -65,114 +69,136 @@ class _BackgroundLocationDisclosurePageState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final isIOS = theme.platform == TargetPlatform.iOS;
 
     return Consumer<AppController>(
       builder: (context, controller, _) {
-        return Scaffold(
-          appBar: AppBar(
-            title: const Text(BackgroundLocationDisclosurePage.routeTitle),
-          ),
-          body: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: SingleChildScrollView(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(
-                            Icons.location_on_outlined,
-                            size: 44,
-                            color: colorScheme.primary,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            '監視機能を使う前にご確認ください',
-                            style: theme.textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.w700,
+        return PopScope(
+          canPop: !isIOS || _allowPop,
+          child: Scaffold(
+            appBar: AppBar(
+              automaticallyImplyLeading: !isIOS,
+              title: const Text(BackgroundLocationDisclosurePage.routeTitle),
+            ),
+            body: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.location_on_outlined,
+                              size: 44,
+                              color: colorScheme.primary,
                             ),
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'ARGUS はジオフェンス監視機能のために位置情報を使用します。',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
+                            const SizedBox(height: 16),
+                            Text(
+                              '監視機能を使う前にご確認ください',
+                              style: theme.textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '監視開始後は、アプリを閉じているときや使用していないときも位置情報を使って競技エリアからの離脱を検知し、通知します。',
-                            style: theme.textTheme.bodyLarge,
-                          ),
-                          const SizedBox(height: 12),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: colorScheme.surfaceContainerHighest,
-                              borderRadius: BorderRadius.circular(16),
+                            const SizedBox(height: 12),
+                            Text(
+                              'ARGUS はジオフェンス監視機能のために位置情報を使用します。',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'この権限が必要な理由',
-                                  style: theme.textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w700,
+                            const SizedBox(height: 8),
+                            Text(
+                              isIOS
+                                  ? '監視開始後は、画面ロック中や他のアプリ使用中も位置情報を使って競技エリアからの離脱を検知し、警告します。'
+                                  : '監視開始後は、アプリを閉じているときや使用していないときも位置情報を使って競技エリアからの離脱を検知し、通知します。',
+                              style: theme.textTheme.bodyLarge,
+                            ),
+                            if (isIOS) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                '「続ける」を押すと、iOSの位置情報許可画面が表示されます。',
+                                style: theme.textTheme.bodyMedium,
+                              ),
+                            ],
+                            const SizedBox(height: 12),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: colorScheme.surfaceContainerHighest,
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'この権限が必要な理由',
+                                    style:
+                                        theme.textTheme.titleMedium?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(height: 10),
-                                const Text(
-                                    '・位置情報は GeoJSON で設定した競技エリアの離脱検知に使います。'),
-                                const SizedBox(height: 6),
-                                const Text(
-                                    '・位置情報はアプリを閉じているときや使用していないときも使われます。'),
-                                const SizedBox(height: 6),
-                                const Text(
-                                    '・位置情報データは端末内でのみ処理し、開発者のサーバーへ送信しません。'),
-                              ],
+                                  const SizedBox(height: 10),
+                                  const Text(
+                                      '・位置情報は GeoJSON で設定した競技エリアの離脱検知に使います。'),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    isIOS
+                                        ? '・位置情報は画面ロック中や他のアプリ使用中も使われます。'
+                                        : '・位置情報はアプリを閉じているときや使用していないときも使われます。',
+                                  ),
+                                  const SizedBox(height: 6),
+                                  const Text(
+                                      '・位置情報データは端末内でのみ処理し、開発者のサーバーへ送信しません。'),
+                                ],
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 16),
-                          TextButton.icon(
-                            onPressed: () => _openPrivacyPolicy(context),
-                            icon: const Icon(Icons.privacy_tip_outlined),
-                            label: const Text('プライバシーポリシーを開く'),
-                          ),
-                        ],
+                            const SizedBox(height: 16),
+                            if (!isIOS)
+                              TextButton.icon(
+                                onPressed: () => _openPrivacyPolicy(context),
+                                icon: const Icon(Icons.privacy_tip_outlined),
+                                label: const Text('プライバシーポリシーを開く'),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      onPressed: _isSubmitting
-                          ? null
-                          : () => _handleContinue(controller),
-                      child: _isSubmitting
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('同意して位置情報の設定へ進む'),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed: _isSubmitting
+                            ? null
+                            : () => _handleContinue(controller),
+                        child: _isSubmitting
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : Text(isIOS ? '続ける' : '同意して位置情報の設定へ進む'),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton(
-                      onPressed: _isSubmitting
-                          ? null
-                          : () => Navigator.of(context).pop(false),
-                      child: const Text('今はしない'),
-                    ),
-                  ),
-                ],
+                    if (!isIOS) ...[
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          onPressed: _isSubmitting
+                              ? null
+                              : () => Navigator.of(context).pop(false),
+                          child: const Text('今はしない'),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ),
           ),

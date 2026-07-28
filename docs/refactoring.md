@@ -48,8 +48,8 @@ class Notifier {
             FlutterLocalNotificationsClient(
               plugin ?? FlutterLocalNotificationsPlugin(),
             ),
-        _alarmPlayer = alarmPlayer ?? const RingtoneAlarmPlayer(),
-        _vibrationPlayer = vibrationPlayer ?? RepeatingVibrationPlayer();
+        _alarmPlayer = alarmPlayer ?? const NativeAlarmPlayer(),
+        _vibrationPlayer = vibrationPlayer ?? NativeVibrationPlayer();
   
   final LocalNotificationsClient _notifications;
   final AlarmPlayer _alarmPlayer;
@@ -61,7 +61,7 @@ class Notifier {
 ```dart
 class Notifier {
   final _plugin = FlutterLocalNotificationsPlugin(); // 直接インスタンス化
-  final _alarmPlayer = RingtoneAlarmPlayer(); // テスト不可能
+  final _alarmPlayer = NativeAlarmPlayer(); // テスト不可能
 }
 ```
 
@@ -108,7 +108,7 @@ bool _running = false;
 
 ```dart
 class Notifier {
-  static const _channelId = 'argus_alerts';
+  static const _channelId = 'argus_alerts_visual_v2';
   static const _channelName = 'Argus警告';
   static const _channelDescription = 'ジオフェンスの安全エリアから離れたときに通知します。';
   static const int _outerNotificationId = 1001;
@@ -130,9 +130,8 @@ class Notifier {
 変更されない値は`const`または`static const`で定義します。
 
 ```dart
-class RepeatingVibrationPlayer {
-  static const _vibrationDurationSeconds = 5;
-  static const _pauseDurationSeconds = 2;
+class NativeVibrationPlayer {
+  static const MethodChannel _channel = MethodChannel('argus/alarm');
 }
 ```
 
@@ -202,27 +201,13 @@ try {
 
 **良い例:**
 ```dart
-class RepeatingVibrationPlayer {
-  bool _shouldContinue = false;
-  bool _isRunning = false;
-
-  Future<void> _vibrationLoop() async {
-    try {
-      while (_shouldContinue) {
-        await Vibration.vibrate(duration: _vibrationDurationSeconds * 1000);
-        
-        if (!_shouldContinue) break;
-        
-        await Future.delayed(const Duration(seconds: _pauseDurationSeconds));
-      }
-    } finally {
-      _isRunning = false; // 必ず実行される
-    }
+class NativeVibrationPlayer {
+  Future<void> start() async {
+    await const MethodChannel('argus/alarm').invokeMethod<void>('startVibration');
   }
 
   Future<void> stop() async {
-    _shouldContinue = false;
-    await Vibration.cancel();
+    await const MethodChannel('argus/alarm').invokeMethod<void>('stopVibration');
   }
 }
 ```
@@ -316,10 +301,10 @@ class GeoPolygon {
 公開API（クラス、メソッド）には`///`を使用したドキュメントコメントを付けます。
 
 ```dart
-/// 5秒振動→2秒休止を繰り返すバイブレーションパターンを提供します。
-class RepeatingVibrationPlayer implements VibrationPlayer {
-  /// 5秒振動→2秒休止のパターンを繰り返すループを実行します。
-  Future<void> _vibrationLoop() async {
+/// ネイティブ実装のバイブレーションパターンを制御します。
+class NativeVibrationPlayer implements VibrationPlayer {
+  /// Android / iOS の MethodChannel 実装へ開始要求を送ります。
+  Future<void> start() async {
     // ...
   }
 }
@@ -484,14 +469,14 @@ class Notifier {
             FlutterLocalNotificationsClient(
               plugin ?? FlutterLocalNotificationsPlugin(),
             ),
-        _alarmPlayer = alarmPlayer ?? const RingtoneAlarmPlayer(),
-        _vibrationPlayer = vibrationPlayer ?? RepeatingVibrationPlayer();
+        _alarmPlayer = alarmPlayer ?? const NativeAlarmPlayer(),
+        _vibrationPlayer = vibrationPlayer ?? NativeVibrationPlayer();
 
   final LocalNotificationsClient _notifications;
   final AlarmPlayer _alarmPlayer;
   final VibrationPlayer _vibrationPlayer;
 
-  static const _channelId = 'argus_alerts';
+  static const _channelId = 'argus_alerts_visual_v2';
   static const _channelName = 'Argus警告';
   static const int _outerNotificationId = 1001;
 

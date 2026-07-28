@@ -3,6 +3,7 @@ import 'package:argus/state_machine/state.dart';
 import 'package:argus/ui/qr_scanner_page.dart';
 import 'package:argus/ui/settings_page.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -13,7 +14,7 @@ import 'support/app_harness.dart';
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  group('Android UI smoke', () {
+  group('Mobile UI smoke', () {
     setUpAll(() async {
       await binding.convertFlutterSurfaceToImage();
     });
@@ -39,8 +40,8 @@ void main() {
       await tester.pumpWidget(HarnessBuilder.buildApp(controller));
       await tester.pumpAndSettle();
 
-      expect(find.text('バックグラウンド位置情報の設定が必要です'), findsOneWidget);
-      expect(find.text('開示を確認して設定へ進む'), findsOneWidget);
+      expect(find.text('監視開始前に位置情報の設定が必要です'), findsOneWidget);
+      expect(find.text('監視開始前に設定する'), findsOneWidget);
       expect(find.text('通知を許可'), findsOneWidget);
 
       await _tryTakeScreenshot(binding, 'home-permission-card');
@@ -60,11 +61,18 @@ void main() {
       await tester.pumpWidget(HarnessBuilder.buildApp(controller));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('開示を確認して設定へ進む'));
+      await tester.tap(find.text('監視開始前に設定する'));
       await tester.pumpAndSettle();
 
       expect(find.text('バックグラウンド位置情報の開示'), findsOneWidget);
-      expect(find.text('同意して位置情報の設定へ進む'), findsOneWidget);
+      expect(
+        find.text(
+          defaultTargetPlatform == TargetPlatform.iOS
+              ? '続ける'
+              : '同意して位置情報の設定へ進む',
+        ),
+        findsOneWidget,
+      );
 
       await _tryTakeScreenshot(binding, 'background-location-disclosure');
     });
@@ -76,14 +84,26 @@ void main() {
       await tester.pumpWidget(
         ChangeNotifierProvider.value(
           value: controller,
-          child: const MaterialApp(home: SettingsPage()),
+          child: const MaterialApp(
+            debugShowCheckedModeBanner: false,
+            home: SettingsPage(),
+          ),
         ),
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Settings'), findsOneWidget);
+      expect(find.text('設定'), findsOneWidget);
       expect(find.text('監視を開始できる状態です。'), findsOneWidget);
-      expect(find.text('反応距離 (Inner buffer)'), findsOneWidget);
+      expect(find.text('境界バッファ距離'), findsOneWidget);
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('alarmPreviewButton')),
+          300,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('警告音をテスト'), findsOneWidget);
+      }
 
       await _tryTakeScreenshot(binding, 'settings-form');
     });
@@ -99,6 +119,7 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          debugShowCheckedModeBanner: false,
           home: ChangeNotifierProvider.value(
             value: controller,
             child: QrScannerPage(
@@ -125,10 +146,10 @@ void main() {
 
       await tester.tap(find.byType(PopupMenuButton<int>));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Settings'));
+      await tester.tap(find.text('設定'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Settings'), findsOneWidget);
+      expect(find.text('設定'), findsWidgets);
     });
   });
 }

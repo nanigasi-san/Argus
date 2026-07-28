@@ -21,12 +21,14 @@ void main() {
       latitude: 35.0,
       longitude: 139.0,
       timestamp: timestamp,
+      monitoringElapsed: const Duration(seconds: 2),
       accuracyMeters: accuracy,
     );
 
     expect(fix.latitude, 35.0);
     expect(fix.longitude, 139.0);
     expect(fix.timestamp, timestamp);
+    expect(fix.monitoringElapsed, const Duration(seconds: 2));
     expect(fix.accuracyMeters, accuracy);
   });
 
@@ -115,6 +117,7 @@ void main() {
     expect(appleSettings.distanceFilter, 0);
     expect(appleSettings.pauseLocationUpdatesAutomatically, isFalse);
     expect(appleSettings.showBackgroundLocationIndicator, isTrue);
+    expect(appleSettings.allowBackgroundLocationUpdates, isTrue);
   });
 
   test('FakeLocationService emits updates and tracks lifecycle', () async {

@@ -12,20 +12,26 @@
   <string>6.0</string>
   <key>CFBundleName</key>
   <string>ARGUS</string>
+  <key>CFBundleDisplayName</key>
+  <string>ARGUS</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.1.0</string>
+  <string>$(FLUTTER_BUILD_NAME)</string>
   <key>CFBundleVersion</key>
-  <string>1</string>
+  <string>$(FLUTTER_BUILD_NUMBER)</string>
   <key>LSRequiresIPhoneOS</key>
   <true/>
+  <key>ITSAppUsesNonExemptEncryption</key>
+  <false/>
   <key>NSLocationWhenInUseUsageDescription</key>
-  <string>アプリを使用中に安全エリアを監視するため、位置情報へのアクセスが必要です。</string>
+  <string>監視開始時に現在地と競技エリアの位置関係を確認するため、位置情報を使用します。</string>
+  <key>NSCameraUsageDescription</key>
+  <string>GeoJSONを含むQRコードを読み取るため、カメラへのアクセスが必要です。</string>
   <key>NSLocationAlwaysUsageDescription</key>
-  <string>バックグラウンド実行中も安全エリアを監視するため、常時の位置情報アクセスが必要です。</string>
+  <string>監視開始後、画面ロック中や他のアプリ使用中でも競技エリアからの離脱を検知して警告するため、位置情報を使用します。</string>
   <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-  <string>安全エリアからの離脱を検知するため、常に位置情報を取得します。</string>
+  <string>監視開始後、画面ロック中や他のアプリ使用中でも競技エリアからの離脱を検知して警告するため、位置情報を使用します。</string>
   <key>NSPhotoLibraryAddUsageDescription</key>
   <string>生成したQRコード画像を写真ライブラリに保存するために使用します。</string>
   <key>NSPhotoLibraryUsageDescription</key>
@@ -34,17 +40,39 @@
   <string>LaunchScreen</string>
   <key>UIMainStoryboardFile</key>
   <string>Main</string>
-  <key>UIRequiredDeviceCapabilities</key>
-  <array>
-    <string>armv7</string>
-  </array>
+  <key>UIApplicationSceneManifest</key>
+  <dict>
+    <key>UIApplicationSupportsMultipleScenes</key>
+    <false/>
+    <key>UISceneConfigurations</key>
+    <dict>
+      <key>UIWindowSceneSessionRoleApplication</key>
+      <array>
+        <dict>
+          <key>UISceneClassName</key>
+          <string>UIWindowScene</string>
+          <key>UISceneConfigurationName</key>
+          <string>flutter</string>
+          <key>UISceneDelegateClassName</key>
+          <string>FlutterSceneDelegate</string>
+          <key>UISceneStoryboardFile</key>
+          <string>Main</string>
+        </dict>
+      </array>
+    </dict>
+  </dict>
   <key>UISupportedInterfaceOrientations</key>
   <array>
     <string>UIInterfaceOrientationPortrait</string>
   </array>
   <key>UIBackgroundModes</key>
   <array>
+    <string>audio</string>
     <string>location</string>
   </array>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
 </dict>
 </plist>

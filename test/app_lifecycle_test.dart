@@ -20,7 +20,7 @@ void main() {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pump();
 
-    expect(controller.refreshCount, 1);
+    expect(controller.resumeCount, 1);
   });
 
   testWidgets('ArgusApp handles app termination on detach', (tester) async {
@@ -74,11 +74,17 @@ class _LifecycleController extends AppController {
   }
 
   int refreshCount = 0;
+  int resumeCount = 0;
   int terminationCount = 0;
 
   @override
   Future<void> refreshMonitoringPermissionState() async {
     refreshCount += 1;
+  }
+
+  @override
+  Future<void> handleAppResumed() async {
+    resumeCount += 1;
   }
 
   @override

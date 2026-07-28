@@ -74,6 +74,7 @@ void main() {
         openSettings: () async => true,
         openLocationSettings: () async => true,
         locationServicesEnabled: () async => true,
+        isIOS: false,
       );
 
       final state = await coordinator.refreshMonitoringPermissionState();
@@ -146,6 +147,7 @@ void main() {
         },
         openLocationSettings: () async => true,
         locationServicesEnabled: () async => true,
+        isIOS: false,
       );
 
       final state = await coordinator.completeMonitoringSetup();
@@ -153,6 +155,35 @@ void main() {
       expect(gateway.requestLocationAlwaysCount, 1);
       expect(openSettingsCount, 1);
       expect(state.locationAlwaysGranted, isFalse);
+    });
+
+    test(
+        'iOS completeMonitoringSetup never opens app settings after background denial',
+        () async {
+      final gateway = _FakePermissionGateway(
+        locationWhenInUseStatusValue: PermissionStatus.granted,
+        locationAlwaysStatusValue: PermissionStatus.denied,
+        locationAlwaysRequestResult: PermissionStatus.permanentlyDenied,
+      );
+      var openSettingsCount = 0;
+
+      final coordinator = PermissionCoordinator(
+        gateway: gateway,
+        openSettings: () async {
+          openSettingsCount += 1;
+          return true;
+        },
+        openLocationSettings: () async => true,
+        locationServicesEnabled: () async => true,
+        isIOS: true,
+      );
+
+      final state = await coordinator.completeMonitoringSetup();
+
+      expect(gateway.requestLocationAlwaysCount, 1);
+      expect(openSettingsCount, 0);
+      expect(state.locationAlwaysGranted, isFalse);
+      expect(state.shouldOfferSettings, isTrue);
     });
 
     test('requestNotificationPermission requests notification and refreshes',
@@ -188,12 +219,34 @@ void main() {
           return true;
         },
         locationServicesEnabled: () async => false,
+        isIOS: false,
       );
 
       final state = await coordinator.completeMonitoringSetup();
 
       expect(openLocationSettingsCount, 1);
       expect(state.locationServicesEnabled, isFalse);
+    });
+
+    test('iOS does not open location settings when services are disabled',
+        () async {
+      var openLocationSettingsCount = 0;
+      final coordinator = PermissionCoordinator(
+        gateway: _FakePermissionGateway(),
+        openSettings: () async => true,
+        openLocationSettings: () async {
+          openLocationSettingsCount += 1;
+          return true;
+        },
+        locationServicesEnabled: () async => false,
+        isIOS: true,
+      );
+
+      final state = await coordinator.completeMonitoringSetup();
+
+      expect(openLocationSettingsCount, 0);
+      expect(state.locationServicesEnabled, isFalse);
+      expect(state.shouldOfferSettings, isTrue);
     });
 
     test('completeMonitoringSetup opens app settings when foreground denied',
@@ -212,6 +265,7 @@ void main() {
         },
         openLocationSettings: () async => true,
         locationServicesEnabled: () async => true,
+        isIOS: false,
       );
 
       final state = await coordinator.completeMonitoringSetup();
@@ -219,6 +273,55 @@ void main() {
       expect(gateway.requestLocationWhenInUseCount, 1);
       expect(openSettingsCount, 1);
       expect(state.locationWhenInUseGranted, isFalse);
+    });
+
+    test(
+        'iOS completeMonitoringSetup never opens app settings after foreground denial',
+        () async {
+      final gateway = _FakePermissionGateway(
+        locationWhenInUseStatusValue: PermissionStatus.denied,
+        locationWhenInUseRequestResult: PermissionStatus.restricted,
+      );
+      var openSettingsCount = 0;
+      final coordinator = PermissionCoordinator(
+        gateway: gateway,
+        openSettings: () async {
+          openSettingsCount += 1;
+          return true;
+        },
+        openLocationSettings: () async => true,
+        locationServicesEnabled: () async => true,
+        isIOS: true,
+      );
+
+      final state = await coordinator.completeMonitoringSetup();
+
+      expect(gateway.requestLocationWhenInUseCount, 1);
+      expect(openSettingsCount, 0);
+      expect(state.locationWhenInUseGranted, isFalse);
+      expect(state.shouldOfferSettings, isTrue);
+    });
+
+    test('iOS stops after foreground denial without requesting always',
+        () async {
+      final gateway = _FakePermissionGateway(
+        locationWhenInUseStatusValue: PermissionStatus.denied,
+        locationWhenInUseRequestResult: PermissionStatus.denied,
+      );
+      final coordinator = PermissionCoordinator(
+        gateway: gateway,
+        openSettings: () async => true,
+        openLocationSettings: () async => true,
+        locationServicesEnabled: () async => true,
+        isIOS: true,
+      );
+
+      final state = await coordinator.completeMonitoringSetup();
+
+      expect(gateway.requestLocationWhenInUseCount, 1);
+      expect(gateway.requestLocationAlwaysCount, 0);
+      expect(state.locationWhenInUseGranted, isFalse);
+      expect(state.shouldOfferSettings, isTrue);
     });
 
     test('ensureCameraPermission requests once and can open settings',

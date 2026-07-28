@@ -89,6 +89,66 @@ void main() {
     }
 
     expect(snapshot.status, LocationStateStatus.outer);
+    expect(snapshot.distanceToBoundaryM, isNotNull);
+    expect(snapshot.nearestBoundaryPoint, isNotNull);
+    expect(snapshot.bearingToBoundaryDeg, isNotNull);
+  });
+
+  test('GPS timestamp cannot satisfy monotonic leave duration early', () {
+    final baseTimestamp = DateTime.utc(2024, 1, 1);
+
+    for (var i = 0; i < 3; i++) {
+      final snapshot = machine.evaluate(
+        LocationFix(
+          latitude: 35.02,
+          longitude: 139.02,
+          accuracyMeters: 5,
+          timestamp: baseTimestamp.add(Duration(seconds: i * 30)),
+          monitoringElapsed: Duration(seconds: i),
+        ),
+      );
+      expect(snapshot.status, LocationStateStatus.outerPending);
+    }
+
+    final confirmed = machine.evaluate(
+      LocationFix(
+        latitude: 35.02,
+        longitude: 139.02,
+        accuracyMeters: 5,
+        timestamp: baseTimestamp.add(const Duration(minutes: 10)),
+        monitoringElapsed: const Duration(seconds: 10),
+      ),
+    );
+    expect(confirmed.status, LocationStateStatus.outer);
+  });
+
+  test('resetMonitoring clears pending samples and elapsed origin', () {
+    machine.evaluate(
+      LocationFix(
+        latitude: 35.02,
+        longitude: 139.02,
+        accuracyMeters: 5,
+        timestamp: DateTime.utc(2024, 1, 1),
+        monitoringElapsed: Duration.zero,
+      ),
+    );
+    expect(machine.pendingSampleCount, 1);
+    expect(machine.pendingElapsed(const Duration(seconds: 3)),
+        const Duration(seconds: 3));
+
+    machine.resetMonitoring();
+
+    expect(machine.pendingSampleCount, 0);
+    final snapshot = machine.evaluate(
+      LocationFix(
+        latitude: 35.02,
+        longitude: 139.02,
+        accuracyMeters: 5,
+        timestamp: DateTime.utc(2024, 1, 1, 0, 1),
+        monitoringElapsed: const Duration(seconds: 20),
+      ),
+    );
+    expect(snapshot.status, LocationStateStatus.outerPending);
   });
 
   test('returns WAIT_GEOJSON when GeoJSON is not loaded', () {
@@ -350,6 +410,9 @@ void main() {
 
     expect(snapshot.status, LocationStateStatus.outer);
     expect(snapshot.notes, contains('maintaining OUTER'));
+    expect(snapshot.distanceToBoundaryM, isNotNull);
+    expect(snapshot.nearestBoundaryPoint, isNotNull);
+    expect(snapshot.bearingToBoundaryDeg, isNotNull);
   });
 
   test('confirms OUTER using bounds distance when no polygon is nearby', () {

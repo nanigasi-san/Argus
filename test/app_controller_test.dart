@@ -95,6 +95,110 @@ void main() {
       expect(controller.lastErrorMessage, isNull);
     });
 
+    test('alarm preview stops before monitoring starts', () async {
+      final alarm = FakeAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final locationService = FakeLocationService();
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: locationService,
+        fileManager: FakeFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: alarm,
+          vibrationPlayer: vibration,
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+      );
+      controller.debugSeed(
+        config: _testConfig(),
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+
+      final started = await controller.startAlarmPreview(0.4);
+
+      expect(started, isTrue);
+      expect(controller.isAlarmPreviewPlaying, isTrue);
+      expect(alarm.playCount, 1);
+      expect(vibration.startCount, 0);
+
+      await controller.startMonitoring();
+
+      expect(controller.isAlarmPreviewPlaying, isFalse);
+      expect(alarm.stopCount, greaterThanOrEqualTo(2));
+      expect(locationService.started, isTrue);
+    });
+
+    test('alarm preview failure is reported without leaving preview active',
+        () async {
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: FakeLocationService(),
+        fileManager: FakeFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: _AlwaysFailAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+      );
+      controller.debugSeed(config: _testConfig());
+
+      final started = await controller.startAlarmPreview(0.4);
+
+      expect(started, isFalse);
+      expect(controller.isAlarmPreviewPlaying, isFalse);
+      expect(controller.logs.first.message, contains('Failed to start'));
+    });
+
+    test('alarm preview stops when application terminates', () async {
+      final alarm = FakeAlarmPlayer();
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: FakeLocationService(),
+        fileManager: FakeFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: alarm,
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+      );
+      controller.debugSeed(config: _testConfig());
+      expect(await controller.startAlarmPreview(0.4), isTrue);
+
+      await controller.handleAppTermination();
+
+      expect(controller.isAlarmPreviewPlaying, isFalse);
+      expect(alarm.stopCount, greaterThanOrEqualTo(3));
+    });
+
+    test('openPermissionSettings returns coordinator result and handles errors',
+        () async {
+      final successCoordinator = _TrackingPermissionCoordinator(
+        openSettingsResult: true,
+      );
+      final successController = _buildController(
+        permissionCoordinator: successCoordinator,
+      );
+
+      expect(await successController.openPermissionSettings(), isTrue);
+      expect(successCoordinator.openSettingsCount, 1);
+
+      final failingCoordinator = _TrackingPermissionCoordinator(
+        openSettingsError: StateError('settings unavailable'),
+      );
+      final failingController = _buildController(
+        permissionCoordinator: failingCoordinator,
+      );
+
+      expect(await failingController.openPermissionSettings(), isFalse);
+      expect(failingCoordinator.openSettingsCount, 1);
+      expect(failingController.logs.first.message, contains('Failed to open'));
+    });
+
     test('startMonitoring sets blocked error when permission is missing',
         () async {
       final coordinator = _TrackingPermissionCoordinator(
@@ -504,6 +608,94 @@ void main() {
       expect(description, contains('42.50m'));
       expect(description, contains('123deg'));
       expect(description, contains('(1.00000,2.00000)'));
+    });
+
+    test('handleAppResumed reasserts an active outer alarm', () async {
+      final config = _testConfig();
+      final alarm = FakeAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: FakeLocationService(),
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: notifier,
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+      );
+      controller.debugSeed(
+        config: config,
+        snapshot: StateSnapshot(
+          status: LocationStateStatus.outer,
+          timestamp: DateTime.utc(2024, 1, 1),
+          geoJsonLoaded: true,
+        ),
+      );
+      await notifier.notifyOuter();
+
+      await controller.handleAppResumed();
+
+      expect(alarm.playCount, 2);
+      expect(vibration.startCount, 2);
+      expect(controller.logs.last.message,
+          'Alarm playback reasserted after app resume.');
+    });
+
+    test('handleAppResumed logs reassertion failures', () async {
+      final config = _testConfig();
+      final alarm = _AppControllerFailSecondStartAlarmPlayer();
+      final notifier = Notifier(
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: alarm,
+        vibrationPlayer: FakeVibrationPlayer(),
+      );
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: FakeLocationService(),
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: notifier,
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+      );
+      controller.debugSeed(
+        config: config,
+        snapshot: StateSnapshot(
+          status: LocationStateStatus.outer,
+          timestamp: DateTime.utc(2024, 1, 1),
+          geoJsonLoaded: true,
+        ),
+      );
+      await notifier.notifyOuter();
+
+      await controller.handleAppResumed();
+
+      expect(controller.logs.last.message,
+          startsWith('Failed to reassert alarm after app resume:'));
+    });
+
+    test('handleAppResumed does not start an alarm outside OUTER', () async {
+      final config = _testConfig();
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: FakeLocationService(),
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+      );
+      controller.debugSeed(config: config);
+
+      await controller.handleAppResumed();
+
+      expect(controller.snapshot.status, isNot(LocationStateStatus.outer));
     });
 
     testWidgets(
@@ -945,6 +1137,52 @@ void main() {
       expect(controller.lastErrorMessage, contains('Failed to parse GeoJSON'));
     });
 
+    test('reloadGeoJsonFromPicker rejects GeoJSON without polygons', () async {
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: FakeLocationService(),
+        fileManager: _EmptyGeoJsonFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+      );
+
+      await controller.reloadGeoJsonFromPicker();
+
+      expect(controller.geoJsonLoaded, isFalse);
+      expect(controller.lastErrorMessage,
+          contains('監視可能なPolygon/MultiPolygonがありません'));
+    });
+
+    test('reloadGeoJsonFromQr rejects GeoJSON without polygons', () async {
+      final config = _testConfig();
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: FakeLocationService(),
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+      );
+      final bundle = await encodeGeoJson(
+        const GeoJsonQrEncodeInput(
+          geoJson: '{"type":"FeatureCollection","features":[]}',
+          scheme: GeoJsonQrScheme.gjz1,
+        ),
+      );
+
+      final loaded = await controller.reloadGeoJsonFromQr(bundle.qrTexts.first);
+
+      expect(loaded, isFalse);
+      expect(controller.geoJsonLoaded, isFalse);
+      expect(controller.lastErrorMessage,
+          contains('監視可能なPolygon/MultiPolygonがありません'));
+    });
+
     test('reloadGeoJsonFromPicker ignores user cancellation', () async {
       final controller = AppController(
         stateMachine: StateMachine(config: _testConfig()),
@@ -1300,7 +1538,9 @@ MonitoringPermissionState _grantedMonitoringPermissionState() {
   );
 }
 
-AppController _buildController() {
+AppController _buildController({
+  PermissionCoordinator? permissionCoordinator,
+}) {
   final config = _testConfig();
   final stateMachine = StateMachine(config: config);
   final fileManager = FakeFileManager(config: config);
@@ -1314,6 +1554,7 @@ AppController _buildController() {
     fileManager: fileManager,
     logger: FakeEventLogger(),
     notifier: notifier,
+    permissionCoordinator: permissionCoordinator,
   );
 }
 
@@ -1352,11 +1593,31 @@ class _ThrowingOpenAlarmVolumeClient implements AlarmVolumeClient {
   }
 }
 
+class _AppControllerFailSecondStartAlarmPlayer extends FakeAlarmPlayer {
+  @override
+  Future<void> start() async {
+    playCount += 1;
+    if (playCount == 2) {
+      throw StateError('reassert failed');
+    }
+  }
+}
+
+class _AlwaysFailAlarmPlayer extends FakeAlarmPlayer {
+  @override
+  Future<void> start() async {
+    playCount += 1;
+    throw StateError('preview failed');
+  }
+}
+
 class _TrackingPermissionCoordinator extends PermissionCoordinator {
   _TrackingPermissionCoordinator({
     MonitoringPermissionState? refreshState,
     MonitoringPermissionState? completeState,
     MonitoringPermissionState? notificationState,
+    this.openSettingsResult = false,
+    this.openSettingsError,
   })  : _refreshState = refreshState ?? _grantedMonitoringPermissionState(),
         _completeState = completeState ?? _grantedMonitoringPermissionState(),
         _notificationState =
@@ -1365,10 +1626,22 @@ class _TrackingPermissionCoordinator extends PermissionCoordinator {
   final MonitoringPermissionState _refreshState;
   final MonitoringPermissionState _completeState;
   final MonitoringPermissionState _notificationState;
+  final bool openSettingsResult;
+  final Object? openSettingsError;
 
   int refreshCount = 0;
   int completeSetupCount = 0;
   int requestNotificationCount = 0;
+  int openSettingsCount = 0;
+
+  @override
+  Future<bool> openSettings() async {
+    openSettingsCount += 1;
+    if (openSettingsError != null) {
+      throw openSettingsError!;
+    }
+    return openSettingsResult;
+  }
 
   @override
   Future<MonitoringPermissionState> refreshMonitoringPermissionState() async {
@@ -1457,6 +1730,19 @@ class _InvalidGeoJsonFileManager extends FakeFileManager {
     return XFile.fromData(
       utf8.encode('not-json'),
       name: 'broken.geojson',
+      mimeType: 'application/geo+json',
+    );
+  }
+}
+
+class _EmptyGeoJsonFileManager extends FakeFileManager {
+  _EmptyGeoJsonFileManager({required super.config});
+
+  @override
+  Future<XFile?> pickGeoJsonFile() async {
+    return XFile.fromData(
+      utf8.encode('{"type":"FeatureCollection","features":[]}'),
+      name: 'empty.geojson',
       mimeType: 'application/geo+json',
     );
   }

@@ -25,13 +25,13 @@ subprojects {
 
 subprojects {
     tasks.withType<JavaCompile>().configureEach {
-        sourceCompatibility = "11"
-        targetCompatibility = "11"
+        sourceCompatibility = "17"
+        targetCompatibility = "17"
         options.compilerArgs.add("-Xlint:-options")
     }
     plugins.withId("org.jetbrains.kotlin.android") {
         extensions.configure<KotlinAndroidProjectExtension>("kotlin") {
-            compilerOptions.jvmTarget.set(JvmTarget.JVM_11)
+            compilerOptions.jvmTarget.set(JvmTarget.JVM_17)
         }
     }
 }

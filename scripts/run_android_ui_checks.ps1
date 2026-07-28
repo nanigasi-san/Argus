@@ -24,9 +24,15 @@ function Wait-ForAndroidDevice {
 }
 
 $currentDevices = (& flutter devices) -join "`n"
+if ($LASTEXITCODE -ne 0) {
+    throw "Unable to list Flutter devices."
+}
 if ($currentDevices -notmatch "android") {
     Write-Host "Launching emulator: $EmulatorId"
     flutter emulators --launch $EmulatorId | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unable to launch Android emulator: $EmulatorId"
+    }
 }
 
 $deviceId = Wait-ForAndroidDevice
@@ -37,7 +43,13 @@ if ($CaptureScreenshots) {
         Remove-Item -LiteralPath $screenshotDir -Recurse -Force
     }
     flutter drive --driver test_driver/ui_smoke_driver.dart --target integration_test/ui_smoke_test.dart -d $deviceId
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
     Write-Host "Screenshots saved under $screenshotDir"
 } else {
     flutter test integration_test/ui_smoke_test.dart -d $deviceId
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
 }

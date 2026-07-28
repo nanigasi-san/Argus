@@ -23,15 +23,18 @@ class FakeLocalNotificationsClient implements LocalNotificationsClient {
   final List<NotificationShowCall> showCalls = <NotificationShowCall>[];
   bool initialized = false;
   int initializeCount = 0;
+  InitializationSettings? lastInitializationSettings;
   AndroidNotificationChannel? lastChannel;
   int ensureChannelCount = 0;
   bool requestedPermissions = false;
+  NotificationDetails? lastShownDetails;
 
   @override
   Future<void> initialize(InitializationSettings settings) async {
     calls.add('initialize');
     initialized = true;
     initializeCount += 1;
+    lastInitializationSettings = settings;
   }
 
   Future<void> requestPermissions({
@@ -60,6 +63,7 @@ class FakeLocalNotificationsClient implements LocalNotificationsClient {
   ) async {
     calls.add('show');
     shownIds.add(id);
+    lastShownDetails = details;
     showCalls.add(
       NotificationShowCall(
         id: id,

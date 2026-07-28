@@ -10,12 +10,14 @@ class MonitoringPermissionCard extends StatelessWidget {
     required this.onOpenMonitoringSetup,
     required this.onRequestNotifications,
     required this.onRefresh,
+    this.onOpenSettings,
   });
 
   final MonitoringPermissionState permissionState;
   final AsyncCallback onOpenMonitoringSetup;
   final AsyncCallback onRequestNotifications;
   final AsyncCallback onRefresh;
+  final AsyncCallback? onOpenSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -103,6 +105,14 @@ class MonitoringPermissionCard extends StatelessWidget {
                     onPressed: onRequestNotifications,
                     icon: const Icon(Icons.notifications_active_outlined),
                     label: const Text('通知を許可'),
+                  ),
+                if (needsMonitoringSetup &&
+                    permissionState.shouldOfferSettings &&
+                    onOpenSettings != null)
+                  OutlinedButton.icon(
+                    onPressed: onOpenSettings,
+                    icon: const Icon(Icons.settings_outlined),
+                    label: const Text('アプリ設定を開く'),
                   ),
                 TextButton.icon(
                   onPressed: onRefresh,

@@ -4,8 +4,6 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/services.dart';
-import 'package:vibration/vibration.dart';
-import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 
 import '../state_machine/state.dart';
 
@@ -19,8 +17,8 @@ class Notifier {
             FlutterLocalNotificationsClient(
               plugin ?? FlutterLocalNotificationsPlugin(),
             ),
-        _alarmPlayer = alarmPlayer ?? const RingtoneAlarmPlayer(),
-        _vibrationPlayer = vibrationPlayer ?? RepeatingVibrationPlayer();
+        _alarmPlayer = alarmPlayer ?? const NativeAlarmPlayer(),
+        _vibrationPlayer = vibrationPlayer ?? const NativeVibrationPlayer();
 
   final LocalNotificationsClient _notifications;
   AlarmPlayer _alarmPlayer;
@@ -31,23 +29,56 @@ class Notifier {
     LocationStateStatus.waitGeoJson,
   );
 
-  static const _channelId = 'argus_alerts_visual';
+  static const _channelId = 'argus_alerts_visual_v2';
   static const _channelName = 'ARGUS警告';
   static const _channelDescription = 'ジオフェンスの安全エリアから離れたときに通知します。';
   static const int _outerNotificationId = 1001;
 
   bool _initialized = false;
   bool _isAlarming = false;
+  bool _isAlarmPreviewPlaying = false;
   int _generation = 0;
+
+  bool get isAlarmPreviewPlaying => _isAlarmPreviewPlaying;
 
   /// アラーム音量を設定します（0.0～1.0）。
   void setAlarmVolume(double volume) {
-    if (_alarmPlayer is RingtoneAlarmPlayer) {
-      final player = _alarmPlayer as RingtoneAlarmPlayer;
+    if (_alarmPlayer is NativeAlarmPlayer) {
+      final player = _alarmPlayer as NativeAlarmPlayer;
       _alarmPlayer = player.copyWith(
         volume: volume.clamp(0.0, 1.0).toDouble(),
       );
     }
+  }
+
+  Future<void> startAlarmPreview() async {
+    final generation = ++_generation;
+    _isAlarmPreviewPlaying = false;
+    _isAlarming = false;
+    await _alarmPlayer.stop();
+    await _vibrationPlayer.stop();
+    if (generation != _generation) {
+      return;
+    }
+
+    try {
+      await _alarmPlayer.start();
+      if (generation != _generation) {
+        await _alarmPlayer.stop();
+        return;
+      }
+      _isAlarmPreviewPlaying = true;
+    } catch (_) {
+      _isAlarmPreviewPlaying = false;
+      await _alarmPlayer.stop();
+      rethrow;
+    }
+  }
+
+  Future<void> stopAlarmPreview() async {
+    _generation += 1;
+    _isAlarmPreviewPlaying = false;
+    await _alarmPlayer.stop();
   }
 
   Future<void> initialize() async {
@@ -56,7 +87,15 @@ class Notifier {
     }
 
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const initSettings = InitializationSettings(android: androidInit);
+    const iosInit = DarwinInitializationSettings(
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
+    );
+    const initSettings = InitializationSettings(
+      android: androidInit,
+      iOS: iosInit,
+    );
     await _notifications.initialize(initSettings);
     await _notifications.ensureAndroidChannel(
       const AndroidNotificationChannel(
@@ -65,7 +104,7 @@ class Notifier {
         description: _channelDescription,
         importance: Importance.max,
         playSound: false,
-        enableVibration: true,
+        enableVibration: false,
       ),
     );
 
@@ -73,6 +112,9 @@ class Notifier {
   }
 
   Future<void> notifyOuter() async {
+    if (_isAlarmPreviewPlaying) {
+      await stopAlarmPreview();
+    }
     await initialize();
     final generation = _generation;
     const androidDetails = AndroidNotificationDetails(
@@ -82,15 +124,17 @@ class Notifier {
       importance: Importance.max,
       priority: Priority.max,
       playSound: false,
-      enableVibration: true,
+      enableVibration: false,
       category: AndroidNotificationCategory.alarm,
       ticker: 'ARGUS警告',
     );
     const iosDetails = DarwinNotificationDetails(
       presentAlert: true,
-      presentSound: true,
-      sound: 'alarm.mp3',
-      interruptionLevel: InterruptionLevel.critical,
+      // Foreground playback uses AVAudioPlayer. The bundled notification
+      // sound remains set so iOS can alert while the screen is locked.
+      presentSound: false,
+      sound: 'alarm.caf',
+      interruptionLevel: InterruptionLevel.timeSensitive,
     );
     const notificationDetails = NotificationDetails(
       android: androidDetails,
@@ -120,6 +164,7 @@ class Notifier {
   Future<void> stopAlarm() async {
     _generation += 1;
     _isAlarming = false;
+    _isAlarmPreviewPlaying = false;
     await _alarmPlayer.stop();
     await _vibrationPlayer.stop();
   }
@@ -128,28 +173,66 @@ class Notifier {
     await _resumeAlarm(_generation);
   }
 
+  Future<void> reassertAlarm() async {
+    if (!_isAlarming) {
+      await _resumeAlarm(_generation);
+      return;
+    }
+
+    final generation = _generation;
+    try {
+      await _alarmPlayer.start();
+      if (generation != _generation) {
+        await _alarmPlayer.stop();
+        return;
+      }
+      await _vibrationPlayer.stop();
+      await _vibrationPlayer.start();
+    } catch (_) {
+      _isAlarming = false;
+      rethrow;
+    }
+  }
+
   Future<void> _resumeAlarm(int generation) async {
-    if (_isAlarming || generation != _generation) {
+    var activeGeneration = generation;
+    if (_isAlarmPreviewPlaying) {
+      await stopAlarmPreview();
+      activeGeneration = _generation;
+    }
+    if (_isAlarming || activeGeneration != _generation) {
       return;
     }
     _isAlarming = true;
-    await _alarmPlayer.start();
-    if (generation != _generation) {
-      await _alarmPlayer.stop();
+    try {
+      await _alarmPlayer.start();
+      if (activeGeneration != _generation) {
+        await _alarmPlayer.stop();
+        _isAlarming = false;
+        return;
+      }
+      await _vibrationPlayer.start();
+      if (activeGeneration != _generation) {
+        await _alarmPlayer.stop();
+        await _vibrationPlayer.stop();
+        _isAlarming = false;
+      }
+    } catch (_) {
       _isAlarming = false;
-      return;
-    }
-    await _vibrationPlayer.start();
-    if (generation != _generation) {
-      await _alarmPlayer.stop();
-      await _vibrationPlayer.stop();
-      _isAlarming = false;
+      try {
+        await _alarmPlayer.stop();
+      } catch (_) {}
+      try {
+        await _vibrationPlayer.stop();
+      } catch (_) {}
+      rethrow;
     }
   }
 
   Future<void> dismissOuterAlert() async {
     _generation += 1;
     _isAlarming = false;
+    _isAlarmPreviewPlaying = false;
     await initialize();
     await _notifications.cancel(_outerNotificationId);
     await _alarmPlayer.stop();
@@ -299,59 +382,54 @@ class MethodChannelAlarmClient
   }
 }
 
-class RingtoneAlarmPlayer implements AlarmPlayer {
-  const RingtoneAlarmPlayer({
+class NativeAlarmPlayer implements AlarmPlayer {
+  const NativeAlarmPlayer({
     this.volume = 1.0,
     AlarmPlatformClient? platformClient,
     bool? isAndroid,
+    bool? isIOS,
   })  : _platformClient = platformClient,
-        _isAndroidOverride = isAndroid;
+        _isAndroidOverride = isAndroid,
+        _isIOSOverride = isIOS;
 
   final double volume;
   final AlarmPlatformClient? _platformClient;
   final bool? _isAndroidOverride;
+  final bool? _isIOSOverride;
 
-  RingtoneAlarmPlayer copyWith({double? volume}) {
-    return RingtoneAlarmPlayer(
+  NativeAlarmPlayer copyWith({double? volume}) {
+    return NativeAlarmPlayer(
       volume: volume ?? this.volume,
       platformClient: _platformClient,
       isAndroid: _isAndroidOverride,
+      isIOS: _isIOSOverride,
     );
   }
 
   AlarmPlatformClient get _client =>
       _platformClient ?? const MethodChannelAlarmClient();
   bool get _isAndroid => _isAndroidOverride ?? (!kIsWeb && Platform.isAndroid);
+  bool get _isIOS => _isIOSOverride ?? (!kIsWeb && Platform.isIOS);
+  bool get _usesNativePlatformClient => _isAndroid || _isIOS;
 
   @override
   Future<void> start() async {
     final clampedVolume = volume.clamp(0.0, 1.0).toDouble();
-    if (_isAndroid) {
+    if (_usesNativePlatformClient) {
       await _client.play(volume: clampedVolume);
       return;
     }
 
-    // coverage:ignore-start
-    // Non-Android playback is delegated to the plugin channel.
-    await FlutterRingtonePlayer().play(
-      fromAsset: 'assets/sounds/alarm.mp3',
-      looping: true,
-      volume: clampedVolume,
-      asAlarm: true,
+    throw UnsupportedError(
+      'Native alarm playback is only supported on Android and iOS.',
     );
-    // coverage:ignore-end
   }
 
   @override
   Future<void> stop() async {
-    if (_isAndroid) {
+    if (_usesNativePlatformClient) {
       await _client.stop();
-      return;
     }
-
-    // coverage:ignore-start
-    return FlutterRingtonePlayer().stop();
-    // coverage:ignore-end
   }
 }
 
@@ -360,75 +438,57 @@ abstract class VibrationPlayer {
   Future<void> stop();
 }
 
-// coverage:ignore-start
-/// 5秒振動→2秒休止を繰り返すバイブレーションパターンを提供します。
-class RepeatingVibrationPlayer implements VibrationPlayer {
-  RepeatingVibrationPlayer();
+abstract class VibrationPlatformClient {
+  Future<void> startPattern();
+  Future<void> stop();
+}
 
-  static const _vibrationDurationSeconds = 5;
-  static const _pauseDurationSeconds = 2;
+class MethodChannelVibrationClient implements VibrationPlatformClient {
+  const MethodChannelVibrationClient();
 
-  bool _shouldContinue = false;
-  bool _isRunning = false;
-  Future<void>? _loopFuture;
+  static const MethodChannel _channel = MethodChannel('argus/alarm');
+
+  @override
+  Future<void> startPattern() {
+    return _channel.invokeMethod<void>('startVibration');
+  }
+
+  @override
+  Future<void> stop() {
+    return _channel.invokeMethod<void>('stopVibration');
+  }
+}
+
+class NativeVibrationPlayer implements VibrationPlayer {
+  const NativeVibrationPlayer({
+    VibrationPlatformClient? platformClient,
+    bool? isAndroid,
+    bool? isIOS,
+  })  : _platformClient = platformClient,
+        _isAndroidOverride = isAndroid,
+        _isIOSOverride = isIOS;
+
+  final VibrationPlatformClient? _platformClient;
+  final bool? _isAndroidOverride;
+  final bool? _isIOSOverride;
+
+  VibrationPlatformClient get _client =>
+      _platformClient ?? const MethodChannelVibrationClient();
+  bool get _isAndroid => _isAndroidOverride ?? (!kIsWeb && Platform.isAndroid);
+  bool get _isIOS => _isIOSOverride ?? (!kIsWeb && Platform.isIOS);
+  bool get _usesNativePlatformClient => _isAndroid || _isIOS;
 
   @override
   Future<void> start() async {
-    if (_isRunning) {
-      return;
-    }
-
-    final bool hasVibrator;
-    try {
-      hasVibrator = await Vibration.hasVibrator() == true;
-    } on MissingPluginException {
-      return;
-    }
-
-    if (hasVibrator == true) {
-      _shouldContinue = true;
-      _isRunning = true;
-      _loopFuture = _vibrationLoop();
-    }
-  }
-
-  /// 5秒振動→2秒休止のパターンを繰り返すループを実行します。
-  Future<void> _vibrationLoop() async {
-    try {
-      while (_shouldContinue) {
-        // 5秒振動
-        await Vibration.vibrate(
-          duration: _vibrationDurationSeconds * 1000,
-        );
-
-        if (!_shouldContinue) break;
-
-        // 2秒休止
-        await Future.delayed(
-          const Duration(seconds: _pauseDurationSeconds),
-        );
-      }
-    } finally {
-      _isRunning = false;
-      _loopFuture = null;
+    if (_usesNativePlatformClient) {
+      await _client.startPattern();
     }
   }
 
   @override
   Future<void> stop() async {
-    _shouldContinue = false;
-    try {
-      await Vibration.cancel();
-    } on MissingPluginException {
-      return;
-    }
-    final loopFuture = _loopFuture;
-    if (loopFuture != null) {
-      await loopFuture.timeout(
-        const Duration(milliseconds: 250),
-        onTimeout: () {},
-      );
+    if (_usesNativePlatformClient) {
+      await _client.stop();
     }
   }
 }
-// coverage:ignore-end

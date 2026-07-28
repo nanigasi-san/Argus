@@ -53,6 +53,7 @@ class FileManager {
           label: 'QR code image',
           extensions: ['png', 'jpg', 'jpeg', 'webp'],
           mimeTypes: ['image/png', 'image/jpeg', 'image/webp'],
+          uniformTypeIdentifiers: ['public.image'],
         ),
       ],
     );

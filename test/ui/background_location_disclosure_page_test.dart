@@ -81,6 +81,54 @@ void main() {
     expect(result, isFalse);
   });
 
+  testWidgets(
+      'iOS disclosure has one continue action and blocks route dismissal',
+      (tester) async {
+    final controller = _DisclosureTestController();
+    bool? result;
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<AppController>.value(
+        value: controller,
+        child: MaterialApp(
+          theme: ThemeData(platform: TargetPlatform.iOS),
+          home: Builder(
+            builder: (context) => ElevatedButton(
+              onPressed: () async {
+                result = await showBackgroundLocationDisclosure(context);
+              },
+              child: const Text('Open'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('続ける'), findsOneWidget);
+    expect(find.text('同意して位置情報の設定へ進む'), findsNothing);
+    expect(find.text('今はしない'), findsNothing);
+    expect(find.text('プライバシーポリシーを開く'), findsNothing);
+    expect(find.byType(BackButton), findsNothing);
+    expect(find.textContaining('画面ロック中や他のアプリ使用中'), findsWidgets);
+    expect(find.textContaining('iOSの位置情報許可画面'), findsOneWidget);
+    expect(find.textContaining('アプリを閉じているとき'), findsNothing);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(
+        find.text(BackgroundLocationDisclosurePage.routeTitle), findsOneWidget);
+
+    await tester.tap(find.text('続ける'));
+    await tester.pumpAndSettle();
+
+    expect(controller.completeSetupCount, 1);
+    expect(result, isTrue);
+    expect(find.text('Open'), findsOneWidget);
+  });
+
   testWidgets('privacy policy failure shows snackbar', (tester) async {
     await clearUrlLauncherMock();
     await mockUrlLauncher(launchResult: false);

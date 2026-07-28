@@ -19,13 +19,17 @@ Future<void> _pumpSettings(
   WidgetTester tester,
   AppController controller, {
   bool settle = true,
+  TargetPlatform platform = TargetPlatform.android,
 }) async {
   await tester.pumpWidget(const SizedBox.shrink());
   await tester.pump();
   await tester.pumpWidget(
     ChangeNotifierProvider.value(
       value: controller,
-      child: MaterialApp(home: SettingsPage(key: UniqueKey())),
+      child: MaterialApp(
+        theme: ThemeData(platform: platform),
+        home: SettingsPage(key: UniqueKey()),
+      ),
     ),
   );
   if (settle) {
@@ -177,6 +181,155 @@ void main() {
     );
   });
 
+  testWidgets('iOS permission card opens settings only after user taps it',
+      (tester) async {
+    final controller = _RecordingSettingsController(
+      permissionState: const MonitoringPermissionState(
+        notificationStatus: PermissionStatus.granted,
+        locationWhenInUseStatus: PermissionStatus.permanentlyDenied,
+        locationAlwaysStatus: PermissionStatus.permanentlyDenied,
+        locationServicesEnabled: true,
+        shouldOfferSettings: true,
+      ),
+    );
+
+    await _pumpSettings(
+      tester,
+      controller,
+      platform: TargetPlatform.iOS,
+    );
+
+    expect(controller.openPermissionSettingsCalls, 0);
+    await tester.tap(find.text('アプリ設定を開く'));
+    await tester.pumpAndSettle();
+
+    expect(controller.openPermissionSettingsCalls, 1);
+  });
+
+  testWidgets('iOS permission settings failure shows guidance', (tester) async {
+    final controller = _RecordingSettingsController(
+      openPermissionSettingsResult: false,
+      permissionState: const MonitoringPermissionState(
+        notificationStatus: PermissionStatus.granted,
+        locationWhenInUseStatus: PermissionStatus.permanentlyDenied,
+        locationAlwaysStatus: PermissionStatus.permanentlyDenied,
+        locationServicesEnabled: true,
+        shouldOfferSettings: true,
+      ),
+    );
+
+    await _pumpSettings(
+      tester,
+      controller,
+      platform: TargetPlatform.iOS,
+    );
+    await tester.tap(find.text('アプリ設定を開く'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('アプリ設定を開けませんでした。'), findsOneWidget);
+  });
+
+  testWidgets('iOS alarm preview toggles and stops when settings closes',
+      (tester) async {
+    final controller = _RecordingSettingsController();
+
+    await _pumpSettings(
+      tester,
+      controller,
+      platform: TargetPlatform.iOS,
+    );
+    await _scrollUntilVisible(
+      tester,
+      find.byKey(const Key('alarmPreviewButton')),
+    );
+
+    await tester.tap(find.byKey(const Key('alarmPreviewButton')));
+    await tester.pumpAndSettle();
+    expect(controller.isAlarmPreviewPlaying, isTrue);
+    expect(find.text('テストを停止'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+
+    expect(controller.isAlarmPreviewPlaying, isFalse);
+  });
+
+  testWidgets('iOS alarm preview can be stopped with the same action',
+      (tester) async {
+    final controller = _RecordingSettingsController();
+
+    await _pumpSettings(tester, controller, platform: TargetPlatform.iOS);
+    await _scrollUntilVisible(
+      tester,
+      find.byKey(const Key('alarmPreviewButton')),
+    );
+    await tester.tap(find.byKey(const Key('alarmPreviewButton')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('alarmPreviewButton')));
+    await tester.pumpAndSettle();
+
+    expect(controller.isAlarmPreviewPlaying, isFalse);
+  });
+
+  testWidgets('iOS alarm preview failure shows guidance', (tester) async {
+    final controller = _RecordingSettingsController(
+      alarmPreviewStartResult: false,
+    );
+
+    await _pumpSettings(tester, controller, platform: TargetPlatform.iOS);
+    await _scrollUntilVisible(
+      tester,
+      find.byKey(const Key('alarmPreviewButton')),
+    );
+    await tester.tap(find.byKey(const Key('alarmPreviewButton')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('警告音を再生できませんでした。'), findsOneWidget);
+  });
+
+  testWidgets('saving settings stops an active alarm preview', (tester) async {
+    final controller = _RecordingSettingsController();
+
+    await _pumpSettings(tester, controller, platform: TargetPlatform.iOS);
+    await _scrollUntilVisible(
+      tester,
+      find.byKey(const Key('alarmPreviewButton')),
+    );
+    await tester.tap(find.byKey(const Key('alarmPreviewButton')));
+    await tester.pumpAndSettle();
+    expect(controller.isAlarmPreviewPlaying, isTrue);
+
+    await _invokeSaveButton(tester);
+
+    expect(controller.isAlarmPreviewPlaying, isFalse);
+  });
+
+  testWidgets('active preview remains stoppable when monitoring is unavailable',
+      (tester) async {
+    final controller = _RecordingSettingsController(
+      reportPreviewPlaying: true,
+      reportCanPreview: false,
+    );
+
+    await _pumpSettings(tester, controller, platform: TargetPlatform.iOS);
+    await _scrollUntilVisible(
+      tester,
+      find.byKey(const Key('alarmPreviewButton')),
+    );
+
+    expect(find.text('テストを停止'), findsOneWidget);
+    expect(find.textContaining('ホーム画面へ移動しても'), findsOneWidget);
+  });
+
+  testWidgets('Android settings does not show the iOS alarm preview action',
+      (tester) async {
+    final controller = _RecordingSettingsController();
+
+    await _pumpSettings(tester, controller);
+
+    expect(find.byKey(const Key('alarmPreviewButton')), findsNothing);
+  });
+
   testWidgets('privacy policy failure shows snackbar', (tester) async {
     await mockUrlLauncher(launchResult: false);
     final controller = _RecordingSettingsController();
@@ -236,8 +389,18 @@ void main() {
 }
 
 class _RecordingSettingsController extends AppController {
-  _RecordingSettingsController()
-      : super(
+  _RecordingSettingsController({
+    this.openPermissionSettingsResult = true,
+    this.alarmPreviewStartResult = true,
+    this.reportPreviewPlaying,
+    this.reportCanPreview,
+    this.permissionState = const MonitoringPermissionState(
+      notificationStatus: PermissionStatus.granted,
+      locationWhenInUseStatus: PermissionStatus.granted,
+      locationAlwaysStatus: PermissionStatus.granted,
+      locationServicesEnabled: true,
+    ),
+  }) : super(
           stateMachine: StateMachine(config: createTestConfig()),
           locationService: FakeLocationService(),
           fileManager: FakeFileManager(config: createTestConfig()),
@@ -245,21 +408,44 @@ class _RecordingSettingsController extends AppController {
           notifier: Notifier(
             notificationsClient: FakeLocalNotificationsClient(),
             alarmPlayer: FakeAlarmPlayer(),
+            vibrationPlayer: FakeVibrationPlayer(),
           ),
         ) {
     debugSeed(
       config: createTestConfig(),
-      permissionState: const MonitoringPermissionState(
-        notificationStatus: PermissionStatus.granted,
-        locationWhenInUseStatus: PermissionStatus.granted,
-        locationAlwaysStatus: PermissionStatus.granted,
-        locationServicesEnabled: true,
-      ),
+      permissionState: permissionState,
     );
   }
+  final bool openPermissionSettingsResult;
+  final bool alarmPreviewStartResult;
+  final bool? reportPreviewPlaying;
+  final bool? reportCanPreview;
+  final MonitoringPermissionState permissionState;
   AppConfig? savedConfig;
   Object? updateConfigError;
   int updateConfigCalls = 0;
+  int openPermissionSettingsCalls = 0;
+
+  @override
+  bool get isAlarmPreviewPlaying =>
+      reportPreviewPlaying ?? super.isAlarmPreviewPlaying;
+
+  @override
+  bool get canPreviewAlarm => reportCanPreview ?? super.canPreviewAlarm;
+
+  @override
+  Future<bool> startAlarmPreview(double volume) async {
+    if (!alarmPreviewStartResult) {
+      return false;
+    }
+    return super.startAlarmPreview(volume);
+  }
+
+  @override
+  Future<bool> openPermissionSettings() async {
+    openPermissionSettingsCalls += 1;
+    return openPermissionSettingsResult;
+  }
 
   @override
   Future<void> updateConfig(AppConfig newConfig) async {

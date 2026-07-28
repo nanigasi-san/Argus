@@ -12,12 +12,14 @@ class LocationFix {
     required this.longitude,
     required this.timestamp,
     this.accuracyMeters,
+    this.monitoringElapsed,
   });
 
   final double latitude;
   final double longitude;
   final DateTime timestamp;
   final double? accuracyMeters;
+  final Duration? monitoringElapsed;
 }
 
 /// 位置情報サービスへの抽象インターフェース。
@@ -78,6 +80,7 @@ class LocationSettingsFactory {
         distanceFilter: 0,
         pauseLocationUpdatesAutomatically: false,
         showBackgroundLocationIndicator: true,
+        allowBackgroundLocationUpdates: true,
       );
     }
     return const LocationSettings(
@@ -102,6 +105,8 @@ class GeolocatorLocationService implements LocationService {
   final StreamController<LocationFix> _controller =
       StreamController<LocationFix>.broadcast();
   StreamSubscription<Position>? _subscription;
+  DateTime? _startedAt;
+  Stopwatch? _monitoringStopwatch;
 
   @override
   Stream<LocationFix> get stream => _controller.stream;
@@ -133,6 +138,8 @@ class GeolocatorLocationService implements LocationService {
     );
     try {
       await _subscription?.cancel();
+      _startedAt = DateTime.now();
+      _monitoringStopwatch = Stopwatch()..start();
       _subscription = Geolocator.getPositionStream(
         locationSettings: settings,
       ).listen(_emitPosition);
@@ -149,15 +156,26 @@ class GeolocatorLocationService implements LocationService {
   Future<void> stop() async {
     await _subscription?.cancel();
     _subscription = null;
+    _monitoringStopwatch?.stop();
+    _monitoringStopwatch = null;
+    _startedAt = null;
   }
 
   void _emitPosition(Position position) {
+    final startedAt = _startedAt;
+    final stopwatch = _monitoringStopwatch;
+    if (startedAt == null ||
+        stopwatch == null ||
+        position.timestamp.isBefore(startedAt)) {
+      return;
+    }
     _controller.add(
       LocationFix(
         latitude: position.latitude,
         longitude: position.longitude,
         accuracyMeters: position.accuracy,
         timestamp: position.timestamp,
+        monitoringElapsed: stopwatch.elapsed,
       ),
     );
   }

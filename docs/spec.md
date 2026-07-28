@@ -26,7 +26,7 @@
 ### 1.2 位置情報ストリーム
 
 - **Geolocator 設定**: `getPositionStream` を利用。
-  - **サンプリング間隔**: `AppConfig.sampleIntervalS['fast']` を優先使用。存在しない場合は最小値を選択。デフォルトは 3 秒。
+  - **サンプリング間隔**: `AppConfig.sampleIntervalS['fast']` を優先使用。存在しない場合は最小値を選択。デフォルトは 3 秒。iOSではOSが更新頻度を管理するため、この値は厳密な配信間隔を保証しない。
   - **距離フィルタ**: 0m（すべての位置更新を受信）。
 - **Android 設定**:
   - `AndroidSettings` を使用
@@ -60,7 +60,7 @@
   3. 精度良好の場合: エリア内/外を判定
      - エリア内: `inner`/`near`（距離に応じて）に遷移、ヒステリシスリセット
      - エリア外: ヒステリシスカウンタを更新。条件を満たせば `outer`、満たさなければ `outerPending`
-- **ヒステリシス**: OUTER 確定には `leaveConfirmSamples` 回の連続サンプル AND `leaveConfirmSeconds` 秒の経過が必要。内側に戻ると即座にリセット。
+- **ヒステリシス**: OUTER 確定には `leaveConfirmSamples` 回の連続サンプル AND 最初の有効なエリア外判定から `leaveConfirmSeconds` 秒の実経過時間が必要。GPSサンプルのtimestampは判定時間に使わない。内側に戻ると即座にリセット。
 - **空間インデックス**: `AreaIndex` がポリゴンの境界ボックスを使用して候補ポリゴンを絞り込み、評価対象を最適化。
 
 ### 1.4 点とポリゴンの判定
@@ -73,22 +73,24 @@
 ### 1.5 バックグラウンド動作
 
 - **Android**: 位置サービスは Foreground Service として継続。`WAKE_LOCK` / `FOREGROUND_SERVICE_LOCATION` 権限を要求。
-- **iOS**: Info.plist で `location` 背景モードを有効化し、Always 許可を促す文言を日本語で表示。
+- **iOS**: Info.plist で `location` / `audio` 背景モードを有効化し、Always 許可を促す文言を日本語で表示。
 
 ### 1.6 通知とアラーム
 
-- **通知チャンネル**: `ARGUS警告`（ID: `argus_alerts_visual`）。説明は「ジオフェンスの安全エリアから離れたときに通知します。」。通知自体の音は鳴らさず、アプリ同梱の警報 MP3 を別途ループ再生する。
+- **通知チャンネル**: `ARGUS警告`（ID: `argus_alerts_visual_v2`）。説明は「ジオフェンスの安全エリアから離れたときに通知します。」。通知音・通知バイブは無効化し、音声アラームとバイブレーションはネイティブ実装に一本化する。
 - **通知内容**: OUTER 状態への遷移時に通知を表示
   - タイトル: `ARGUS警告`
   - 本文: `競技エリアから離れています。`（実装では「競技エリア」と記載）
-  - Android: `Importance.max`, `Priority.max`, `playSound: false`, `enableVibration: true`, `category: AndroidNotificationCategory.alarm`
-  - iOS: `interruptionLevel: InterruptionLevel.critical`
+  - Android: `Importance.max`, `Priority.max`, `category: AndroidNotificationCategory.alarm`, `playSound: false`, `enableVibration: false`
+  - iOS: 視覚通知は `interruptionLevel: InterruptionLevel.timeSensitive`。音は `AVAudioPlayer` のネイティブループ再生に一本化。
 - **Foreground Service 通知**: Android 背景計測用にチャンネル名 `ARGUSバックグラウンド監視`、タイトル「ARGUSが位置情報を監視中です」、本文「画面を消しても位置情報の追跡は継続されます。」を表示する。
-- **アラーム音**: Android は `MediaPlayer` で `R.raw.alarm` を `USAGE_ALARM` としてループ再生し、`setVolume(config.alarmVolume)` を反映する。非 Android は `flutter_ringtone_player` で `assets/sounds/alarm.mp3` をループ再生する。`Notifier.stopAlarm()` で MediaPlayer release と vibration cancel を行う。
+- **アラーム音**: Android / iOS は `argus/alarm` MethodChannel のネイティブループ再生を使用。iOSは画面ロック中の到達性を確保するため、Time Sensitiveローカル通知にもバンドル済み `alarm.caf` を設定する。フォアグラウンドでは通知音を提示せずネイティブ再生を使う。`Notifier.stopAlarm()` で停止。
+- **iOS警告音テスト**: 設定画面から現在のスライダー音量で音声だけを開始・停止できる。通知・バイブは発生せず、ホーム画面でも継続する。設定画面終了、監視開始、アプリ終了では停止する。
+- **バイブレーション**: Android / iOS は `argus/alarm` MethodChannel のネイティブ実装を使用。Android は `VibrationEffect` の波形、iOS は `AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)` の繰り返しで警告中のバイブを制御する。
 - **音量チェック**: Android は監視開始前に端末のアラーム音量を確認し、`percent >= 0.5` なら開始可、50% 未満なら開始をブロックして「５０％以上」警告と音設定画面への導線を表示する。取得失敗時は warning ログを残し、監視開始はブロックしない。
-- **音設定**: MethodChannel `argus/alarm` の `openSoundSettings` を呼ぶ。Android 側は `ACTION_SOUND_SETTINGS` を開き、失敗時は `ACTION_SETTINGS` にフォールバックする。
+- **音設定**: MethodChannel `argus/alarm` の `openSoundSettings` を呼ぶ。Android 側は `ACTION_SOUND_SETTINGS` を開き、失敗時は `ACTION_SETTINGS` にフォールバックする。iOS 側はアプリの設定画面を開く。iOS では警告音量をアプリ内から正確に取得できないため、`getAlarmVolumeState` は非対応である旨の代替応答を返す。
 - **復帰通知**: INNER/NEAR 復帰時に通知をキャンセルし、アラームを停止。
-- **権限要求**: 通知・位置情報の権限状態は `PermissionCoordinator` が確認・要求する。`Notifier` は通知権限を直接要求しない。監視開始ブロック条件は位置サービス有効 + Always 位置権限。
+- **権限要求**: 通知・位置情報の権限状態は `PermissionCoordinator` が確認・要求する。iOSの事前説明は単一の「続ける」のみで、拒否後に設定アプリを自動表示しない。設定はユーザーが権限カードから明示的に開く。Androidの拒否後導線は従来どおり維持する。`Notifier` は通知権限を直接要求しない。監視開始ブロック条件は位置サービス有効 + Always 位置権限。
 
 ### 1.7 退避ナビゲーション
 
@@ -137,7 +139,7 @@
 - **パフォーマンス**: 位置取得・状態評価・ログ記録はいずれも非同期処理で UI スレッドを阻害しない。`AreaIndex` による空間インデックスで評価対象ポリゴンを絞り込み。
 - **電力消費**: Android は WakeLock を活用しつつも位置リクエスト間隔は設定値で調整可能。iOS はバックグラウンド許可前提。
 - **データ永続化**: 設定はアプリドキュメントディレクトリの `config.json` に保存。存在しない場合はデフォルト設定をロード。ログはメモリのみで保持し、最大 200 件のリングバッファ管理（`AppController._logs`）。
-- **権限**: `PermissionCoordinator` が通知・位置情報（常時）許可を順序立てて確認・要求する。拒否時はアプリ設定画面への誘導。
+- **権限**: `PermissionCoordinator` が通知・位置情報（常時）許可を順序立てて確認・要求する。iOSは拒否後に明示操作で設定を開き、Androidは従来の自動設定導線を維持する。
 - **ローカライズ**: 通知文言、位置許可文言、UI 文言は日本語がデフォルト。
 
 ---
@@ -185,7 +187,7 @@ lib/
 | 点とポリゴン判定 | `PointInPolygon`, `PointInPolygonEvaluation`                                   | Ray Casting による包含判定、最近接点・距離・方位角の計算。                           |
 | QRコード         | `GeoJsonQrCodec`, `encodeGeoJson`, `decodeGeoJson`                            | GeoJSONのgzip圧縮、Base64URLエンコード、QRコード生成・復元。                        |
 | 位置サービス     | `LocationService`, `GeolocatorLocationService`, `LocationFix`                  | 位置ストリームの開始・停止、権限確認、プラットフォーム固有設定。                     |
-| 通知             | `Notifier`, `AlarmPlayer`（`RingtoneAlarmPlayer`）, `LocalNotificationsClient`, Android `MediaPlayer` | 通知チャンネル作成、同梱アラーム音制御、バッジ状態。                                  |
+| 通知             | `Notifier`, `AlarmPlayer`（`NativeAlarmPlayer`）, `VibrationPlayer`（`NativeVibrationPlayer`）, `LocalNotificationsClient` | 通知チャンネル作成、アラーム音・バイブ制御、バッジ状態。                             |
 | ログ             | `EventLogger`, `AppLogEntry`, `AppLogLevel`                                    | GPS・状態イベントのメモリ記録と UI 連携、JSON エクスポート。                         |
 | I/O              | `FileManager`, `AppConfig`                                                     | 設定・GeoJSON ファイルの読み書き、ファイルピッカー。                                 |
 | UI               | `HomePage`, `SettingsPage`, `QrScannerPage`, `ArgusApp`                       | 画面構成とユーザ操作ルーティング。                                                   |
@@ -423,7 +425,7 @@ graph TD
      - 外側なら OUTER を維持（距離情報は最善努力で提供）
 3. **包含判定**: `AreaIndex.lookup` で候補ポリゴンを絞り込み、`PointInPolygon.evaluatePoint` で判定
    - エリア内: `inner`/`near`（距離に応じて）に遷移、ヒステリシスリセット
-   - エリア外: ヒステリシスカウンタを更新（`_hysteresis.addSample(fix.timestamp)`）
+   - エリア外: GPS timestampではなく、監視開始後の単調増加する実経過時間でヒステリシスカウンタを更新
      - 条件を満たせば `outer`
      - 満たさなければ `outerPending`
 4. **距離・方位角計算**: 包含判定と同時に `PointInPolygon` が最寄り境界点・距離・方位角を計算。`StateSnapshot` に格納。
@@ -488,7 +490,7 @@ stateDiagram-v2
 ### 4.4 ヒステリシスカウンタ
 
 - **実装**: `HysteresisCounter` クラス
-- **条件**: `requiredSamples` 回の連続サンプル AND `requiredDuration` 秒の経過
+- **条件**: `requiredSamples` 回の連続サンプル AND 最初の有効なエリア外判定から `requiredDuration` 秒の実経過
 - **リセット**: エリア内に戻ったとき、または `StateMachine.updateGeometry()` が呼ばれたとき
 
 ---
@@ -576,19 +578,19 @@ stateDiagram-v2
 
 ### 7.1 通知チャンネル
 
-- **ID**: `argus_alerts_visual`
+- **ID**: `argus_alerts_visual_v2`
 - **名前**: `ARGUS警告`
 - **説明**: `ジオフェンスの安全エリアから離れたときに通知します。`
-- **Android 設定**: `Importance.max`, `playSound: false`, `enableVibration: true`
+- **Android 設定**: `Importance.max`, `playSound: false`, `enableVibration: false`
 
 ### 7.2 OUTER 通知
 
 - **通知ID**: `1001`
 - **タイトル**: `ARGUS警告`
 - **本文**: `競技エリアから離れています。`（実装では「競技エリア」と記載）
-- **Android**: `Importance.max`, `Priority.max`, `category: AndroidNotificationCategory.alarm`, `playSound: false`, `enableVibration: true`
-- **iOS**: `interruptionLevel: InterruptionLevel.critical`
-- **アラーム**: 通知と同時に同梱の警報 MP3 をループ再生開始。Android では端末の既定アラーム音に依存しない。
+- **Android**: `Importance.max`, `Priority.max`, `category: AndroidNotificationCategory.alarm`, `playSound: false`, `enableVibration: false`
+- **iOS**: 視覚通知は `interruptionLevel: InterruptionLevel.timeSensitive`。音は `AVAudioPlayer` のネイティブループ再生に一本化。
+- **アラーム**: 通知と同時に同梱の警報音をネイティブでループ再生開始。端末の既定通知音には依存しない。
 
 ### 7.3 復帰通知
 

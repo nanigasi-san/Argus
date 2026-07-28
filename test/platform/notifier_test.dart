@@ -17,6 +17,102 @@ void main() {
       expect(notifier.badgeState.value, LocationStateStatus.waitGeoJson);
     });
 
+    test('alarm preview plays audio without notification or vibration',
+        () async {
+      final notifications = FakeLocalNotificationsClient();
+      final alarm = FakeAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: notifications,
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+
+      await notifier.startAlarmPreview();
+
+      expect(notifier.isAlarmPreviewPlaying, isTrue);
+      expect(alarm.playCount, 1);
+      expect(vibration.startCount, 0);
+      expect(notifications.shownIds, isEmpty);
+
+      await notifier.stopAlarmPreview();
+
+      expect(notifier.isAlarmPreviewPlaying, isFalse);
+      expect(alarm.stopCount, greaterThanOrEqualTo(2));
+      expect(vibration.startCount, 0);
+    });
+
+    test('real outer alert replaces an active alarm preview', () async {
+      final notifications = FakeLocalNotificationsClient();
+      final alarm = FakeAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: notifications,
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+
+      await notifier.startAlarmPreview();
+      await notifier.notifyOuter();
+
+      expect(notifier.isAlarmPreviewPlaying, isFalse);
+      expect(notifications.shownIds, [1001]);
+      expect(alarm.playCount, 2);
+      expect(vibration.startCount, 1);
+    });
+
+    test('failed alarm preview can be stopped and retried', () async {
+      final alarm = _FailOnceAlarmPlayer();
+      final notifier = Notifier(
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: alarm,
+        vibrationPlayer: FakeVibrationPlayer(),
+      );
+
+      await expectLater(notifier.startAlarmPreview(), throwsStateError);
+      expect(notifier.isAlarmPreviewPlaying, isFalse);
+
+      await notifier.startAlarmPreview();
+
+      expect(notifier.isAlarmPreviewPlaying, isTrue);
+      expect(alarm.playCount, 2);
+    });
+
+    test('stopping an in-flight alarm preview suppresses playback', () async {
+      final alarm = _BlockingAlarmPlayer();
+      final notifier = Notifier(
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: alarm,
+        vibrationPlayer: FakeVibrationPlayer(),
+      );
+
+      final previewFuture = notifier.startAlarmPreview();
+      await alarm.startEntered.future;
+      final stopFuture = notifier.stopAlarmPreview();
+      alarm.allowStart.complete();
+      await Future.wait([previewFuture, stopFuture]);
+
+      expect(notifier.isAlarmPreviewPlaying, isFalse);
+      expect(alarm.stopCount, greaterThanOrEqualTo(2));
+    });
+
+    test('resumeAlarm replaces an active alarm preview', () async {
+      final alarm = FakeAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+
+      await notifier.startAlarmPreview();
+      await notifier.resumeAlarm();
+
+      expect(notifier.isAlarmPreviewPlaying, isFalse);
+      expect(alarm.playCount, 2);
+      expect(vibration.startCount, 1);
+    });
+
     test('outer -> inner -> outer toggles alarm playback', () async {
       final notifications = FakeLocalNotificationsClient();
       final alarm = FakeAlarmPlayer();
@@ -33,13 +129,13 @@ void main() {
       expect(showCall.title, 'ARGUS警告');
       expect(showCall.body, '競技エリアから離れています。');
       final androidDetails = showCall.details.android!;
-      expect(androidDetails.channelId, 'argus_alerts_visual');
+      expect(androidDetails.channelId, 'argus_alerts_visual_v2');
       expect(androidDetails.channelName, 'ARGUS警告');
       expect(androidDetails.channelDescription, 'ジオフェンスの安全エリアから離れたときに通知します。');
       expect(androidDetails.importance, Importance.max);
       expect(androidDetails.priority, Priority.max);
       expect(androidDetails.playSound, isFalse);
-      expect(androidDetails.enableVibration, isTrue);
+      expect(androidDetails.enableVibration, isFalse);
       expect(androidDetails.category, AndroidNotificationCategory.alarm);
       expect(alarm.playCount, 1);
       expect(alarm.stopCount, 0);
@@ -131,6 +227,72 @@ void main() {
       expect(vibration.startCount, 1);
     });
 
+    test('reassertAlarm restarts native playback while already alarming',
+        () async {
+      final alarm = FakeAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+
+      await notifier.notifyOuter();
+      await notifier.reassertAlarm();
+
+      expect(alarm.playCount, 2);
+      expect(vibration.stopCount, 1);
+      expect(vibration.startCount, 2);
+    });
+
+    test('reassertAlarm starts playback when alarm is not active', () async {
+      final alarm = FakeAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+
+      await notifier.reassertAlarm();
+
+      expect(alarm.playCount, 1);
+      expect(vibration.startCount, 1);
+    });
+
+    test('stopAlarm suppresses an in-flight alarm reassertion', () async {
+      final alarm = _BlockOnSecondStartAlarmPlayer();
+      final notifier = Notifier(
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: alarm,
+        vibrationPlayer: FakeVibrationPlayer(),
+      );
+      await notifier.notifyOuter();
+
+      final reassertFuture = notifier.reassertAlarm();
+      await alarm.secondStartEntered.future;
+      final stopFuture = notifier.stopAlarm();
+      alarm.allowSecondStart.complete();
+      await Future.wait([reassertFuture, stopFuture]);
+
+      expect(alarm.stopCount, greaterThanOrEqualTo(2));
+    });
+
+    test('failed reassertion allows a later retry', () async {
+      final alarm = _FailSecondStartAlarmPlayer();
+      final notifier = Notifier(
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: alarm,
+        vibrationPlayer: FakeVibrationPlayer(),
+      );
+      await notifier.notifyOuter();
+
+      await expectLater(notifier.reassertAlarm(), throwsStateError);
+      await notifier.reassertAlarm();
+
+      expect(alarm.playCount, 3);
+    });
+
     test('dismissOuterAlert cancels notification and stops alarm', () async {
       final notifications = FakeLocalNotificationsClient();
       final alarm = FakeAlarmPlayer();
@@ -163,15 +325,52 @@ void main() {
 
       expect(notifications.initializeCount, 1);
       expect(notifications.ensureChannelCount, 1);
+      expect(notifications.lastInitializationSettings?.iOS, isNotNull);
+      expect(
+        notifications.lastInitializationSettings?.iOS?.requestAlertPermission,
+        isFalse,
+      );
+      expect(
+        notifications.lastInitializationSettings?.iOS?.requestBadgePermission,
+        isFalse,
+      );
+      expect(
+        notifications.lastInitializationSettings?.iOS?.requestSoundPermission,
+        isFalse,
+      );
       final channel = notifications.lastChannel!;
-      expect(channel.id, 'argus_alerts_visual');
+      expect(channel.id, 'argus_alerts_visual_v2');
       expect(channel.name, 'ARGUS警告');
       expect(channel.description, 'ジオフェンスの安全エリアから離れたときに通知します。');
       expect(channel.importance, Importance.max);
       expect(channel.playSound, isFalse);
-      expect(channel.enableVibration, isTrue);
+      expect(channel.enableVibration, isFalse);
+      expect(channel.sound, isNull);
       expect(notifications.calls, ['initialize', 'ensureAndroidChannel']);
       expect(notifier.badgeState.value, LocationStateStatus.near);
+    });
+
+    test('notifyOuter uses audible time-sensitive iOS notification', () async {
+      final notifications = FakeLocalNotificationsClient();
+      final notifier = Notifier(
+        notificationsClient: notifications,
+        alarmPlayer: FakeAlarmPlayer(),
+        vibrationPlayer: FakeVibrationPlayer(),
+      );
+
+      await notifier.notifyOuter();
+
+      expect(notifications.lastShownDetails?.android?.playSound, isFalse);
+      expect(notifications.lastShownDetails?.android?.sound, isNull);
+      expect(notifications.lastShownDetails?.iOS?.presentSound, isFalse);
+      expect(
+        notifications.lastShownDetails?.iOS?.sound,
+        'alarm.caf',
+      );
+      expect(
+        notifications.lastShownDetails?.iOS?.interruptionLevel,
+        InterruptionLevel.timeSensitive,
+      );
     });
 
     test('stopAlarm always asks native players to stop', () async {
@@ -235,6 +434,48 @@ void main() {
       expect(vibration.startCount, 1);
     });
 
+    test('resumeAlarm can retry after playback start fails', () async {
+      final alarm = _FailOnceAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+
+      await expectLater(notifier.resumeAlarm(), throwsStateError);
+      expect(alarm.playCount, 1);
+      expect(alarm.stopCount, 1);
+      expect(vibration.startCount, 0);
+      expect(vibration.stopCount, 1);
+
+      await notifier.resumeAlarm();
+
+      expect(alarm.playCount, 2);
+      expect(vibration.startCount, 1);
+    });
+
+    test('stopAlarm suppresses an in-flight vibration start', () async {
+      final alarm = FakeAlarmPlayer();
+      final vibration = _BlockingVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+
+      final resumeFuture = notifier.resumeAlarm();
+      await vibration.startEntered.future;
+
+      final stopFuture = notifier.stopAlarm();
+      vibration.allowStart.complete();
+      await resumeFuture;
+      await stopFuture;
+
+      expect(alarm.stopCount, greaterThanOrEqualTo(2));
+      expect(vibration.stopCount, greaterThanOrEqualTo(2));
+    });
+
     test('dismissOuterAlert suppresses notifyOuter alarm resume', () async {
       final notifications = _BlockingLocalNotificationsClient();
       final alarm = FakeAlarmPlayer();
@@ -290,7 +531,7 @@ void main() {
       final platform = _RecordingAlarmPlatformClient();
       final notifier = Notifier(
         notificationsClient: FakeLocalNotificationsClient(),
-        alarmPlayer: RingtoneAlarmPlayer(
+        alarmPlayer: NativeAlarmPlayer(
           platformClient: platform,
           isAndroid: true,
         ),
@@ -303,23 +544,9 @@ void main() {
       expect(platform.playVolumes, [1.0]);
     });
 
-    test('RingtoneAlarmPlayer copyWith keeps volume when omitted', () async {
+    test('NativeAlarmPlayer uses injected Android platform client', () async {
       final platform = _RecordingAlarmPlatformClient();
-      final player = RingtoneAlarmPlayer(
-        volume: 0.4,
-        platformClient: platform,
-        isAndroid: true,
-      ).copyWith();
-
-      await player.start();
-
-      expect(platform.playVolumes, [0.4]);
-    });
-
-    test('RingtoneAlarmPlayer uses injected Android system alarm client',
-        () async {
-      final platform = _RecordingAlarmPlatformClient();
-      final player = RingtoneAlarmPlayer(
+      final player = NativeAlarmPlayer(
         volume: -1,
         platformClient: platform,
         isAndroid: true,
@@ -330,6 +557,46 @@ void main() {
 
       expect(platform.playVolumes, [0.0]);
       expect(platform.stopCount, 1);
+    });
+
+    test('NativeAlarmPlayer uses injected iOS platform client', () async {
+      final platform = _RecordingAlarmPlatformClient();
+      final player = NativeAlarmPlayer(
+        volume: 0.4,
+        platformClient: platform,
+        isAndroid: false,
+        isIOS: true,
+      );
+
+      await player.start();
+      await player.stop();
+
+      expect(platform.playVolumes, [0.4]);
+      expect(platform.stopCount, 1);
+    });
+
+    test('NativeAlarmPlayer copyWith keeps existing volume when omitted',
+        () async {
+      final platform = _RecordingAlarmPlatformClient();
+      final player = NativeAlarmPlayer(
+        volume: 0.4,
+        platformClient: platform,
+        isAndroid: true,
+      ).copyWith();
+
+      await player.start();
+
+      expect(platform.playVolumes, [0.4]);
+    });
+
+    test('NativeAlarmPlayer rejects non-mobile playback fallback', () async {
+      const player = NativeAlarmPlayer(
+        isAndroid: false,
+        isIOS: false,
+      );
+
+      await expectLater(player.start(), throwsA(isA<UnsupportedError>()));
+      await player.stop();
     });
 
     test('MethodChannelAlarmClient sends alarm channel methods', () async {
@@ -446,6 +713,52 @@ void main() {
 
       expect(await client.openSoundSettings(), isFalse);
     });
+
+    test('MethodChannelVibrationClient sends start and stop methods', () async {
+      final calls = <MethodCall>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('argus/alarm'),
+        (call) async {
+          calls.add(call);
+          return null;
+        },
+      );
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(const MethodChannel('argus/alarm'), null);
+      });
+
+      const client = MethodChannelVibrationClient();
+      await client.startPattern();
+      await client.stop();
+
+      expect(calls.map((call) => call.method), [
+        'startVibration',
+        'stopVibration',
+      ]);
+    });
+
+    test('NativeVibrationPlayer uses injected mobile platform client',
+        () async {
+      final platform = _RecordingVibrationPlatformClient();
+      const nonMobilePlayer = NativeVibrationPlayer(
+        isAndroid: false,
+        isIOS: false,
+      );
+      final mobilePlayer = NativeVibrationPlayer(
+        platformClient: platform,
+        isAndroid: true,
+      );
+
+      await nonMobilePlayer.start();
+      await nonMobilePlayer.stop();
+      await mobilePlayer.start();
+      await mobilePlayer.stop();
+
+      expect(platform.startCount, 1);
+      expect(platform.stopCount, 1);
+    });
   });
 }
 
@@ -460,6 +773,43 @@ class _BlockingAlarmPlayer extends FakeAlarmPlayer {
       startEntered.complete();
     }
     await allowStart.future;
+  }
+}
+
+class _BlockOnSecondStartAlarmPlayer extends FakeAlarmPlayer {
+  final Completer<void> secondStartEntered = Completer<void>();
+  final Completer<void> allowSecondStart = Completer<void>();
+
+  @override
+  Future<void> start() async {
+    playCount += 1;
+    if (playCount == 2) {
+      secondStartEntered.complete();
+      await allowSecondStart.future;
+    }
+  }
+}
+
+class _FailSecondStartAlarmPlayer extends FakeAlarmPlayer {
+  @override
+  Future<void> start() async {
+    playCount += 1;
+    if (playCount == 2) {
+      throw StateError('reassert failed');
+    }
+  }
+}
+
+class _FailOnceAlarmPlayer extends FakeAlarmPlayer {
+  bool _shouldFail = true;
+
+  @override
+  Future<void> start() async {
+    playCount += 1;
+    if (_shouldFail) {
+      _shouldFail = false;
+      throw StateError('playback failed');
+    }
   }
 }
 
@@ -503,6 +853,21 @@ class _RecordingAlarmPlatformClient implements AlarmPlatformClient {
   @override
   Future<void> play({required double volume}) async {
     playVolumes.add(volume);
+  }
+
+  @override
+  Future<void> stop() async {
+    stopCount += 1;
+  }
+}
+
+class _RecordingVibrationPlatformClient implements VibrationPlatformClient {
+  int startCount = 0;
+  int stopCount = 0;
+
+  @override
+  Future<void> startPattern() async {
+    startCount += 1;
   }
 
   @override
