@@ -197,6 +197,7 @@ void main() {
     expect(find.text('ファイルを\n読み込む'), findsOneWidget);
     expect(find.text('QRコードを\n読み込む'), findsOneWidget);
     expect(find.text('Created by Kaito YAMADA'), findsOneWidget);
+    expect(find.text('Special thanks for K.M, R.M'), findsOneWidget);
     expect(
       find.text('お問い合わせ: yamada.orien@gmail.com'),
       findsOneWidget,
@@ -356,7 +357,8 @@ void main() {
     expect(controller.geoJsonLoaded, isFalse);
   });
 
-  testWidgets('overflow menu opens QR generator page', (tester) async {
+  testWidgets('overflow menu shows QR generation notice before generator',
+      (tester) async {
     final controller = buildTestController(hasGeoJson: true);
 
     await _pumpHome(tester, controller);
@@ -366,8 +368,37 @@ void main() {
     await tester.tap(find.text('QRコードを生成'));
     await tester.pumpAndSettle();
 
+    expect(find.text('大会でのご利用について'), findsOneWidget);
+    expect(find.text('大会での利用の際はご相談ください。'), findsOneWidget);
+    expect(find.text('このまま生成'), findsOneWidget);
+    expect(find.text('お問い合わせ'), findsOneWidget);
+
+    await tester.tap(find.text('このまま生成'));
+    await tester.pumpAndSettle();
+
     expect(find.text('QRコードを生成'), findsOneWidget);
     expect(find.text('GeoJSONを選択'), findsOneWidget);
+  });
+
+  testWidgets('QR generation notice opens contact page', (tester) async {
+    final calls = await mockUrlLauncher(launchResult: true);
+    final controller = buildTestController(hasGeoJson: true);
+
+    await _pumpHome(tester, controller);
+    await tester.tap(find.byType(PopupMenuButton<int>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('QRコードを生成'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('お問い合わせ'));
+    await tester.pumpAndSettle();
+
+    expect(
+      calls.any((call) => call.arguments
+          .toString()
+          .contains('https://argus-lp.vercel.app/contact')),
+      isTrue,
+    );
+    expect(find.text('GeoJSONを選択'), findsNothing);
   });
 
   testWidgets(
