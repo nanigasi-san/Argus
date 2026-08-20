@@ -99,10 +99,10 @@ class StateMachine {
 
     if (fix.accuracyMeters == null ||
         fix.accuracyMeters! > _config.gpsAccuracyBadMeters) {
-      // outer になった場合は GPS_BAD の精度チェックでは取り消さない。
-      // ただし、実際に内側に戻ったかどうかはチェックする必要がある
+      // 確定済みOUTERは、精度不良の測位では解除しない。
+      // 誤差の大きい1点が偶然エリア内を指して警報を止める方が危険なため、
+      // 距離と方位だけをbest-effortで更新する。
       if (_current == LocationStateStatus.outer) {
-        // OUTER状態の場合、精度が悪くても内側に戻ったかどうかをチェック
         final searchPolys = _candidatePolygons(fix.latitude, fix.longitude);
         if (searchPolys.isEmpty) {
           final boundsEval = _nearestBoundsEvaluation(
@@ -127,30 +127,6 @@ class StateMachine {
           fix.longitude,
           searchPolys,
         );
-
-        // Check if the fix has re-entered the area
-        final insideEval = polygonEval.inside;
-
-        if (insideEval != null && insideEval.contains) {
-          // When accuracy is poor but we are inside, treat as INNER/NEAR
-          _hysteresis.reset();
-          final distance = insideEval.distanceToBoundaryM;
-          final isNear = distance < _config.innerBufferM;
-          return StateSnapshot(
-            status:
-                isNear ? LocationStateStatus.near : LocationStateStatus.inner,
-            timestamp: fix.timestamp,
-            horizontalAccuracyM: fix.accuracyMeters,
-            distanceToBoundaryM: distance,
-            geoJsonLoaded: true,
-            nearestBoundaryPoint: insideEval.nearestPoint,
-            bearingToBoundaryDeg: insideEval.bearingToBoundaryDeg,
-            notes:
-                'Low accuracy ${fix.accuracyMeters?.toStringAsFixed(1) ?? '-'}m, but inside area',
-          );
-        }
-
-        // Otherwise stay in OUTER with best-effort distance
         final nearestEval = polygonEval.nearest;
         // coverage:ignore-start
         // nearestEval is defensive-nullable; valid geometry evaluations always

@@ -56,7 +56,7 @@
   1. GeoJSON 未ロード → `waitGeoJson`
   2. 精度不良チェック: `accuracyMeters == null || accuracyMeters > gpsAccuracyBadMeters`
      - OUTER 状態でない場合: `gpsBad` に遷移し、ヒステリシスをリセット
-     - OUTER 状態の場合: 内側に戻ったかどうかを判定。内側なら `inner`/`near` に即座に遷移（ヒステリシスリセット）。外側なら OUTER を維持し、距離情報を最善努力で提供
+     - OUTER 状態の場合: 位置が内側に見えても警告を解除せず OUTER を維持し、距離情報を最善努力で提供。精度良好なfixだけが `inner`/`near` に復帰できる
   3. 精度良好の場合: エリア内/外を判定
      - エリア内: `inner`/`near`（距離に応じて）に遷移、ヒステリシスリセット
      - エリア外: ヒステリシスカウンタを更新。条件を満たせば `outer`、満たさなければ `outerPending`
@@ -74,10 +74,14 @@
 
 - **Android**: 位置サービスは Foreground Service として継続。`WAKE_LOCK` / `FOREGROUND_SERVICE_LOCATION` 権限を要求。
 - **iOS**: Info.plist で `location` / `audio` 背景モードを有効化し、Always 許可を促す文言を日本語で表示。
+- **GPS途絶検知**: 最終fixから `max(15秒, 取得間隔×3)` で監視停止警告と短い振動を出し、1/2/4/8/16/30秒のバックオフで位置サービスへ再接続する。
+- **プロセス終了**: 画面ロック・他アプリ利用中は継続するが、強制終了またはOSによるプロセス終了後の自動復元は行わない。
 
 ### 1.6 通知とアラーム
 
 - **通知チャンネル**: `ARGUS警告`（ID: `argus_alerts_visual_v2`）。説明は「ジオフェンスの安全エリアから離れたときに通知します。」。通知音・通知バイブは無効化し、音声アラームとバイブレーションはネイティブ実装に一本化する。
+- **監視状態チャンネル**: `ARGUS監視状態`（ID: `argus_monitoring_health_v1`）。GPS途絶時の通知IDは `1002`。
+- **独立発報**: OUTER通知、警報音、連続バイブは独立して開始し、1経路が失敗しても他経路を実行する。
 - **通知内容**: OUTER 状態への遷移時に通知を表示
   - タイトル: `ARGUS警告`
   - 本文: `競技エリアから離れています。`（実装では「競技エリア」と記載）
@@ -421,8 +425,8 @@ graph TD
    - OUTER 状態でない場合: `gpsBad` に遷移、ヒステリシスリセット
    - OUTER 状態の場合:
      - 内側に戻ったかどうかを判定（`AreaIndex.lookup` + `PointInPolygon.evaluatePoint`）
-     - 内側なら `inner`/`near` に即座に遷移（ヒステリシスリセット）
-     - 外側なら OUTER を維持（距離情報は最善努力で提供）
+     - 内外にかかわらず OUTER を維持し、距離情報を最善努力で提供する
+     - 精度良好なfixが内側になった場合だけ `inner`/`near` へ復帰する
 3. **包含判定**: `AreaIndex.lookup` で候補ポリゴンを絞り込み、`PointInPolygon.evaluatePoint` で判定
    - エリア内: `inner`/`near`（距離に応じて）に遷移、ヒステリシスリセット
    - エリア外: GPS timestampではなく、監視開始後の単調増加する実経過時間でヒステリシスカウンタを更新
@@ -484,7 +488,7 @@ stateDiagram-v2
   - エリア外: `outerPending`（hysteresis未到達）または `outer`（hysteresis到達）
 - **精度不良時の遷移**:
   - OUTER 以外の状態: `gpsBad` に遷移
-  - OUTER 状態: 内側に戻ったか判定し、内側なら `inner`/`near`、外側なら `outer` を維持
+  - OUTER 状態: 内側に見える場合も `outer` を維持し、精度良好なfixを待つ
 - **hysteresis**: エリア内に戻ると即座にリセットされ、`inner`/`near` に遷移
 
 ### 4.4 ヒステリシスカウンタ
@@ -500,9 +504,9 @@ stateDiagram-v2
 - **対応形式**: GeoJSON FeatureCollection。`Polygon` と `MultiPolygon` をサポート。
 - **座標系**: GeoJSON 標準（経度、緯度の順）。パース時に `LatLng(latitude, longitude)` に変換。
 - **ポリゴン処理**:
-  - ポリゴンが閉じていない場合（最初と最後の点が異なる）、自動的に閉じる。
-  - `MultiPolygon` の各ポリゴンから最初のリング（外側リング）のみを抽出。
-  - 3点未満のポリゴンは無視。
+  - 穴付きPolygonは対応外として明示的に拒否する。
+  - 始点と終点が一致しないリング、3つ未満の異なる頂点、面積0、非数・非有限値、緯度経度の範囲外を拒否する。
+  - UTF-8で1MB、Polygon 10個、1 Polygon 5,000頂点、合計10,000頂点を上限とする。
 - **プロパティ**: `name` と `version` を読み込み（現在は未使用）。
 - **空間インデックス**: `AreaIndex.build()` が各ポリゴンの境界ボックスを計算し、インデックスを構築。
 
@@ -526,7 +530,7 @@ stateDiagram-v2
 
 - **スキーム検証**: QRテキストが`agz1:`または`gjz1:`で始まることを確認。
 - **Base64URLデコード**: パディングを自動補完してデコード。
-- **gzip展開**: Dart標準の`GZipCodec`で展開。
+- **gzip展開**: Dart標準の`GZipCodec`で展開し、展開後1MBを超えた時点で中止する。
 - **ハッシュ検証**: `gjz1`では復元されたGeoJSONのハッシュをQRテキストと比較（`verifyHash=true`の場合）。
 - **GeoJSON検証**: 復元された文字列が有効なGeoJSONであることを確認（`type`フィールドの存在）。
 
@@ -566,7 +570,7 @@ stateDiagram-v2
 
 ### 6.2 イベントログ（EventLogger）
 
-- **保持**: `EventLogger._records` にすべてのイベントを記録（メモリのみ）。
+- **保持**: `EventLogger._records` に新しいイベントを最大20,000件記録（メモリのみ）。上限超過時は最古を削除する。
 - **イベントタイプ**:
   - `location`: GPS 受信（`lat`, `lon`, `accuracyM`, `batteryPct`, `timestamp`）
   - `state`: 状態変化（`status`, `distanceToBoundaryM`, `accuracyM`, `bearingDeg`, `nearestLat`, `nearestLon`, `notes`, `timestamp`）

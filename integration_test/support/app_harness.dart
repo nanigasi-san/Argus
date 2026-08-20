@@ -33,37 +33,47 @@ class HarnessBuilder {
 
   static AppController buildController({
     bool hasGeoJson = false,
+    GeoModel? geoModel,
     bool? developerMode,
     StateSnapshot? snapshot,
     MonitoringPermissionState? permissionState,
     PermissionCoordinator? permissionCoordinator,
+    LocationService? locationService,
+    Notifier? notifier,
+    AlarmVolumeClient? alarmVolumeClient,
+    bool? isAndroid,
   }) {
     final config = createConfig();
     final stateMachine = StateMachine(config: config);
     final fileManager = HarnessFileManager(config: config);
     final controller = AppController(
       stateMachine: stateMachine,
-      locationService: HarnessLocationService(),
+      locationService: locationService ?? HarnessLocationService(),
       fileManager: fileManager,
       logger: HarnessEventLogger(),
-      notifier: Notifier(
-        notificationsClient: HarnessLocalNotificationsClient(),
-        alarmPlayer: HarnessAlarmPlayer(),
-        vibrationPlayer: HarnessVibrationPlayer(),
-      ),
+      notifier: notifier ??
+          Notifier(
+            notificationsClient: HarnessLocalNotificationsClient(),
+            alarmPlayer: HarnessAlarmPlayer(),
+            vibrationPlayer: HarnessVibrationPlayer(),
+          ),
       permissionCoordinator: permissionCoordinator,
+      alarmVolumeClient: alarmVolumeClient,
+      isAndroid: isAndroid,
     );
 
-    GeoModel? geoModel;
+    GeoModel? selectedGeoModel = geoModel;
     AreaIndex? areaIndex;
-    if (hasGeoJson) {
-      geoModel = createSquareModel();
-      areaIndex = AreaIndex.build(geoModel.polygons);
+    if (hasGeoJson && selectedGeoModel == null) {
+      selectedGeoModel = createSquareModel();
+    }
+    if (selectedGeoModel != null) {
+      areaIndex = AreaIndex.build(selectedGeoModel.polygons);
     }
 
     controller.debugSeed(
       config: config,
-      geoJson: geoModel,
+      geoJson: selectedGeoModel,
       areaIndex: areaIndex,
       snapshot: snapshot,
       developerMode: developerMode,
@@ -114,22 +124,40 @@ class HarnessEventLogger extends EventLogger {
 class HarnessLocationService implements LocationService {
   final StreamController<LocationFix> _controller =
       StreamController<LocationFix>.broadcast();
+  int startCount = 0;
+  int stopCount = 0;
 
   @override
   Stream<LocationFix> get stream => _controller.stream;
 
   @override
   Future<LocationServiceStartResult> start(AppConfig config) async {
+    startCount += 1;
     return const LocationServiceStartResult.started();
   }
 
   @override
-  Future<void> stop() async {}
+  Future<void> stop() async {
+    stopCount += 1;
+  }
+
+  void add(LocationFix fix) {
+    _controller.add(fix);
+  }
+
+  void addError(Object error) {
+    _controller.addError(error);
+  }
 }
 
 class HarnessLocalNotificationsClient implements LocalNotificationsClient {
+  final List<int> shownIds = <int>[];
+  final List<int> cancelledIds = <int>[];
+
   @override
-  Future<void> cancel(int id) async {}
+  Future<void> cancel(int id) async {
+    cancelledIds.add(id);
+  }
 
   @override
   Future<void> ensureAndroidChannel(AndroidNotificationChannel channel) async {}
@@ -143,23 +171,51 @@ class HarnessLocalNotificationsClient implements LocalNotificationsClient {
     String? title,
     String? body,
     NotificationDetails details,
-  ) async {}
+  ) async {
+    shownIds.add(id);
+  }
 }
 
 class HarnessAlarmPlayer implements AlarmPlayer {
-  @override
-  Future<void> start() async {}
+  int startCount = 0;
+  int stopCount = 0;
 
   @override
-  Future<void> stop() async {}
+  Future<void> start() async {
+    startCount += 1;
+  }
+
+  @override
+  Future<void> stop() async {
+    stopCount += 1;
+  }
 }
 
 class HarnessVibrationPlayer implements VibrationPlayer {
-  @override
-  Future<void> start() async {}
+  int startCount = 0;
+  int stopCount = 0;
 
   @override
-  Future<void> stop() async {}
+  Future<void> start() async {
+    startCount += 1;
+  }
+
+  @override
+  Future<void> stop() async {
+    stopCount += 1;
+  }
+}
+
+class HarnessAlarmVolumeClient implements AlarmVolumeClient {
+  const HarnessAlarmVolumeClient();
+
+  @override
+  Future<AlarmVolumeState> getAlarmVolumeState() async {
+    return const AlarmVolumeState(current: 10, max: 10, percent: 1);
+  }
+
+  @override
+  Future<bool> openSoundSettings() async => true;
 }
 
 class HarnessPermissionGateway implements PermissionGateway {

@@ -172,6 +172,13 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _applySettings() async {
+    final activeController = Provider.of<AppController>(context, listen: false);
+    if (!activeController.canModifyConfiguration) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('監視を停止してから設定を変更してください。')),
+      );
+      return;
+    }
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -274,6 +281,7 @@ class _SettingsPageState extends State<SettingsPage> {
     return Consumer<AppController>(
       builder: (context, controller, _) {
         final config = controller.config;
+        final canEdit = controller.canModifyConfiguration;
         final viewPadding = MediaQuery.viewPaddingOf(context);
         final isIOS = Theme.of(context).platform == TargetPlatform.iOS;
         return Scaffold(
@@ -288,6 +296,29 @@ class _SettingsPageState extends State<SettingsPage> {
                     padding: EdgeInsets.fromLTRB(
                         16, 16, 16, 16 + viewPadding.bottom),
                     children: [
+                      if (!canEdit) ...[
+                        Container(
+                          key: const Key('settings-monitoring-lock'),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color:
+                                Theme.of(context).colorScheme.tertiaryContainer,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.lock_outline),
+                              SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  '監視中は設定を変更できません。ホーム画面で監視を停止してください。',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
                       MonitoringPermissionCard(
                         permissionState: controller.monitoringPermissionState,
                         onOpenMonitoringSetup: () async {
@@ -316,6 +347,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       TextFormField(
                         key: const Key('innerBufferField'),
                         controller: _innerBufferController,
+                        enabled: canEdit,
                         decoration: InputDecoration(
                           labelText: '境界バッファ距離',
                           helperText:
@@ -352,6 +384,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       TextFormField(
                         key: const Key('pollingIntervalField'),
                         controller: _pollingIntervalController,
+                        enabled: canEdit,
                         decoration: InputDecoration(
                           labelText: 'GPS取得間隔',
                           helperText:
@@ -380,6 +413,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       TextFormField(
                         key: const Key('gpsAccuracyField'),
                         controller: _gpsAccuracyThresholdController,
+                        enabled: canEdit,
                         decoration: InputDecoration(
                           labelText: 'GPS精度しきい値',
                           helperText:
@@ -412,6 +446,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       TextFormField(
                         key: const Key('leaveConfirmSamplesField'),
                         controller: _leaveConfirmSamplesController,
+                        enabled: canEdit,
                         decoration: InputDecoration(
                           labelText: '離脱確定サンプル数',
                           helperText:
@@ -440,6 +475,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       TextFormField(
                         key: const Key('leaveConfirmSecondsField'),
                         controller: _leaveConfirmSecondsController,
+                        enabled: canEdit,
                         decoration: InputDecoration(
                           labelText: '離脱確定秒数',
                           helperText:
@@ -475,15 +511,17 @@ class _SettingsPageState extends State<SettingsPage> {
                           const SizedBox(height: 8),
                           Slider(
                             value: _alarmVolume,
-                            min: 0.0,
+                            min: AppConfig.minAlarmVolume,
                             max: 1.0,
                             divisions: 20,
                             label: '${(_alarmVolume * 100).round()}%',
-                            onChanged: (value) {
-                              setState(() {
-                                _alarmVolume = value;
-                              });
-                            },
+                            onChanged: canEdit
+                                ? (value) {
+                                    setState(() {
+                                      _alarmVolume = value;
+                                    });
+                                  }
+                                : null,
                           ),
                           Text(
                             '音量: ${(_alarmVolume * 100).round()}% (デフォルト: 50%)',
@@ -522,7 +560,8 @@ class _SettingsPageState extends State<SettingsPage> {
                       const SizedBox(height: 24),
                       ElevatedButton(
                         key: const Key('saveSettingsButton'),
-                        onPressed: _isSaving ? null : _applySettings,
+                        onPressed:
+                            _isSaving || !canEdit ? null : _applySettings,
                         style: ElevatedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 16),
                         ),
@@ -546,7 +585,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           'エリア内でも距離や方角などの詳細情報を表示します。',
                         ),
                         value: controller.developerMode,
-                        onChanged: controller.setDeveloperMode,
+                        onChanged: canEdit ? controller.setDeveloperMode : null,
                       ),
                       const SizedBox(height: 16),
                       ElevatedButton(

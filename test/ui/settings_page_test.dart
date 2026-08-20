@@ -122,6 +122,46 @@ void main() {
     expect(find.text('バージョン 0.4.1 (1005)'), findsOneWidget);
   });
 
+  testWidgets('disables configuration controls while monitoring',
+      (tester) async {
+    final controller = buildTestController(
+      hasGeoJson: true,
+      monitoringLifecycle: MonitoringLifecycle.active,
+    );
+
+    await _pumpSettings(tester, controller);
+
+    expect(find.byKey(const Key('settings-monitoring-lock')), findsOneWidget);
+    expect(
+      tester
+          .widget<TextFormField>(find.byKey(const Key('innerBufferField')))
+          .enabled,
+      isFalse,
+    );
+    await _scrollUntilVisible(
+      tester,
+      find.byKey(const Key('saveSettingsButton')),
+    );
+    expect(
+      tester
+          .widget<ElevatedButton>(find.byKey(const Key('saveSettingsButton')))
+          .onPressed,
+      isNull,
+    );
+    await _scrollUntilVisible(
+      tester,
+      find.byKey(const Key('developerModeSwitch')),
+    );
+    expect(
+      tester
+          .widget<SwitchListTile>(
+            find.byKey(const Key('developerModeSwitch')),
+          )
+          .onChanged,
+      isNull,
+    );
+  });
+
   testWidgets('falls back when default config asset cannot load',
       (tester) async {
     await clearDefaultConfigAssetMock();

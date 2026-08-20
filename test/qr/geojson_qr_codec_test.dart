@@ -563,6 +563,17 @@ void main() {
       throwsA(isA<PayloadTooLargeException>()),
     );
   });
+
+  test('gzip decompression rejects output above one megabyte', () {
+    final compressed = gzipCompress(
+      Uint8List(1024 * 1024 + 1),
+    );
+
+    expect(
+      () => gzipDecompress(compressed),
+      throwsA(isA<PayloadTooLargeException>()),
+    );
+  });
 }
 
 const _agzGeoJson = '{"type":"FeatureCollection","features":[{"type":"Feature",'

@@ -122,7 +122,7 @@ class _HomeScrollableContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDeveloperMode = controller.developerMode;
-    final isMonitoring = _isMonitoringStatus(snapshot.status);
+    final isMonitoring = controller.isMonitoringSession;
     return LayoutBuilder(
       builder: (context, constraints) {
         return SingleChildScrollView(
@@ -151,8 +151,10 @@ class _HomeScrollableContent extends StatelessWidget {
                         const SizedBox(height: 20),
                         _LargeStatusDisplay(
                           status: snapshot.status,
+                          lifecycle: controller.monitoringLifecycle,
                           onTap: snapshot.status ==
-                                  LocationStateStatus.waitStart
+                                      LocationStateStatus.waitStart &&
+                                  !isMonitoring
                               ? () {
                                   if (controller.canStartMonitoring) {
                                     unawaited(_startMonitoringAfterAlarmCheck(
@@ -166,6 +168,10 @@ class _HomeScrollableContent extends StatelessWidget {
                               : null,
                         ),
                         const SizedBox(height: 12),
+                        if (isMonitoring) ...[
+                          const _ForceCloseWarning(),
+                          const SizedBox(height: 12),
+                        ],
                         if (isMonitoring)
                           _HoldToFinishRaceButton(
                             duration: const Duration(seconds: 5),
@@ -577,12 +583,35 @@ class _BottomActions extends StatelessWidget {
   }
 }
 
-bool _isMonitoringStatus(LocationStateStatus status) {
-  return status == LocationStateStatus.inner ||
-      status == LocationStateStatus.near ||
-      status == LocationStateStatus.outerPending ||
-      status == LocationStateStatus.outer ||
-      status == LocationStateStatus.gpsBad;
+class _ForceCloseWarning extends StatelessWidget {
+  const _ForceCloseWarning();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      key: const Key('force-close-warning'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colors.tertiaryContainer,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, color: colors.onTertiaryContainer),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '監視中はアプリを強制終了しないでください。画面ロックやホーム画面では監視を続けますが、強制終了すると停止します。',
+              style: TextStyle(color: colors.onTertiaryContainer),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _HoldToFinishRaceButton extends StatefulWidget {
@@ -858,13 +887,32 @@ enum _QrGenerationNoticeAction {
 class _LargeStatusDisplay extends StatelessWidget {
   const _LargeStatusDisplay({
     required this.status,
+    required this.lifecycle,
     this.onTap,
   });
 
   final LocationStateStatus status;
+  final MonitoringLifecycle lifecycle;
   final VoidCallback? onTap;
 
+  bool get _showLifecycle =>
+      lifecycle != MonitoringLifecycle.idle &&
+      lifecycle != MonitoringLifecycle.active;
+
   Color _color(LocationStateStatus status) {
+    if (_showLifecycle) {
+      return switch (lifecycle) {
+        MonitoringLifecycle.starting ||
+        MonitoringLifecycle.acquiring =>
+          Colors.blue,
+        MonitoringLifecycle.stale ||
+        MonitoringLifecycle.reconnecting =>
+          Colors.deepOrange,
+        MonitoringLifecycle.stopping => Colors.blueGrey,
+        MonitoringLifecycle.failed => Colors.red,
+        MonitoringLifecycle.idle || MonitoringLifecycle.active => Colors.blue,
+      };
+    }
     switch (status) {
       case LocationStateStatus.inner:
         return Colors.green;
@@ -884,6 +932,17 @@ class _LargeStatusDisplay extends StatelessWidget {
   }
 
   String _statusText(LocationStateStatus status) {
+    if (_showLifecycle) {
+      return switch (lifecycle) {
+        MonitoringLifecycle.starting => '開始中',
+        MonitoringLifecycle.acquiring => 'GPS取得中',
+        MonitoringLifecycle.stale => 'GPS停止',
+        MonitoringLifecycle.reconnecting => '再接続中',
+        MonitoringLifecycle.stopping => '停止中',
+        MonitoringLifecycle.failed => '開始失敗',
+        MonitoringLifecycle.idle || MonitoringLifecycle.active => '',
+      };
+    }
     switch (status) {
       case LocationStateStatus.inner:
         return '内側';
@@ -903,6 +962,17 @@ class _LargeStatusDisplay extends StatelessWidget {
   }
 
   String _statusCode(LocationStateStatus status) {
+    if (_showLifecycle) {
+      return switch (lifecycle) {
+        MonitoringLifecycle.starting => 'STARTING',
+        MonitoringLifecycle.acquiring => 'ACQUIRING GPS',
+        MonitoringLifecycle.stale => 'GPS STALE',
+        MonitoringLifecycle.reconnecting => 'RECONNECTING',
+        MonitoringLifecycle.stopping => 'STOPPING',
+        MonitoringLifecycle.failed => 'FAILED',
+        MonitoringLifecycle.idle || MonitoringLifecycle.active => '',
+      };
+    }
     switch (status) {
       case LocationStateStatus.inner:
         return 'INNER';

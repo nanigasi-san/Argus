@@ -203,7 +203,7 @@ void main() {
       expect(model.polygons.length, 1);
     });
 
-    test('handles polygons with insufficient points', () {
+    test('rejects polygons with insufficient points', () {
       const geoJson = '''
       {
         "type": "FeatureCollection",
@@ -219,9 +219,10 @@ void main() {
       }
       ''';
 
-      final model = GeoModel.fromGeoJson(geoJson);
-      // Should skip polygons with less than 3 points
-      expect(model.polygons, isEmpty);
+      expect(
+        () => GeoModel.fromGeoJson(geoJson),
+        throwsA(isA<FormatException>()),
+      );
     });
 
     test('handles missing properties', () {

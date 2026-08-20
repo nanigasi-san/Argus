@@ -40,6 +40,13 @@ void main() {
     expect(result.message, isNull);
   });
 
+  test('LocationStreamEndedException explains an unexpected stream end', () {
+    expect(
+      const LocationStreamEndedException().toString(),
+      contains('予期せず終了'),
+    );
+  });
+
   test('RuntimePlatform exposes apple platform grouping', () {
     const android = RuntimePlatform(
       isAndroid: true,

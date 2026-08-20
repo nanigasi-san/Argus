@@ -6,6 +6,8 @@ import 'package:crypto/crypto.dart';
 import 'package:image/image.dart' as img;
 import 'package:qr/qr.dart';
 
+import '../geo/geo_model.dart';
+
 /// 入力GeoJSONをQRへ変換する際の設定値。
 class GeoJsonQrEncodeInput {
   const GeoJsonQrEncodeInput({
@@ -404,10 +406,42 @@ Uint8List gzipCompress(Uint8List bytes, {int level = 9}) {
 
 Uint8List gzipDecompress(Uint8List bytes) {
   try {
-    return Uint8List.fromList(GZipCodec().decode(bytes));
+    final output = BytesBuilder(copy: false);
+    final limitedSink = _LimitedByteSink(
+      output,
+      GeoJsonLimits.defaults.maxSourceBytes,
+    );
+    final decoder = GZipCodec().decoder.startChunkedConversion(limitedSink);
+    decoder.add(bytes);
+    decoder.close();
+    return output.takeBytes();
+  } on GeoJsonQrException {
+    rethrow;
   } catch (e) {
     throw DecompressFailedException('gzip decompression failed', e);
   }
+}
+
+class _LimitedByteSink extends ByteConversionSink {
+  _LimitedByteSink(this._output, this._maxBytes);
+
+  final BytesBuilder _output;
+  final int _maxBytes;
+  var _length = 0;
+
+  @override
+  void add(List<int> chunk) {
+    if (_length + chunk.length > _maxBytes) {
+      throw PayloadTooLargeException(
+        '展開後のQRデータが上限（$_maxBytes bytes）を超えています。',
+      );
+    }
+    _length += chunk.length;
+    _output.add(chunk);
+  }
+
+  @override
+  void close() {}
 }
 
 String base64UrlEncodeNoPad(Uint8List bytes) {

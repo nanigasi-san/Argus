@@ -183,6 +183,83 @@ void main() {
       expect(vibration.startCount, 2);
     });
 
+    test('notification failure does not block alarm or vibration', () async {
+      final alarm = FakeAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: _FailingShowNotificationsClient(),
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+
+      final report = await notifier.notifyOuter();
+
+      expect(report.notificationError, isA<StateError>());
+      expect(report.alarmError, isNull);
+      expect(report.vibrationError, isNull);
+      expect(alarm.playCount, 1);
+      expect(vibration.startCount, 1);
+    });
+
+    test('alarm failure does not block notification or vibration', () async {
+      final notifications = FakeLocalNotificationsClient();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: notifications,
+        alarmPlayer: _FailOnceAlarmPlayer(),
+        vibrationPlayer: vibration,
+      );
+
+      final report = await notifier.notifyOuter();
+
+      expect(report.notificationError, isNull);
+      expect(report.alarmError, isA<StateError>());
+      expect(report.vibrationError, isNull);
+      expect(notifications.shownIds, [1001]);
+      expect(vibration.startCount, 1);
+    });
+
+    test('monitoring stale notification uses a separate notification id',
+        () async {
+      final notifications = FakeLocalNotificationsClient();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: notifications,
+        alarmPlayer: FakeAlarmPlayer(),
+        vibrationPlayer: vibration,
+        monitoringStaleVibrationDuration: Duration.zero,
+      );
+
+      await notifier.notifyMonitoringStale();
+      await Future<void>.delayed(Duration.zero);
+      await notifier.clearMonitoringStale();
+
+      expect(notifications.shownIds, [1002]);
+      expect(notifications.cancelledIds, [1002]);
+      expect(notifications.lastShownDetails?.android?.channelId,
+          'argus_monitoring_health_v1');
+      expect(notifications.lastShownDetails?.android?.enableVibration, isFalse);
+      expect(vibration.startCount, 1);
+      expect(vibration.stopCount, 1);
+    });
+
+    test('monitoring stale vibration still runs when notification fails',
+        () async {
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: _FailingShowNotificationsClient(),
+        alarmPlayer: FakeAlarmPlayer(),
+        vibrationPlayer: vibration,
+        monitoringStaleVibrationDuration: Duration.zero,
+      );
+
+      await expectLater(notifier.notifyMonitoringStale(), throwsStateError);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(vibration.startCount, 1);
+      expect(vibration.stopCount, 1);
+    });
+
     test('resumeAlarm restarts playback without showing another notification',
         () async {
       final notifications = FakeLocalNotificationsClient();
@@ -324,7 +401,7 @@ void main() {
       await notifier.updateBadge(LocationStateStatus.near);
 
       expect(notifications.initializeCount, 1);
-      expect(notifications.ensureChannelCount, 1);
+      expect(notifications.ensureChannelCount, 2);
       expect(notifications.lastInitializationSettings?.iOS, isNotNull);
       expect(
         notifications.lastInitializationSettings?.iOS?.requestAlertPermission,
@@ -338,7 +415,7 @@ void main() {
         notifications.lastInitializationSettings?.iOS?.requestSoundPermission,
         isFalse,
       );
-      final channel = notifications.lastChannel!;
+      final channel = notifications.channels.first;
       expect(channel.id, 'argus_alerts_visual_v2');
       expect(channel.name, 'ARGUS警告');
       expect(channel.description, 'ジオフェンスの安全エリアから離れたときに通知します。');
@@ -346,7 +423,14 @@ void main() {
       expect(channel.playSound, isFalse);
       expect(channel.enableVibration, isFalse);
       expect(channel.sound, isNull);
-      expect(notifications.calls, ['initialize', 'ensureAndroidChannel']);
+      final healthChannel = notifications.channels.last;
+      expect(healthChannel.id, 'argus_monitoring_health_v1');
+      expect(healthChannel.enableVibration, isFalse);
+      expect(notifications.calls, [
+        'initialize',
+        'ensureAndroidChannel',
+        'ensureAndroidChannel',
+      ]);
       expect(notifier.badgeState.value, LocationStateStatus.near);
     });
 
@@ -406,6 +490,35 @@ void main() {
       expect(vibration.stopCount, 1);
     });
 
+    test('notification cancel failure still stops alarm and vibration',
+        () async {
+      final alarm = FakeAlarmPlayer();
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: _FailingCancelNotificationsClient(),
+        alarmPlayer: alarm,
+        vibrationPlayer: vibration,
+      );
+
+      await expectLater(notifier.dismissOuterAlert(), throwsStateError);
+
+      expect(alarm.stopCount, 1);
+      expect(vibration.stopCount, 1);
+    });
+
+    test('alarm stop failure still stops vibration', () async {
+      final vibration = FakeVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: _FailingStopAlarmPlayer(),
+        vibrationPlayer: vibration,
+      );
+
+      await expectLater(notifier.stopAlarm(), throwsStateError);
+
+      expect(vibration.stopCount, 1);
+    });
+
     test('stopAlarm suppresses an in-flight resumeAlarm', () async {
       final alarm = _BlockingAlarmPlayer();
       final vibration = FakeVibrationPlayer();
@@ -425,13 +538,13 @@ void main() {
 
       expect(alarm.playCount, 1);
       expect(alarm.stopCount, greaterThanOrEqualTo(1));
-      expect(vibration.startCount, 0);
-      expect(vibration.stopCount, 1);
+      expect(vibration.startCount, 1);
+      expect(vibration.stopCount, greaterThanOrEqualTo(1));
 
       await notifier.resumeAlarm();
 
       expect(alarm.playCount, 2);
-      expect(vibration.startCount, 1);
+      expect(vibration.startCount, 2);
     });
 
     test('resumeAlarm can retry after playback start fails', () async {
@@ -446,13 +559,13 @@ void main() {
       await expectLater(notifier.resumeAlarm(), throwsStateError);
       expect(alarm.playCount, 1);
       expect(alarm.stopCount, 1);
-      expect(vibration.startCount, 0);
-      expect(vibration.stopCount, 1);
+      expect(vibration.startCount, 1);
+      expect(vibration.stopCount, 0);
 
       await notifier.resumeAlarm();
 
       expect(alarm.playCount, 2);
-      expect(vibration.startCount, 1);
+      expect(vibration.startCount, 2);
     });
 
     test('stopAlarm suppresses an in-flight vibration start', () async {
@@ -472,7 +585,7 @@ void main() {
       await resumeFuture;
       await stopFuture;
 
-      expect(alarm.stopCount, greaterThanOrEqualTo(2));
+      expect(alarm.stopCount, greaterThanOrEqualTo(1));
       expect(vibration.stopCount, greaterThanOrEqualTo(2));
     });
 
@@ -495,11 +608,11 @@ void main() {
       await dismissFuture;
 
       expect(notifications.shownIds, [1001]);
-      expect(notifications.cancelledIds, [1001]);
-      expect(alarm.playCount, 0);
-      expect(alarm.stopCount, 1);
-      expect(vibration.startCount, 0);
-      expect(vibration.stopCount, 1);
+      expect(notifications.cancelledIds, [1001, 1001]);
+      expect(alarm.playCount, 1);
+      expect(alarm.stopCount, greaterThanOrEqualTo(1));
+      expect(vibration.startCount, 1);
+      expect(vibration.stopCount, greaterThanOrEqualTo(1));
     });
 
     test('stopAlarm suppresses an in-flight resumeAlarm after vibration starts',
@@ -843,6 +956,33 @@ class _BlockingLocalNotificationsClient extends FakeLocalNotificationsClient {
       showEntered.complete();
     }
     await allowShow.future;
+  }
+}
+
+class _FailingShowNotificationsClient extends FakeLocalNotificationsClient {
+  @override
+  Future<void> show(
+    int id,
+    String? title,
+    String? body,
+    NotificationDetails details,
+  ) {
+    throw StateError('notification failed');
+  }
+}
+
+class _FailingCancelNotificationsClient extends FakeLocalNotificationsClient {
+  @override
+  Future<void> cancel(int id) {
+    throw StateError('cancel failed');
+  }
+}
+
+class _FailingStopAlarmPlayer extends FakeAlarmPlayer {
+  @override
+  Future<void> stop() {
+    stopCount += 1;
+    throw StateError('stop failed');
   }
 }
 

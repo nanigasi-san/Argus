@@ -290,7 +290,7 @@ void main() {
     expect(snapshot.status, LocationStateStatus.outerPending);
   });
 
-  test('transitions from OUTER to INNER even with bad GPS when inside', () {
+  test('keeps OUTER when an inside-looking fix has bad GPS accuracy', () {
     // First, transition to OUTER
     final outsideFix = LocationFix(
       latitude: 35.02,
@@ -321,8 +321,8 @@ void main() {
     );
 
     snapshot = machine.evaluate(insideWithBadGPS);
-    // Should transition to INNER even with bad GPS if actually inside
-    expect(snapshot.status, LocationStateStatus.inner);
+    // A low-quality fix must never silence an active OUTER alert.
+    expect(snapshot.status, LocationStateStatus.outer);
     expect(snapshot.horizontalAccuracyM, 50);
   });
 

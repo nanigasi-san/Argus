@@ -25,6 +25,8 @@ class FakeLocalNotificationsClient implements LocalNotificationsClient {
   int initializeCount = 0;
   InitializationSettings? lastInitializationSettings;
   AndroidNotificationChannel? lastChannel;
+  final List<AndroidNotificationChannel> channels =
+      <AndroidNotificationChannel>[];
   int ensureChannelCount = 0;
   bool requestedPermissions = false;
   NotificationDetails? lastShownDetails;
@@ -51,6 +53,7 @@ class FakeLocalNotificationsClient implements LocalNotificationsClient {
   Future<void> ensureAndroidChannel(AndroidNotificationChannel channel) async {
     calls.add('ensureAndroidChannel');
     lastChannel = channel;
+    channels.add(channel);
     ensureChannelCount += 1;
   }
 

@@ -129,6 +129,7 @@ void main() {
       expect(controller.isAlarmPreviewPlaying, isFalse);
       expect(alarm.stopCount, greaterThanOrEqualTo(2));
       expect(locationService.started, isTrue);
+      await controller.stopMonitoring();
     });
 
     test('alarm preview failure is reported without leaving preview active',
@@ -151,6 +152,36 @@ void main() {
       expect(started, isFalse);
       expect(controller.isAlarmPreviewPlaying, isFalse);
       expect(controller.logs.first.message, contains('Failed to start'));
+    });
+
+    test('alarm preview stop failure leaves monitoring in a retryable failure',
+        () async {
+      final alarm = _FailSecondStopAlarmPlayer();
+      final locationService = FakeLocationService();
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: locationService,
+        fileManager: FakeFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: alarm,
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+      );
+      controller.debugSeed(
+        config: _testConfig(),
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+      expect(await controller.startAlarmPreview(0.4), isTrue);
+
+      await controller.startMonitoring();
+
+      expect(controller.monitoringLifecycle, MonitoringLifecycle.failed);
+      expect(controller.lastErrorMessage, contains('監視を開始できません'));
+      expect(locationService.started, isFalse);
     });
 
     test('alarm preview stops when application terminates', () async {
@@ -238,6 +269,32 @@ void main() {
       expect(controller.logs.first.level.name, 'warning');
     });
 
+    test('permission lookup failure leaves monitoring retryable', () async {
+      final locationService = FakeLocationService();
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: locationService,
+        fileManager: FakeFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+        permissionCoordinator: _ThrowingRefreshPermissionCoordinator(),
+      );
+      controller.debugSeed(
+        config: _testConfig(),
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+
+      await controller.startMonitoring();
+
+      expect(controller.monitoringLifecycle, MonitoringLifecycle.failed);
+      expect(controller.lastErrorMessage, contains('監視を開始できません'));
+      expect(locationService.started, isFalse);
+    });
+
     test('clearError removes existing error and notifies listeners', () async {
       final controller = _buildController();
       controller.debugSeed(
@@ -280,7 +337,7 @@ void main() {
       expect(controller.logs.first.level.name, 'error');
     });
 
-    test('updateConfig saves config and restarts active monitoring', () async {
+    test('updateConfig is rejected while monitoring is active', () async {
       final config = _testConfig();
       final stateMachine = StateMachine(config: config);
       final locationService = FakeLocationService();
@@ -313,12 +370,177 @@ void main() {
       );
 
       await controller.updateConfig(updated);
+      controller.setDeveloperMode(true);
 
-      expect(fileManager.savedConfig, isNotNull);
-      expect(fileManager.savedConfig!.innerBufferM, 12);
+      expect(fileManager.savedConfig, isNull);
+      expect(locationService.startCount, 1);
+      expect(locationService.stopCount, 0);
+      expect(controller.config!.alarmVolume, config.alarmVolume);
+      expect(controller.developerMode, isFalse);
+      expect(controller.lastErrorMessage, contains('監視中'));
+      await controller.stopMonitoring();
+    });
+
+    test('GeoJSON changes are rejected while monitoring is active', () async {
+      final config = _testConfig();
+      final locationService = FakeLocationService();
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: locationService,
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+      );
+      controller.debugSeed(
+        config: config,
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+      await controller.startMonitoring();
+
+      final loadedFromQr = await controller.reloadGeoJsonFromQr('invalid:qr');
+      await controller.reloadGeoJsonFromPicker();
+
+      expect(loadedFromQr, isFalse);
+      expect(controller.lastErrorMessage, contains('監視中'));
+      expect(controller.isMonitoringSession, isTrue);
+      expect(locationService.stopCount, 0);
+      await controller.stopMonitoring();
+    });
+
+    test('GPS timeout warns when no fix arrives', () async {
+      final config = _testConfig();
+      final locationService = FakeLocationService();
+      final notifications = FakeLocalNotificationsClient();
+      var now = DateTime.utc(2024, 1, 1);
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: locationService,
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: notifications,
+          alarmPlayer: FakeAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+        nowProvider: () => now,
+        staleTimeoutOverride: const Duration(milliseconds: 10),
+        watchdogInterval: const Duration(milliseconds: 5),
+        reconnectDelays: const [Duration(seconds: 1)],
+      );
+      controller.debugSeed(
+        config: config,
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+
+      await controller.startMonitoring();
+      expect(controller.monitoringLifecycle, MonitoringLifecycle.acquiring);
+
+      now = now.add(const Duration(milliseconds: 20));
+      await Future<void>.delayed(const Duration(milliseconds: 15));
+      expect(controller.monitoringLifecycle, MonitoringLifecycle.reconnecting);
+      expect(notifications.shownIds, contains(1002));
+
+      await controller.stopMonitoring();
+      expect(controller.monitoringLifecycle, MonitoringLifecycle.idle);
+    });
+
+    test('location stream errors trigger automatic reconnect', () async {
+      final config = _testConfig();
+      final locationService = FakeLocationService();
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: locationService,
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+        reconnectDelays: const [Duration(milliseconds: 5)],
+      );
+      controller.debugSeed(
+        config: config,
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+      await controller.startMonitoring();
+
+      locationService.addError(StateError('stream stopped'));
+      await Future<void>.delayed(const Duration(milliseconds: 2));
+      expect(controller.monitoringLifecycle, MonitoringLifecycle.reconnecting);
+
+      await Future<void>.delayed(const Duration(milliseconds: 10));
       expect(locationService.startCount, 2);
       expect(locationService.stopCount, 1);
-      expect(controller.config!.alarmVolume, 0.8);
+
+      locationService.add(
+        LocationFix(
+          latitude: 0.5,
+          longitude: 0.5,
+          accuracyMeters: 5,
+          timestamp: DateTime.utc(2024, 1, 1),
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 2));
+      expect(controller.monitoringLifecycle, MonitoringLifecycle.active);
+
+      await controller.stopMonitoring();
+    });
+
+    test('failed reconnects advance through the configured backoff', () async {
+      final config = _testConfig();
+      final locationService = _QueuedStartLocationService([
+        const LocationServiceStartResult.started(),
+        const LocationServiceStartResult(
+          status: LocationServiceStartStatus.error,
+          message: 'first reconnect failed',
+        ),
+        const LocationServiceStartResult.started(),
+      ]);
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: locationService,
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+        reconnectDelays: const [
+          Duration(milliseconds: 2),
+          Duration(milliseconds: 4),
+        ],
+      );
+      controller.debugSeed(
+        config: config,
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+      await controller.startMonitoring();
+
+      locationService.addError(StateError('stream stopped'));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(locationService.startCount, 3);
+      expect(controller.monitoringLifecycle, MonitoringLifecycle.acquiring);
+      expect(
+        controller.logs.where((entry) =>
+            entry.message.startsWith('Scheduling location reconnect attempt')),
+        hasLength(2),
+      );
+      await controller.stopMonitoring();
     });
 
     test('refreshMonitoringPermissionState updates permission state', () async {
@@ -536,17 +758,15 @@ void main() {
       expect(controller.lastErrorMessage, contains('常に許可'));
     });
 
-    test('loading new GeoJSON resets to init and stops alarm', () async {
+    test('loading new GeoJSON while idle resets to waitStart', () async {
       final config = _testConfig();
       final stateMachine = StateMachine(config: config);
       final locationService = FakeLocationService();
       final fileManager = FakeFileManager(config: config);
       final logger = FakeEventLogger();
-      final notifications = FakeLocalNotificationsClient();
-      final alarm = FakeAlarmPlayer();
       final notifier = Notifier(
-        notificationsClient: notifications,
-        alarmPlayer: alarm,
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: FakeAlarmPlayer(),
       );
 
       final controller = AppController(
@@ -557,16 +777,11 @@ void main() {
         notifier: notifier,
       );
 
-      await notifier.notifyOuter();
-      expect(alarm.playCount, 1);
-
       await controller.reloadGeoJsonFromPicker();
-      expect(controller.snapshot.status, LocationStateStatus.waitStart);
 
       expect(controller.snapshot.status, LocationStateStatus.waitStart);
       expect(controller.geoJsonLoaded, isTrue);
       expect(stateMachine.current, LocationStateStatus.waitStart);
-      expect(alarm.stopCount, 1);
     });
 
     test('describeSnapshot hides navigation details before OUTER', () {
@@ -825,6 +1040,7 @@ void main() {
 
       expect(alarm.playCount, 1);
       expect(vibration.startCount, 1);
+      controller.dispose();
     });
 
     test('stopMonitoring dismisses active outer alert', () async {
@@ -862,7 +1078,7 @@ void main() {
 
       await controller.stopMonitoring();
 
-      expect(notifications.cancelledIds, [1001]);
+      expect(notifications.cancelledIds, [1001, 1002]);
       expect(alarm.stopCount, 1);
       expect(vibration.stopCount, 1);
       expect(locationService.stopped, isTrue);
@@ -983,7 +1199,7 @@ void main() {
 
       await controller.stopMonitoring();
       expect(controller.isAlarmSnoozed, isFalse);
-      expect(notifications.cancelledIds, [1001]);
+      expect(notifications.cancelledIds, [1001, 1002]);
       expect(alarm.stopCount, 2);
       expect(vibration.stopCount, 2);
 
@@ -1030,7 +1246,7 @@ void main() {
       await controller.handleAppTermination();
 
       expect(locationService.stopped, isTrue);
-      expect(notifications.cancelledIds, [1001]);
+      expect(notifications.cancelledIds, [1001, 1002]);
       expect(alarm.stopCount, 1);
       expect(vibration.stopCount, 1);
       expect(controller.isAlarmSnoozed, isFalse);
@@ -1135,6 +1351,26 @@ void main() {
       await controller.reloadGeoJsonFromPicker();
 
       expect(controller.lastErrorMessage, contains('Failed to parse GeoJSON'));
+    });
+
+    test('reloadGeoJsonFromPicker rejects files above one megabyte', () async {
+      final config = _testConfig();
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: FakeLocationService(),
+        fileManager: _LargeGeoJsonFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+      );
+      controller.debugSeed(config: config);
+
+      await controller.reloadGeoJsonFromPicker();
+
+      expect(controller.geoJsonLoaded, isFalse);
+      expect(controller.lastErrorMessage, contains('サイズが上限'));
     });
 
     test('reloadGeoJsonFromPicker rejects GeoJSON without polygons', () async {
@@ -1495,8 +1731,8 @@ void main() {
       try {
         await controller.reloadGeoJsonFromQr(qrText);
 
-        // 監視が停止されていることを確認
-        expect(locationService.stopped, isTrue);
+        // 読み込み前から停止中なので、位置情報サービスへ不要なstopを送らない。
+        expect(locationService.stopped, isFalse);
         expect(controller.snapshot.status, LocationStateStatus.waitStart);
         expect(controller.snapshot.distanceToBoundaryM, isNull);
         expect(controller.snapshot.bearingToBoundaryDeg, isNull);
@@ -1608,6 +1844,23 @@ class _AlwaysFailAlarmPlayer extends FakeAlarmPlayer {
   Future<void> start() async {
     playCount += 1;
     throw StateError('preview failed');
+  }
+}
+
+class _FailSecondStopAlarmPlayer extends FakeAlarmPlayer {
+  @override
+  Future<void> stop() async {
+    stopCount += 1;
+    if (stopCount == 2) {
+      throw StateError('preview stop failed');
+    }
+  }
+}
+
+class _ThrowingRefreshPermissionCoordinator extends PermissionCoordinator {
+  @override
+  Future<MonitoringPermissionState> refreshMonitoringPermissionState() {
+    throw StateError('permission lookup failed');
   }
 }
 
@@ -1748,6 +2001,19 @@ class _EmptyGeoJsonFileManager extends FakeFileManager {
   }
 }
 
+class _LargeGeoJsonFileManager extends FakeFileManager {
+  _LargeGeoJsonFileManager({required super.config});
+
+  @override
+  Future<XFile?> pickGeoJsonFile() async {
+    return XFile.fromData(
+      Uint8List(1024 * 1024 + 1),
+      name: 'too-large.geojson',
+      mimeType: 'application/geo+json',
+    );
+  }
+}
+
 class _ThrowingGeoJsonFileManager extends FakeFileManager {
   _ThrowingGeoJsonFileManager({
     required super.config,
@@ -1830,6 +2096,10 @@ class FakeLocationService implements LocationService {
   void add(LocationFix fix) {
     _controller.add(fix);
   }
+
+  void addError(Object error) {
+    _controller.addError(error);
+  }
 }
 
 class _FailingStartLocationService implements LocationService {
@@ -1846,4 +2116,34 @@ class _FailingStartLocationService implements LocationService {
 
   @override
   Future<void> stop() async {}
+}
+
+class _QueuedStartLocationService implements LocationService {
+  _QueuedStartLocationService(this._results);
+
+  final List<LocationServiceStartResult> _results;
+  final StreamController<LocationFix> _controller =
+      StreamController<LocationFix>.broadcast();
+  int startCount = 0;
+  int stopCount = 0;
+
+  @override
+  Stream<LocationFix> get stream => _controller.stream;
+
+  @override
+  Future<LocationServiceStartResult> start(AppConfig config) async {
+    final index =
+        startCount < _results.length ? startCount : _results.length - 1;
+    startCount += 1;
+    return _results[index];
+  }
+
+  @override
+  Future<void> stop() async {
+    stopCount += 1;
+  }
+
+  void addError(Object error) {
+    _controller.addError(error);
+  }
 }

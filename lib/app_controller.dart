@@ -21,8 +21,20 @@ import 'state_machine/state.dart';
 import 'state_machine/state_machine.dart';
 
 typedef QrImageAnalyzer = Future<String?> Function(String imagePath);
+typedef AppNowProvider = DateTime Function();
 
 const double minRequiredAlarmVolumePercent = 0.5;
+
+enum MonitoringLifecycle {
+  idle,
+  starting,
+  acquiring,
+  active,
+  stale,
+  reconnecting,
+  stopping,
+  failed,
+}
 
 /// アプリケーション全体の状態と動作を管理するコントローラ。
 ///
@@ -39,17 +51,40 @@ class AppController extends ChangeNotifier {
     QrImageAnalyzer? qrImageAnalyzer,
     AlarmVolumeClient? alarmVolumeClient,
     bool? isAndroid,
+    AppNowProvider? nowProvider,
+    Duration? staleTimeoutOverride,
+    Duration watchdogInterval = const Duration(seconds: 1),
+    List<Duration> reconnectDelays = const <Duration>[
+      Duration(seconds: 1),
+      Duration(seconds: 2),
+      Duration(seconds: 4),
+      Duration(seconds: 8),
+      Duration(seconds: 16),
+      Duration(seconds: 30),
+    ],
   })  : permissionCoordinator =
             permissionCoordinator ?? PermissionCoordinator(),
         _qrImageAnalyzer = qrImageAnalyzer ?? _defaultQrImageAnalyzer,
         alarmVolumeClient =
             alarmVolumeClient ?? const MethodChannelAlarmClient(),
-        _isAndroidOverride = isAndroid;
+        _isAndroidOverride = isAndroid,
+        _now = nowProvider ?? DateTime.now,
+        _staleTimeoutOverride = staleTimeoutOverride,
+        _watchdogInterval = watchdogInterval,
+        _reconnectDelays = List<Duration>.unmodifiable(reconnectDelays) {
+    assert(watchdogInterval > Duration.zero);
+    assert(reconnectDelays.isNotEmpty);
+    assert(reconnectDelays.every((delay) => delay > Duration.zero));
+  }
 
   final PermissionCoordinator permissionCoordinator;
   final QrImageAnalyzer _qrImageAnalyzer;
   final AlarmVolumeClient alarmVolumeClient;
   final bool? _isAndroidOverride;
+  final AppNowProvider _now;
+  final Duration? _staleTimeoutOverride;
+  final Duration _watchdogInterval;
+  final List<Duration> _reconnectDelays;
 
   final StateMachine stateMachine;
   final LocationService locationService;
@@ -72,6 +107,14 @@ class AppController extends ChangeNotifier {
   String? _geoJsonFileName;
   String? _tempGeoJsonFilePath;
   Timer? _alarmSnoozeTimer;
+  Timer? _locationWatchdogTimer;
+  Timer? _reconnectTimer;
+  DateTime? _lastFixReceivedAt;
+  MonitoringLifecycle _monitoringLifecycle = MonitoringLifecycle.idle;
+  int _reconnectAttempt = 0;
+  bool _reconnectInProgress = false;
+  bool _monitoringStaleWarningActive = false;
+  Future<void> _fixProcessingQueue = Future<void>.value();
   bool _isAlarmSnoozed = false;
   int _monitoringRunId = 0;
   bool _isDisposed = false;
@@ -92,12 +135,27 @@ class AppController extends ChangeNotifier {
       _snapshot.status == LocationStateStatus.outer && !_isAlarmSnoozed;
   bool get isAlarmPreviewPlaying => notifier.isAlarmPreviewPlaying;
   bool get canPreviewAlarm =>
-      _subscription == null && _snapshot.status != LocationStateStatus.outer;
+      !isMonitoringSession && _snapshot.status != LocationStateStatus.outer;
+  MonitoringLifecycle get monitoringLifecycle => _monitoringLifecycle;
+  bool get isMonitoringSession => switch (_monitoringLifecycle) {
+        MonitoringLifecycle.starting ||
+        MonitoringLifecycle.acquiring ||
+        MonitoringLifecycle.active ||
+        MonitoringLifecycle.stale ||
+        MonitoringLifecycle.reconnecting ||
+        MonitoringLifecycle.stopping =>
+          true,
+        MonitoringLifecycle.idle || MonitoringLifecycle.failed => false,
+      };
+  bool get canModifyConfiguration => !isMonitoringSession;
   MonitoringPermissionState get monitoringPermissionState =>
       _monitoringPermissionState;
   bool get _isAndroid => _isAndroidOverride ?? (!kIsWeb && Platform.isAndroid);
   bool get canStartMonitoring =>
-      geoJsonLoaded && _monitoringPermissionState.canStartMonitoring;
+      geoJsonLoaded &&
+      _monitoringPermissionState.canStartMonitoring &&
+      (_monitoringLifecycle == MonitoringLifecycle.idle ||
+          _monitoringLifecycle == MonitoringLifecycle.failed);
   bool get shouldShowPermissionSetupCard =>
       !_monitoringPermissionState.canStartMonitoring ||
       !_monitoringPermissionState.notificationGranted;
@@ -144,23 +202,80 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> startMonitoring() async {
-    if (isAlarmPreviewPlaying) {
-      await stopAlarmPreview();
-    }
-    if (_config == null || !geoJsonLoaded) {
+    if (!geoJsonLoaded ||
+        (_monitoringLifecycle != MonitoringLifecycle.idle &&
+            _monitoringLifecycle != MonitoringLifecycle.failed)) {
       return;
     }
-    _monitoringPermissionState =
-        await permissionCoordinator.refreshMonitoringPermissionState();
+    final startAttemptId = ++_monitoringRunId;
+    _monitoringLifecycle = MonitoringLifecycle.starting;
+    _lastErrorMessage = null;
+    notifyListeners();
+
+    if (isAlarmPreviewPlaying) {
+      try {
+        await stopAlarmPreview();
+      } catch (error) {
+        if (_isCurrentStartAttempt(startAttemptId)) {
+          _monitoringLifecycle = MonitoringLifecycle.failed;
+          _lastErrorMessage = '警告音テストを停止できないため、監視を開始できませんでした。';
+          _logError('ALERT', 'Failed to stop alarm preview: $error');
+          notifyListeners();
+        }
+        return;
+      }
+    }
+    if (!_isCurrentStartAttempt(startAttemptId)) {
+      return;
+    }
+    if (_config == null || !geoJsonLoaded) {
+      _monitoringLifecycle = MonitoringLifecycle.failed;
+      _lastErrorMessage = 'GeoJSONと設定を確認してください。';
+      notifyListeners();
+      return;
+    }
+    try {
+      _monitoringPermissionState =
+          await permissionCoordinator.refreshMonitoringPermissionState();
+    } catch (error) {
+      if (_isCurrentStartAttempt(startAttemptId)) {
+        _monitoringLifecycle = MonitoringLifecycle.failed;
+        _lastErrorMessage = '位置情報の権限状態を確認できないため、監視を開始できませんでした。';
+        _logError('APP', 'Failed to refresh monitoring permissions: $error');
+        notifyListeners();
+      }
+      return;
+    }
+    if (!_isCurrentStartAttempt(startAttemptId)) {
+      return;
+    }
     if (!_monitoringPermissionState.canStartMonitoring) {
+      _monitoringLifecycle = MonitoringLifecycle.failed;
       _lastErrorMessage = _monitoringPermissionState.monitoringBlockedMessage;
       _logWarning('APP', _lastErrorMessage!);
       notifyListeners();
       return;
     }
 
-    final result = await locationService.start(_config!);
+    LocationServiceStartResult result;
+    try {
+      result = await locationService.start(_config!);
+    } catch (error) {
+      result = LocationServiceStartResult(
+        status: LocationServiceStartStatus.error,
+        message: error.toString(),
+      );
+    }
+    if (!_isCurrentStartAttempt(startAttemptId)) {
+      try {
+        await locationService.stop();
+      } catch (_) {
+        // A concurrent explicit stop already owns error reporting.
+      }
+      return;
+    }
     if (result.status != LocationServiceStartStatus.started) {
+      _monitoringLifecycle = MonitoringLifecycle.failed;
       _lastErrorMessage = result.message ?? '位置情報の監視を開始できませんでした。';
       _logError('APP', _lastErrorMessage!);
       notifyListeners();
@@ -169,10 +284,19 @@ class AppController extends ChangeNotifier {
 
     stateMachine.resetMonitoring();
     await _subscription?.cancel();
-    final runId = ++_monitoringRunId;
+    final runId = startAttemptId;
     _subscription = locationService.stream.listen(
-      (fix) => unawaited(_handleFix(fix, runId)),
+      (fix) => _onLocationFix(fix, runId),
+      onError: (Object error, StackTrace stackTrace) {
+        unawaited(_handleLocationStreamError(error, runId));
+      },
     );
+    _fixProcessingQueue = Future<void>.value();
+    _lastFixReceivedAt = _now();
+    _reconnectAttempt = 0;
+    _reconnectInProgress = false;
+    _monitoringLifecycle = MonitoringLifecycle.acquiring;
+    _startLocationWatchdog(runId);
     _lastErrorMessage = null;
     _logInfo('APP', 'Monitoring started.');
     notifyListeners();
@@ -236,12 +360,39 @@ class AppController extends ChangeNotifier {
 
   /// 位置情報の監視を停止します。
   Future<void> stopMonitoring() async {
+    if (!isMonitoringSession && _subscription == null) {
+      return;
+    }
+    _monitoringLifecycle = MonitoringLifecycle.stopping;
+    notifyListeners();
     _monitoringRunId += 1;
+    _cancelLocationRecovery();
     _clearAlarmSnooze();
-    await notifier.dismissOuterAlert();
-    await _subscription?.cancel();
-    _subscription = null;
-    await locationService.stop();
+    try {
+      await notifier.dismissOuterAlert();
+    } catch (error) {
+      _logWarning('ALERT', 'Failed to dismiss alert while stopping: $error');
+    }
+    try {
+      await notifier.clearMonitoringStale();
+    } catch (error) {
+      _logWarning(
+        'ALERT',
+        'Failed to clear GPS warning while stopping: $error',
+      );
+    }
+    try {
+      await _subscription?.cancel();
+    } catch (error) {
+      _logWarning('GPS', 'Failed to cancel location stream cleanly: $error');
+    } finally {
+      _subscription = null;
+    }
+    try {
+      await locationService.stop();
+    } catch (error) {
+      _logWarning('GPS', 'Failed to stop location service cleanly: $error');
+    }
     stateMachine.updateGeometry(_geoModel, _areaIndex);
     _snapshot = StateSnapshot(
       status: geoJsonLoaded
@@ -253,26 +404,60 @@ class AppController extends ChangeNotifier {
           ? 'Monitoring stopped. Ready to restart.'
           : 'Monitoring stopped. Load GeoJSON to start monitoring.',
     );
+    _monitoringLifecycle = MonitoringLifecycle.idle;
     _logInfo('APP', 'Monitoring stopped.');
     notifyListeners();
   }
 
   Future<void> handleAppTermination() async {
     _monitoringRunId += 1;
+    _cancelLocationRecovery();
+    _monitoringLifecycle = MonitoringLifecycle.stopping;
     _clearAlarmSnooze();
     if (isAlarmPreviewPlaying) {
-      await stopAlarmPreview();
+      try {
+        await stopAlarmPreview();
+      } catch (error) {
+        _logWarning('ALERT', 'Failed to stop preview on termination: $error');
+      }
     }
-    await notifier.dismissOuterAlert();
-    await _subscription?.cancel();
-    _subscription = null;
-    await locationService.stop();
+    try {
+      await notifier.dismissOuterAlert();
+    } catch (error) {
+      _logWarning('ALERT', 'Failed to dismiss alert on termination: $error');
+    }
+    try {
+      await notifier.clearMonitoringStale();
+    } catch (error) {
+      _logWarning(
+          'ALERT', 'Failed to clear GPS warning on termination: $error');
+    }
+    try {
+      await _subscription?.cancel();
+    } catch (error) {
+      _logWarning('GPS', 'Failed to cancel location stream: $error');
+    } finally {
+      _subscription = null;
+    }
+    try {
+      await locationService.stop();
+    } catch (error) {
+      _logWarning(
+          'GPS', 'Failed to stop location service on termination: $error');
+    }
     await cleanupTempGeoJsonFile();
+    _monitoringLifecycle = MonitoringLifecycle.idle;
     _logInfo('APP', 'Application terminated. Monitoring and alert stopped.');
   }
 
   Future<void> handleAppResumed() async {
     await refreshMonitoringPermissionState();
+    if ((_monitoringLifecycle == MonitoringLifecycle.stale ||
+            _monitoringLifecycle == MonitoringLifecycle.reconnecting) &&
+        _reconnectTimer == null &&
+        !_reconnectInProgress) {
+      _scheduleLocationReconnect(_monitoringRunId);
+    }
     if (_snapshot.status != LocationStateStatus.outer || _isAlarmSnoozed) {
       return;
     }
@@ -288,6 +473,10 @@ class AppController extends ChangeNotifier {
   ///
   /// 開発者モードが有効な場合、UIに詳細な状態情報が表示されます。
   void setDeveloperMode(bool enabled) {
+    if (!canModifyConfiguration) {
+      _rejectConfigurationChange();
+      return;
+    }
     if (_developerMode == enabled) {
       return;
     }
@@ -298,17 +487,14 @@ class AppController extends ChangeNotifier {
 
   /// アプリケーション設定を更新します。
   ///
-  /// 監視中の場合は一時停止してから設定を更新し、再開します。
+  /// 監視中は設定を変更せず、停止後の変更を求めます。
   Future<void> updateConfig(AppConfig newConfig) async {
     if (_config == null) {
       return;
     }
-
-    final wasMonitoring = _subscription != null;
-
-    // 監視中であれば一時停止
-    if (wasMonitoring) {
-      await stopMonitoring();
+    if (!canModifyConfiguration) {
+      _rejectConfigurationChange();
+      return;
     }
 
     // 設定を更新
@@ -329,11 +515,6 @@ class AppController extends ChangeNotifier {
           'gpsThreshold=${normalizedConfig.gpsAccuracyBadMeters}m',
     );
 
-    // 監視中だった場合は新しい設定で再開
-    if (wasMonitoring && geoJsonLoaded) {
-      await startMonitoring();
-    }
-
     notifyListeners();
   }
 
@@ -342,8 +523,10 @@ class AppController extends ChangeNotifier {
   /// ファイルが正常に読み込まれた場合、状態マシンとエリアインデックスを更新します。
   /// エラーが発生した場合は、エラーメッセージを設定します。
   Future<void> reloadGeoJsonFromPicker() async {
-    // 先に監視を停止（ファイル操作前に停止）
-    await stopMonitoring();
+    if (!canModifyConfiguration) {
+      _rejectConfigurationChange();
+      return;
+    }
 
     try {
       // ファイル名を取得するために、file_selectorを直接使用
@@ -353,6 +536,12 @@ class AppController extends ChangeNotifier {
         return;
       }
 
+      final sourceBytes = await file.length();
+      if (sourceBytes > GeoJsonLimits.defaults.maxSourceBytes) {
+        throw FormatException(
+          'GeoJSONのサイズが上限（${GeoJsonLimits.defaults.maxSourceBytes} bytes）を超えています。',
+        );
+      }
       final raw = await file.readAsString();
       final model = GeoModel.fromGeoJson(raw);
       _requireMonitorableGeometry(model);
@@ -403,8 +592,10 @@ class AppController extends ChangeNotifier {
   /// 状態マシンとエリアインデックスを更新します。
   /// エラーが発生した場合は、エラーメッセージを設定します。
   Future<bool> reloadGeoJsonFromQr(String qrText) async {
-    // 先に監視を停止（ファイル操作前に停止）
-    await stopMonitoring();
+    if (!canModifyConfiguration) {
+      _rejectConfigurationChange();
+      return false;
+    }
 
     try {
       // QRテキストが対応スキームで始まることを確認
@@ -477,7 +668,10 @@ class AppController extends ChangeNotifier {
 
   /// QRコード画像ファイルからGeoJSONを読み込みます。
   Future<bool> reloadGeoJsonFromQrImagePicker() async {
-    await stopMonitoring();
+    if (!canModifyConfiguration) {
+      _rejectConfigurationChange();
+      return false;
+    }
 
     try {
       final file = await fileManager.pickQrImageFile();
@@ -554,6 +748,206 @@ class AppController extends ChangeNotifier {
     return _subscription != null && runId == _monitoringRunId;
   }
 
+  bool _isCurrentStartAttempt(int attemptId) {
+    return attemptId == _monitoringRunId &&
+        _monitoringLifecycle == MonitoringLifecycle.starting;
+  }
+
+  Duration get _locationStaleTimeout {
+    final override = _staleTimeoutOverride;
+    if (override != null) {
+      return override;
+    }
+    final sampleSeconds = _config?.effectiveFastSampleIntervalS ??
+        AppConfig.defaultFastSampleIntervalS;
+    final basedOnSampling = Duration(seconds: sampleSeconds * 3);
+    const minimum = Duration(seconds: 15);
+    return basedOnSampling > minimum ? basedOnSampling : minimum;
+  }
+
+  void _startLocationWatchdog(int runId) {
+    _locationWatchdogTimer?.cancel();
+    _locationWatchdogTimer = Timer.periodic(_watchdogInterval, (_) {
+      if (!_isCurrentMonitoringRun(runId)) {
+        return;
+      }
+      if (_monitoringLifecycle != MonitoringLifecycle.acquiring &&
+          _monitoringLifecycle != MonitoringLifecycle.active) {
+        return;
+      }
+      final lastFix = _lastFixReceivedAt;
+      if (lastFix != null &&
+          _now().difference(lastFix) >= _locationStaleTimeout) {
+        unawaited(_markLocationStale(runId, reason: 'GPS fix timeout'));
+      }
+    });
+  }
+
+  void _onLocationFix(LocationFix fix, int runId) {
+    if (!_isCurrentMonitoringRun(runId)) {
+      return;
+    }
+    final shouldClearStaleWarning = _monitoringStaleWarningActive;
+    _lastFixReceivedAt = _now();
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _reconnectAttempt = 0;
+    _reconnectInProgress = false;
+    _monitoringLifecycle = MonitoringLifecycle.active;
+    if (shouldClearStaleWarning) {
+      unawaited(_clearMonitoringStaleWarning(runId));
+    }
+    notifyListeners();
+
+    _fixProcessingQueue = _fixProcessingQueue.then((_) async {
+      await _handleFix(fix, runId);
+    }).catchError((Object error, StackTrace stackTrace) {
+      if (_isCurrentMonitoringRun(runId)) {
+        _logError('GPS', 'Failed to process location fix: $error');
+        notifyListeners();
+      }
+    });
+  }
+
+  Future<void> _clearMonitoringStaleWarning(int runId) async {
+    try {
+      await notifier.clearMonitoringStale();
+      if (_isCurrentMonitoringRun(runId)) {
+        _monitoringStaleWarningActive = false;
+        _logInfo('GPS', 'Location updates recovered.');
+      }
+    } catch (error) {
+      if (_isCurrentMonitoringRun(runId)) {
+        _logWarning('ALERT', 'Failed to clear GPS warning: $error');
+      }
+    }
+  }
+
+  Future<void> _handleLocationStreamError(Object error, int runId) async {
+    if (!_isCurrentMonitoringRun(runId)) {
+      return;
+    }
+    await _markLocationStale(runId, reason: error.toString());
+  }
+
+  Future<void> _markLocationStale(
+    int runId, {
+    required String reason,
+  }) async {
+    if (!_isCurrentMonitoringRun(runId)) {
+      return;
+    }
+    final alreadyRecovering =
+        _monitoringLifecycle == MonitoringLifecycle.stale ||
+            _monitoringLifecycle == MonitoringLifecycle.reconnecting;
+    if (!alreadyRecovering) {
+      _monitoringLifecycle = MonitoringLifecycle.stale;
+      _monitoringStaleWarningActive = true;
+      _logWarning('GPS', 'Location updates stopped: $reason.');
+      notifyListeners();
+      try {
+        await notifier.notifyMonitoringStale();
+      } catch (error) {
+        if (_isCurrentMonitoringRun(runId)) {
+          _logWarning('ALERT', 'Failed to show GPS warning: $error');
+        }
+      }
+    }
+    if (_isCurrentMonitoringRun(runId) &&
+        _reconnectTimer == null &&
+        !_reconnectInProgress) {
+      _scheduleLocationReconnect(runId);
+    }
+  }
+
+  void _scheduleLocationReconnect(int runId) {
+    if (!_isCurrentMonitoringRun(runId) ||
+        _reconnectTimer != null ||
+        _reconnectInProgress) {
+      return;
+    }
+    final delayIndex = _reconnectAttempt < _reconnectDelays.length
+        ? _reconnectAttempt
+        : _reconnectDelays.length - 1;
+    final delay = _reconnectDelays[delayIndex];
+    _reconnectAttempt += 1;
+    _monitoringLifecycle = MonitoringLifecycle.reconnecting;
+    _logInfo(
+      'GPS',
+      'Scheduling location reconnect attempt $_reconnectAttempt '
+          'in ${delay.inMilliseconds}ms.',
+    );
+    notifyListeners();
+    _reconnectTimer = Timer(delay, () {
+      _reconnectTimer = null;
+      unawaited(_reconnectLocation(runId));
+    });
+  }
+
+  Future<void> _reconnectLocation(int runId) async {
+    if (!_isCurrentMonitoringRun(runId) || _reconnectInProgress) {
+      return;
+    }
+    _reconnectInProgress = true;
+    _monitoringLifecycle = MonitoringLifecycle.reconnecting;
+    notifyListeners();
+    try {
+      await locationService.stop();
+      if (!_isCurrentMonitoringRun(runId)) {
+        return;
+      }
+      final config = _config;
+      if (config == null) {
+        throw StateError('Configuration is unavailable.');
+      }
+      final result = await locationService.start(config);
+      if (!_isCurrentMonitoringRun(runId)) {
+        try {
+          await locationService.stop();
+        } catch (_) {
+          // The explicit stop path owns error reporting for this run.
+        }
+        return;
+      }
+      if (result.status != LocationServiceStartStatus.started) {
+        throw StateError(result.message ?? 'Location service restart failed.');
+      }
+      _lastFixReceivedAt = _now();
+      _monitoringLifecycle = MonitoringLifecycle.acquiring;
+      _logInfo('GPS', 'Location service reconnected; waiting for a fix.');
+      notifyListeners();
+    } catch (error) {
+      if (_isCurrentMonitoringRun(runId)) {
+        _monitoringLifecycle = MonitoringLifecycle.stale;
+        _logWarning('GPS', 'Location reconnect failed: $error');
+        notifyListeners();
+      }
+    } finally {
+      _reconnectInProgress = false;
+    }
+    if (_isCurrentMonitoringRun(runId) &&
+        _monitoringLifecycle == MonitoringLifecycle.stale) {
+      _scheduleLocationReconnect(runId);
+    }
+  }
+
+  void _cancelLocationRecovery() {
+    _locationWatchdogTimer?.cancel();
+    _locationWatchdogTimer = null;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _lastFixReceivedAt = null;
+    _reconnectAttempt = 0;
+    _reconnectInProgress = false;
+    _monitoringStaleWarningActive = false;
+  }
+
+  void _rejectConfigurationChange() {
+    _lastErrorMessage = '監視中は設定やGeoJSONを変更できません。先に監視を停止してください。';
+    _logWarning('APP', _lastErrorMessage!);
+    notifyListeners();
+  }
+
   Future<void> _handleFix(LocationFix fix, int runId) async {
     if (!_isCurrentMonitoringRun(runId)) {
       return;
@@ -597,9 +991,16 @@ class AppController extends ChangeNotifier {
 
     if (previous != LocationStateStatus.outer &&
         _snapshot.status == LocationStateStatus.outer) {
-      await notifier.notifyOuter();
+      final delivery = await notifier.notifyOuter();
       if (!_isCurrentMonitoringRun(runId)) {
         return;
+      }
+      if (delivery.hasFailures) {
+        _logWarning(
+          'ALERT',
+          'One or more alert channels failed: ${delivery.failureSummary}',
+          timestamp: _snapshot.timestamp,
+        );
       }
       _logWarning(
         'ALERT',
@@ -648,12 +1049,16 @@ class AppController extends ChangeNotifier {
     }
 
     _isAlarmSnoozed = false;
-    await notifier.resumeAlarm();
-    _logWarning(
-      'ALERT',
-      'Alarm resumed after snooze.${_buildNavHint(_snapshot)}',
-      timestamp: DateTime.now(),
-    );
+    try {
+      await notifier.resumeAlarm();
+      _logWarning(
+        'ALERT',
+        'Alarm resumed after snooze.${_buildNavHint(_snapshot)}',
+        timestamp: _now(),
+      );
+    } catch (error) {
+      _logWarning('ALERT', 'Failed to resume alarm after snooze: $error');
+    }
     notifyListeners();
   }
 
@@ -671,6 +1076,7 @@ class AppController extends ChangeNotifier {
     bool? developerMode,
     StateSnapshot? snapshot,
     MonitoringPermissionState? permissionState,
+    MonitoringLifecycle? monitoringLifecycle,
   }) {
     if (config != null) {
       _config = config.normalized();
@@ -707,6 +1113,20 @@ class AppController extends ChangeNotifier {
 
     if (snapshot != null) {
       _snapshot = snapshot;
+      _monitoringLifecycle = monitoringLifecycle ??
+          switch (snapshot.status) {
+            LocationStateStatus.inner ||
+            LocationStateStatus.near ||
+            LocationStateStatus.outerPending ||
+            LocationStateStatus.outer ||
+            LocationStateStatus.gpsBad =>
+              MonitoringLifecycle.active,
+            LocationStateStatus.waitGeoJson ||
+            LocationStateStatus.waitStart =>
+              MonitoringLifecycle.idle,
+          };
+    } else if (monitoringLifecycle != null) {
+      _monitoringLifecycle = monitoringLifecycle;
     }
 
     if (permissionState != null) {
@@ -717,6 +1137,7 @@ class AppController extends ChangeNotifier {
   @override
   void dispose() {
     _isDisposed = true;
+    _cancelLocationRecovery();
     _clearAlarmSnooze();
     _subscription?.cancel();
     // dispose()は同期メソッドなので、非同期処理は実行しない

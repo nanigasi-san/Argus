@@ -41,6 +41,7 @@ flutter:
   assets:
     - assets/config/default_config.json
     - assets/geojson/
+    - docs/app_store/review_test_area.geojson
     - icon.png
     - assets/sounds/alarm.mp3
   fonts:

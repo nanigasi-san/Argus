@@ -427,7 +427,7 @@ void main() {
       expect(snapshot.status, LocationStateStatus.near);
     });
 
-    test('outer → inner (精度不良でも内側)', () {
+    test('outer → outer (内側に見えても精度不良なら警報を維持)', () {
       final outsideFix = LocationFix(
         latitude: 35.02,
         longitude: 139.02,
@@ -453,11 +453,11 @@ void main() {
         timestamp: outsideFix.timestamp.add(const Duration(seconds: 30)),
       );
       snapshot = machine.evaluate(insideWithBadGPS);
-      expect(snapshot.status, LocationStateStatus.inner);
+      expect(snapshot.status, LocationStateStatus.outer);
       expect(snapshot.horizontalAccuracyM, 50);
     });
 
-    test('outer → near (精度不良でも内側)', () {
+    test('outer → outer (境界付近に見えても精度不良なら警報を維持)', () {
       final outsideFix = LocationFix(
         latitude: 35.02,
         longitude: 139.02,
@@ -483,7 +483,7 @@ void main() {
         timestamp: outsideFix.timestamp.add(const Duration(seconds: 30)),
       );
       snapshot = machine.evaluate(insideWithBadGPS);
-      expect(snapshot.status, LocationStateStatus.near);
+      expect(snapshot.status, LocationStateStatus.outer);
       expect(snapshot.horizontalAccuracyM, 50);
     });
 

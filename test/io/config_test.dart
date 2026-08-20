@@ -69,6 +69,15 @@ void main() {
     expect(config.alarmVolume, AppConfig.maxAlarmVolume);
   });
 
+  test('alarm volume never normalizes below ten percent', () {
+    final config = AppConfig.fromJson(<String, dynamic>{
+      'alarm_volume': 0,
+    });
+
+    expect(config.alarmVolume, 0.1);
+    expect(AppConfig.minAlarmVolume, 0.1);
+  });
+
   test('loadDefault reads bundled config asset', () async {
     final config = await AppConfig.loadDefault();
 

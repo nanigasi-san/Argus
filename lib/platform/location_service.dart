@@ -38,6 +38,13 @@ enum LocationServiceStartStatus {
   error,
 }
 
+class LocationStreamEndedException implements Exception {
+  const LocationStreamEndedException();
+
+  @override
+  String toString() => '位置情報ストリームが予期せず終了しました。';
+}
+
 class LocationServiceStartResult {
   const LocationServiceStartResult({
     required this.status,
@@ -142,7 +149,15 @@ class GeolocatorLocationService implements LocationService {
       _monitoringStopwatch = Stopwatch()..start();
       _subscription = Geolocator.getPositionStream(
         locationSettings: settings,
-      ).listen(_emitPosition);
+      ).listen(
+        _emitPosition,
+        onError: (Object error, StackTrace stackTrace) {
+          _controller.addError(error, stackTrace);
+        },
+        onDone: () {
+          _controller.addError(const LocationStreamEndedException());
+        },
+      );
       return const LocationServiceStartResult.started();
     } catch (e) {
       return LocationServiceStartResult(

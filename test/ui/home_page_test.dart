@@ -41,6 +41,12 @@ Future<void> _tapWaitStart(WidgetTester tester) async {
   await tester.tap(statusTapTarget.first);
 }
 
+Future<void> _pumpMonitoringStart(WidgetTester tester) async {
+  for (var index = 0; index < 5; index++) {
+    await tester.pump();
+  }
+}
+
 void main() {
   tearDown(() async {
     await clearUrlLauncherMock();
@@ -97,6 +103,27 @@ void main() {
 
     expect(find.textContaining('境界までの距離'), findsOneWidget);
     expect(find.text('方角: 180度 (南)'), findsOneWidget);
+  });
+
+  testWidgets('shows reconnecting lifecycle and force-close warning',
+      (tester) async {
+    final controller = buildTestController(
+      hasGeoJson: true,
+      monitoringLifecycle: MonitoringLifecycle.reconnecting,
+      snapshot: StateSnapshot(
+        status: LocationStateStatus.waitStart,
+        timestamp: DateTime.utc(2024, 1, 1),
+        geoJsonLoaded: true,
+      ),
+    );
+
+    await _pumpHome(tester, controller);
+
+    expect(find.text('再接続中'), findsOneWidget);
+    expect(find.text('RECONNECTING'), findsOneWidget);
+    expect(find.byKey(const Key('force-close-warning')), findsOneWidget);
+    expect(find.byKey(const Key('finish-race-button')), findsOneWidget);
+    expect(find.text('ファイルを\n読み込む'), findsNothing);
   });
 
   testWidgets('shows snooze button only while OUTER', (tester) async {
@@ -571,10 +598,11 @@ void main() {
       matching: find.byType(InkWell),
     );
     await tester.tap(statusTapTarget.first);
-    await tester.pumpAndSettle();
+    await _pumpMonitoringStart(tester);
 
     expect(locationService.hasStarted, isTrue);
     expect(alarmVolumeClient.checkCount, 1);
+    controller.dispose();
   });
 
   testWidgets('low Android alarm volume blocks monitoring and shows dialog',
@@ -637,10 +665,12 @@ void main() {
     await _tapWaitStart(tester);
     await tester.pumpAndSettle();
     await tester.tap(find.text('再確認'));
-    await tester.pumpAndSettle();
+    await _pumpMonitoringStart(tester);
+    await tester.pump(const Duration(milliseconds: 300));
 
     expect(locationService.hasStarted, isTrue);
     expect(find.text('アラーム音量が低すぎます'), findsNothing);
+    controller.dispose();
   });
 
   testWidgets('cancel keeps monitoring stopped after low alarm volume',
@@ -664,7 +694,7 @@ void main() {
 
     await _pumpHome(tester, controller);
     await _tapWaitStart(tester);
-    await tester.pumpAndSettle();
+    await _pumpMonitoringStart(tester);
     await tester.tap(find.text('キャンセル'));
     await tester.pumpAndSettle();
 
@@ -689,7 +719,7 @@ void main() {
 
     await _pumpHome(tester, controller);
     await _tapWaitStart(tester);
-    await tester.pumpAndSettle();
+    await _pumpMonitoringStart(tester);
 
     expect(locationService.hasStarted, isTrue);
     expect(
@@ -698,6 +728,7 @@ void main() {
       ),
       isTrue,
     );
+    controller.dispose();
   });
 
   testWidgets('non-Android start is not blocked by alarm volume check',
@@ -726,6 +757,7 @@ void main() {
 
     expect(locationService.hasStarted, isTrue);
     expect(alarmVolumeClient.checkCount, 0);
+    controller.dispose();
   });
 
   testWidgets('sound settings failure shows snackbar', (tester) async {

@@ -33,7 +33,7 @@ class AppConfig {
   static const maxSampleIntervalS = 60;
 
   static const defaultAlarmVolume = 0.5;
-  static const minAlarmVolume = 0.0;
+  static const minAlarmVolume = 0.1;
   static const maxAlarmVolume = 1.0;
 
   final double innerBufferM;

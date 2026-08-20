@@ -155,6 +155,7 @@ AppController buildTestController({
   QrImageAnalyzer? qrImageAnalyzer,
   AlarmVolumeClient? alarmVolumeClient,
   bool? isAndroid,
+  MonitoringLifecycle? monitoringLifecycle,
 }) {
   final config = createTestConfig();
   final stateMachine = StateMachine(config: config);
@@ -188,6 +189,7 @@ AppController buildTestController({
     areaIndex: areaIndex,
     snapshot: snapshot,
     developerMode: developerMode,
+    monitoringLifecycle: monitoringLifecycle,
     permissionState: permissionState ??
         const MonitoringPermissionState(
           notificationStatus: PermissionStatus.granted,

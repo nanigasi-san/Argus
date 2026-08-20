@@ -1,4 +1,4 @@
-# Argus アプリ仕様（コード起点 / 2026-06-17）
+# Argus アプリ仕様（コード起点 / 2026-08-20）
 
 この文書はリポジトリ内の実装（特に `lib/` 配下）から読み取った事実ベースの仕様です。ランディングページ用コピーや追加開発時の参照に使えます。
 
@@ -36,16 +36,18 @@
    - ファイル: `FileManager.pickGeoJsonFile()` で `.geojson/.json/.bin` を選択しパース→`GeoModel`→`AreaIndex` 構築。ファイル名を `.geojson` 拡張子に正規化して保持。
    - QR: `agz1:` / `gjz1:` テキストを復元→gzip 伸長→構造バリデーション→一時ファイル保存（次回起動で消去）。`agz1` は元ファイル名も復元する。
    ロード成功後の状態は `waitStart`、`navigationEnabled` は false にリセット、アラーム停止。
-4) 監視開始: `startMonitoring()` で Geolocator ストリーム購読開始。`sampleIntervalS['fast']`（デフォルト 3 秒）間隔・距離フィルタ 0m・`LocationAccuracy.best`。
+4) 監視開始: `startMonitoring()` で Geolocator ストリーム購読開始。`starting → acquiring → active` の監視ライフサイクルを持つ。`sampleIntervalS['fast']`（デフォルト 3 秒）間隔・距離フィルタ 0m・`LocationAccuracy.best`。
 5) 評価ループ: 各 `LocationFix` を `StateMachine.evaluate()` に通し、UI/ログ/通知に反映。OUTER 確定時に通知＋アラーム。再入時に停止通知。
-6) 停止/終了: `stopMonitoring()` で購読解除・Geolocator 停止。アプリ detach 時に QR 由来の一時 GeoJSON を削除。
+6) GPS監視: 最終fixから `max(15秒, 取得間隔×3)` が経過、または位置ストリームがエラー/終了した場合は警告通知と短い振動を出し、1/2/4/8/16/30秒のバックオフで再接続する。fix復帰時に警告を解除する。
+7) 停止/終了: `stopMonitoring()` で購読解除・Geolocator 停止。アプリ detach 時に QR 由来の一時 GeoJSON を削除。強制終了後の自動復元は行わない。
 
 ## 5. 中核ドメイン仕様
 ### 5.1 GeoJSON 取り込み
-- 対応タイプ: FeatureCollection の Polygon / MultiPolygon（各ポリゴンは最初のリングのみ使用、3点未満は無視）。properties の `name`/`version` は読み取りのみ未使用。
+- 対応タイプ: FeatureCollection の穴なし Polygon / MultiPolygon。穴は黙って無視せずエラーにする。座標範囲、有限値、始終点閉包、3つ以上の異なる頂点、0でない面積を検証する。properties の `name`/`version` は読み取りのみ未使用。
+- 上限: UTF-8で1MB、Polygon 10個、1 Polygon 5,000頂点、合計10,000頂点。QRのgzip展開後も1MBで打ち切る。
 - ファイルピック時はクエリ/フラグメントを除去したファイル名を `.geojson` に正規化して記憶。
 - ロード失敗時は `FormatException`/その他を Snackbar で表示し、状態は維持。
-- 新規ロード時は監視を一時停止し、AreaIndex も再構築。
+- 設定・GeoJSON・QRの変更は監視中には受け付けない。停止後の新規ロード時に AreaIndex を再構築する。
 
 ### 5.2 QR コーデック（ライブラリ）
 - 標準エンコード: 単一Feature・単一Polygonの外周座標をscale 6の差分列へ変換し、元ファイル名とともに `a3` 本文へ格納する。gzip(level=9) → Base64URL（= 無パディング）→ `agz1:<payload>` とし、画像名は `QR_<元名>.png`。
@@ -65,7 +67,7 @@
 ### 5.5 状態機械（`state_machine.dart`）
 - 状態: `waitGeoJson` → `waitStart` → `inner / near / outerPending / outer / gpsBad`。
 - 距離閾値: `innerBufferM`（デフォルト 30m）より内側で `near`、それ以上は `inner`。
-- GPS 精度: `accuracyMeters == null` または `> gpsAccuracyBadMeters`（デフォルト 40m）のとき `gpsBad`。ただし直前が OUTER の場合は「外にいる前提」で最寄り境界距離だけ更新し OUTER 維持。精度が悪くても内側に戻ったと判定できれば `inner/near` に復帰しヒステリシスリセット。
+- GPS 精度: `accuracyMeters == null` または `> gpsAccuracyBadMeters`（デフォルト 40m）のとき `gpsBad`。ただし直前が OUTER の場合は「外にいる前提」で最寄り境界距離だけ更新し OUTER を維持する。低精度fixでは警告を解除せず、精度が閾値内へ戻ったfixだけが `inner/near` に復帰できる。
 - OUTER 確定条件: 最初の有効なエリア外判定から、単調増加する実経過時間で `leaveConfirmSeconds` 秒（デフォルト 10 秒）かつ `leaveConfirmSamples` 回（デフォルト 3）に到達すること。GPS timestampは確定時間に使わない。未達時は `outerPending`。
 - ポリゴン探索: AreaIndex の軸平行バウンディングボックスで候補絞り込み、ray-cast で包含判定。最短距離/方位を常に計算し `StateSnapshot` に積む。
 - ナビゲーション表示: OUTER になったタイミングで `navigationEnabled=true`。Developer mode ではエリア内でもナビ表示可。それ以外は OUTER 以降のみ距離/方位ヒントを UI に出す。
@@ -77,26 +79,26 @@
 
 ### 5.7 通知・アラーム（`notifier.dart`）
 - チャンネル: `argus_alerts_visual_v2` / `ARGUS警告`（Android importance max / 通知自体の音・バイブは無効）。タイトル「ARGUS警告」、本文「競技エリアから離れています。」。OUTER 通知 ID は `1001`。
-- OUTER: ローカル通知＋同梱警報音のネイティブループ再生＋ネイティブ連続バイブを開始する。Android は `MediaPlayer` と `VibrationEffect`、iOS は `AVAudioPlayer` と `AudioServicesPlaySystemSound` を使用し、通知との重複再生を避ける。
+- OUTER: ローカル通知＋同梱警報音のネイティブループ再生＋ネイティブ連続バイブを独立に開始する。1経路の失敗で他経路を止めず、失敗経路をwarningログへ残す。Android は `MediaPlayer` と `VibrationEffect`、iOS は `AVAudioPlayer` と `AudioServicesPlaySystemSound` を使用する。
 - 復帰: OUTER 通知をキャンセルし、アラーム停止のみ。ログに “Returned to safe zone.” を出力。
-- 音量: ユーザー設定 0.0–1.0 を `AlarmPlayer` に反映（初期 0.5）。警報音源自体は増幅済みの MP3 を同梱する。Android では監視開始前に端末のアラーム音量を確認し、`percent >= 0.5` なら開始可、50% 未満なら開始せず「５０％以上」警告と音設定への導線を出す。音量取得失敗時は warning ログを残し、監視開始はブロックしない。
+- 音量: ユーザー設定 0.1–1.0（10–100%）を `AlarmPlayer` に反映（初期 0.5）。Android では監視開始前に端末のアラーム音量を確認し、`percent >= 0.5` なら開始可、50% 未満なら開始せず「５０％以上」警告と音設定への導線を出す。音量取得失敗時は warning ログを残し、監視開始はブロックしない。
 - iOS警告音テスト: Settingsから現在のスライダー音量で音声だけを再生する。通知・バイブは発生させず、ホーム画面でも継続し、停止操作・Settings終了・監視開始・アプリ終了で停止する。
 - 音設定: MethodChannel `argus/alarm` の `openSoundSettings` を呼ぶ。Android 側は `ACTION_SOUND_SETTINGS` を開き、失敗時は `ACTION_SETTINGS` にフォールバックする。
 
 ### 5.8 UI
-- Home (`home_page.dart`): 大型ステータス円で状態表示（INNER/NEAR/OUTER 等、色付き）。`waitStart` ではタップで監視開始。GeoJSON ファイル名と GPS 精度を常時表示。OUTER（または Developer mode）で距離/方位ナビ表示。最新 5 件のアプリ内ログをカードで閲覧。エラーは Snackbar。
-- Settings (`settings_page.dart`): 設定フォーム（Inner buffer, GPS 精度閾値, Leave confirm サンプル/秒, Alarm 音量）。iOSでは警告音の開始・停止テストを表示する。Developer mode トグル。ログ JSON エクスポート（メモリ上の `EventLogger` 内容をその場表示）。
+- Home (`home_page.dart`): 大型ステータス円で状態表示（INNER/NEAR/OUTERに加え、開始中/GPS取得中/GPS停止/再接続中/停止中/失敗）。監視中は強制終了で監視が止まる注意を表示する。
+- Settings (`settings_page.dart`): 設定フォーム（Inner buffer, GPS 精度閾値, Leave confirm サンプル/秒, Alarm 音量）。監視中は全設定をロックする。iOSでは警告音の開始・停止テストを表示する。
 - QR Scanner (`qr_scanner_page.dart`): `mobile_scanner` で `agz1` / `gjz1` スキーム QR を読み取り、`AppController.reloadGeoJsonFromQr` へ連携。処理中オーバーレイとエラーバナーを表示。
 - テーマ: Material3、Seed color Blue。文言は日本語中心で一部英語残り。
 
 ## 6. データ/設定リファレンス
 - AppConfig (`io/config.dart`):
-  - `inner_buffer_m`(double, 30.0) / `leave_confirm_samples`(int, 3) / `leave_confirm_seconds`(int, 10) / `gps_accuracy_bad_m`(double, 40.0) / `sample_interval_s.fast`(int, 3) / `sample_distance_m`(保持のみ・未使用) / `screen_wake_on_leave`(保持のみ・未使用) / `alarm_volume`(double, 1.0)。
+  - `inner_buffer_m`(double, 30.0) / `leave_confirm_samples`(int, 3) / `leave_confirm_seconds`(int, 10) / `gps_accuracy_bad_m`(double, 40.0) / `sample_interval_s.fast`(int, 3) / `alarm_volume`(double, 0.5、最小0.1)。
   - 保存先: ドキュメントディレクトリの `config.json`。読み込み失敗時はデフォルトを再生成。
 - StateSnapshot (`state.dart`): `status`, `timestamp`, `distanceToBoundaryM`, `horizontalAccuracyM`, `geoJsonLoaded`, `notes`, `nearestBoundaryPoint(LatLng)`, `bearingToBoundaryDeg`。
 - ログ:
   - UI ログ (`AppLogEntry`): 種別 debug/info/warning/error、200 件までメモリ保持（永続化なし）。
-  - EventLogger: `location`（lat/lon/accuracy/battery）、`state`（status/distance/accuracy/bearing/nearest/notes）をメモリ配列に追加。`exportJsonl()` で JSON 文字列を返すのみ。
+  - EventLogger: `location` と `state` を最大20,000件のメモリリングバッファへ追加。`exportJsonl()` で JSON 文字列を返すのみ。
 
 ## 7. 依存・アセット
 - 主要パッケージ: geolocator, flutter_local_notifications, permission_handler, mobile_scanner, file_selector, provider, qr, image, crypto, package_info_plus, upgrader。
@@ -119,7 +121,7 @@
 ## 10. 弱み / リスク（現状コード由来）
 - ストリーム前提: OS ネイティブ geofence を使わず Geolocator の高頻度ストリームに依存する。電池負荷と端末設定（省電力）に左右される。
 - 外部依存: QR エンコード/デコードに外部CLIは不要。
-- GeoJSON サポートの簡素さ: 最初のリングしか読まないため穴 (holes) や複数リングを無視。MultiPolygon も各ポリゴンの一番外側のみ。高精度ジオフェンスには不十分な場合がある。
+- GeoJSON サポートの限定: 穴付きPolygonは安全のため読み込みを拒否する。1MB・Polygon数・頂点数の上限を超える大規模データも読み込めない。
 - 設定項目の遊休: `sample_distance_m` と `screen_wake_on_leave` は UI/ロジックで未使用。設定と実挙動が乖離する恐れ。
 - ログ永続化なし: UI ログはメモリ 200 件のみ、EventLogger もメモリのみ。`FileManager.openLogFile()` は未使用で実ファイルに残らない。
 - バックグラウンド挙動の限定: アプリ終了後の自動再開なし。起動後も GeoJSON を手動ロードしないと監視が始まらない（サンプル GeoJSON も自動読み込みしない）。
@@ -129,9 +131,10 @@
 ## 11. 運用メモ
 - Android では Foreground Service 通知が常に出る想定。監視開始には位置サービス有効と「常に位置情報」許可が必須。
 - iOS では Always 許可＋背景位置表示が有効化されている必要あり。拒否された場合の代替フローは無し。
-- GeoJSON を差し替えたら自動で監視停止→再起動しないので、利用者に「再度 START を押す」導線を用意すると親切。
+- 設定やGeoJSONを変更する場合は、先に監視を停止する。
+- 画面ロックや他アプリ利用中は背景監視を継続するが、アプリの強制終了やOSによるプロセス終了後は監視を自動復元しない。
 - アプリ終了時（detached）に QR 由来の一時 GeoJSON を自動削除するため、永続利用にはファイルピックを使う。
 
 ---
 
-上記は 2026-06-17 時点のコードを直接確認した内容です。挙動変更時は `lib/app_controller.dart`・`lib/state_machine/state_machine.dart`・`lib/platform/`・`lib/qr/geojson_qr_codec.dart` 周辺のロジック更新に合わせて改訂してください。
+上記は 2026-08-20 時点のコードを直接確認した内容です。挙動変更時は `lib/app_controller.dart`・`lib/state_machine/state_machine.dart`・`lib/platform/`・`lib/qr/geojson_qr_codec.dart` 周辺のロジック更新に合わせて改訂してください。

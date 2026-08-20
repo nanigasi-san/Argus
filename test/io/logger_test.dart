@@ -71,5 +71,23 @@ void main() {
       expect(decoded[0]['status'], 'inner');
       expect(decoded[1]['status'], 'outer');
     });
+
+    test('keeps only the newest records at the configured cap', () async {
+      final logger = EventLogger(maxRecords: 3);
+      for (var index = 0; index < 5; index++) {
+        await logger.logLocationFix(
+          LocationFix(
+            timestamp: DateTime.utc(2024, 1, 1, 0, 0, index),
+            latitude: index.toDouble(),
+            longitude: 139,
+          ),
+        );
+      }
+
+      final decoded = jsonDecode(await logger.exportJsonl()) as List;
+
+      expect(decoded, hasLength(3));
+      expect(decoded.map((record) => record['lat']), [2.0, 3.0, 4.0]);
+    });
   });
 }

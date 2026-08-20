@@ -7,22 +7,57 @@ import 'package:flutter/services.dart';
 
 import '../state_machine/state.dart';
 
+class AlertDeliveryReport {
+  const AlertDeliveryReport({
+    this.notificationError,
+    this.alarmError,
+    this.vibrationError,
+  });
+
+  final Object? notificationError;
+  final Object? alarmError;
+  final Object? vibrationError;
+
+  bool get hasFailures =>
+      notificationError != null || alarmError != null || vibrationError != null;
+
+  String get failureSummary {
+    final failures = <String>[];
+    if (notificationError != null) {
+      failures.add('notification=$notificationError');
+    }
+    if (alarmError != null) {
+      failures.add('alarm=$alarmError');
+    }
+    if (vibrationError != null) {
+      failures.add('vibration=$vibrationError');
+    }
+    return failures.join(', ');
+  }
+}
+
 class Notifier {
   Notifier({
     FlutterLocalNotificationsPlugin? plugin,
     LocalNotificationsClient? notificationsClient,
     AlarmPlayer? alarmPlayer,
     VibrationPlayer? vibrationPlayer,
+    Duration monitoringStaleVibrationDuration =
+        const Duration(milliseconds: 350),
   })  : _notifications = notificationsClient ??
             FlutterLocalNotificationsClient(
               plugin ?? FlutterLocalNotificationsPlugin(),
             ),
         _alarmPlayer = alarmPlayer ?? const NativeAlarmPlayer(),
-        _vibrationPlayer = vibrationPlayer ?? const NativeVibrationPlayer();
+        _vibrationPlayer = vibrationPlayer ?? const NativeVibrationPlayer(),
+        _monitoringStaleVibrationDuration = monitoringStaleVibrationDuration {
+    assert(!monitoringStaleVibrationDuration.isNegative);
+  }
 
   final LocalNotificationsClient _notifications;
   AlarmPlayer _alarmPlayer;
   final VibrationPlayer _vibrationPlayer;
+  final Duration _monitoringStaleVibrationDuration;
 
   final ValueNotifier<LocationStateStatus> badgeState =
       ValueNotifier<LocationStateStatus>(
@@ -32,12 +67,16 @@ class Notifier {
   static const _channelId = 'argus_alerts_visual_v2';
   static const _channelName = 'ARGUS警告';
   static const _channelDescription = 'ジオフェンスの安全エリアから離れたときに通知します。';
+  static const _healthChannelId = 'argus_monitoring_health_v1';
+  static const _healthChannelName = 'ARGUS監視状態';
   static const int _outerNotificationId = 1001;
+  static const int _monitoringStaleNotificationId = 1002;
 
   bool _initialized = false;
   bool _isAlarming = false;
   bool _isAlarmPreviewPlaying = false;
   int _generation = 0;
+  Timer? _monitoringStaleVibrationTimer;
 
   bool get isAlarmPreviewPlaying => _isAlarmPreviewPlaying;
 
@@ -52,6 +91,7 @@ class Notifier {
   }
 
   Future<void> startAlarmPreview() async {
+    _cancelMonitoringStaleVibrationTimer();
     final generation = ++_generation;
     _isAlarmPreviewPlaying = false;
     _isAlarming = false;
@@ -76,6 +116,7 @@ class Notifier {
   }
 
   Future<void> stopAlarmPreview() async {
+    _cancelMonitoringStaleVibrationTimer();
     _generation += 1;
     _isAlarmPreviewPlaying = false;
     await _alarmPlayer.stop();
@@ -107,15 +148,24 @@ class Notifier {
         enableVibration: false,
       ),
     );
+    await _notifications.ensureAndroidChannel(
+      const AndroidNotificationChannel(
+        _healthChannelId,
+        _healthChannelName,
+        description: 'GPS監視の停止や再接続を通知します。',
+        importance: Importance.high,
+        playSound: false,
+        enableVibration: false,
+      ),
+    );
 
     _initialized = true;
   }
 
-  Future<void> notifyOuter() async {
+  Future<AlertDeliveryReport> notifyOuter() async {
     if (_isAlarmPreviewPlaying) {
       await stopAlarmPreview();
     }
-    await initialize();
     final generation = _generation;
     const androidDetails = AndroidNotificationDetails(
       _channelId,
@@ -140,16 +190,67 @@ class Notifier {
       android: androidDetails,
       iOS: iosDetails,
     );
-    await _notifications.show(
-      _outerNotificationId,
-      'ARGUS警告',
-      '競技エリアから離れています。',
-      notificationDetails,
+    final notificationFuture = () async {
+      try {
+        await initialize();
+        await _notifications.show(
+          _outerNotificationId,
+          'ARGUS警告',
+          '競技エリアから離れています。',
+          notificationDetails,
+        );
+        if (generation != _generation) {
+          await _notifications.cancel(_outerNotificationId);
+        }
+        return null;
+      } catch (error) {
+        return error;
+      }
+    }();
+    final playbackFuture = _resumeAlarm(generation);
+    final playback = await playbackFuture;
+    final notificationError = await notificationFuture;
+    return AlertDeliveryReport(
+      notificationError: notificationError,
+      alarmError: playback.alarmError,
+      vibrationError: playback.vibrationError,
     );
-    if (generation != _generation) {
-      return;
-    }
-    await _resumeAlarm(generation);
+  }
+
+  Future<void> notifyMonitoringStale() async {
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        _healthChannelId,
+        _healthChannelName,
+        channelDescription: 'GPS監視の停止や再接続を通知します。',
+        importance: Importance.high,
+        priority: Priority.high,
+        playSound: false,
+        enableVibration: false,
+      ),
+      iOS: DarwinNotificationDetails(
+        presentAlert: true,
+        presentSound: false,
+      ),
+    );
+    final errors = await Future.wait<Object?>([
+      _captureError(() async {
+        await initialize();
+        await _notifications.show(
+          _monitoringStaleNotificationId,
+          'ARGUS監視警告',
+          'GPSを受信できません。位置情報へ再接続しています。',
+          details,
+        );
+      }),
+      _captureError(_startMonitoringStaleVibration),
+    ]);
+    _throwFirstError(errors);
+  }
+
+  Future<void> clearMonitoringStale() async {
+    await initialize();
+    await _notifications.cancel(_monitoringStaleNotificationId);
   }
 
   Future<void> notifyRecover() async {
@@ -162,81 +263,192 @@ class Notifier {
   }
 
   Future<void> stopAlarm() async {
+    _cancelMonitoringStaleVibrationTimer();
     _generation += 1;
     _isAlarming = false;
     _isAlarmPreviewPlaying = false;
-    await _alarmPlayer.stop();
-    await _vibrationPlayer.stop();
+    final errors = await Future.wait<Object?>([
+      _captureError(_alarmPlayer.stop),
+      _captureError(_vibrationPlayer.stop),
+    ]);
+    _throwFirstError(errors);
   }
 
   Future<void> resumeAlarm() async {
-    await _resumeAlarm(_generation);
+    final result = await _resumeAlarm(_generation);
+    result.throwIfFailed();
   }
 
   Future<void> reassertAlarm() async {
+    _cancelMonitoringStaleVibrationTimer();
     if (!_isAlarming) {
-      await _resumeAlarm(_generation);
+      final result = await _resumeAlarm(_generation);
+      result.throwIfFailed();
       return;
     }
 
     final generation = _generation;
-    try {
-      await _alarmPlayer.start();
-      if (generation != _generation) {
-        await _alarmPlayer.stop();
-        return;
-      }
-      await _vibrationPlayer.stop();
-      await _vibrationPlayer.start();
-    } catch (_) {
+    final results = await Future.wait<Object?>([
+      _startAlarmChannel(generation),
+      _startVibrationChannel(generation, restart: true),
+    ]);
+    final alarmError = results[0];
+    final vibrationError = results[1];
+    if (alarmError != null || vibrationError != null) {
       _isAlarming = false;
-      rethrow;
     }
+    _PlaybackStartResult(
+      alarmError: alarmError,
+      vibrationError: vibrationError,
+    ).throwIfFailed();
   }
 
-  Future<void> _resumeAlarm(int generation) async {
+  Future<_PlaybackStartResult> _resumeAlarm(int generation) async {
+    _cancelMonitoringStaleVibrationTimer();
     var activeGeneration = generation;
     if (_isAlarmPreviewPlaying) {
       await stopAlarmPreview();
       activeGeneration = _generation;
     }
     if (_isAlarming || activeGeneration != _generation) {
-      return;
+      return const _PlaybackStartResult();
     }
     _isAlarming = true;
+    final results = await Future.wait<Object?>([
+      _startAlarmChannel(activeGeneration),
+      _startVibrationChannel(activeGeneration),
+    ]);
+    final alarmError = results[0];
+    final vibrationError = results[1];
+    if (activeGeneration != _generation) {
+      _isAlarming = false;
+      return const _PlaybackStartResult();
+    }
+    if (alarmError != null || vibrationError != null) {
+      _isAlarming = false;
+    }
+    return _PlaybackStartResult(
+      alarmError: alarmError,
+      vibrationError: vibrationError,
+    );
+  }
+
+  Future<Object?> _startAlarmChannel(int generation) async {
     try {
       await _alarmPlayer.start();
-      if (activeGeneration != _generation) {
+      if (generation != _generation) {
         await _alarmPlayer.stop();
-        _isAlarming = false;
-        return;
+      }
+      return null;
+    } catch (error) {
+      try {
+        await _alarmPlayer.stop();
+      } catch (_) {}
+      return error;
+    }
+  }
+
+  Future<Object?> _startVibrationChannel(
+    int generation, {
+    bool restart = false,
+  }) async {
+    try {
+      if (restart) {
+        await _vibrationPlayer.stop();
       }
       await _vibrationPlayer.start();
-      if (activeGeneration != _generation) {
-        await _alarmPlayer.stop();
+      if (generation != _generation) {
         await _vibrationPlayer.stop();
-        _isAlarming = false;
       }
-    } catch (_) {
-      _isAlarming = false;
-      try {
-        await _alarmPlayer.stop();
-      } catch (_) {}
+      return null;
+    } catch (error) {
       try {
         await _vibrationPlayer.stop();
       } catch (_) {}
-      rethrow;
+      return error;
     }
   }
 
   Future<void> dismissOuterAlert() async {
+    _cancelMonitoringStaleVibrationTimer();
     _generation += 1;
     _isAlarming = false;
     _isAlarmPreviewPlaying = false;
-    await initialize();
-    await _notifications.cancel(_outerNotificationId);
-    await _alarmPlayer.stop();
-    await _vibrationPlayer.stop();
+    final errors = await Future.wait<Object?>([
+      _captureError(() async {
+        await initialize();
+        await _notifications.cancel(_outerNotificationId);
+      }),
+      _captureError(_alarmPlayer.stop),
+      _captureError(_vibrationPlayer.stop),
+    ]);
+    _throwFirstError(errors);
+  }
+
+  Future<void> _startMonitoringStaleVibration() async {
+    if (_isAlarming) {
+      return;
+    }
+    _cancelMonitoringStaleVibrationTimer();
+    await _vibrationPlayer.start();
+    if (_isAlarming) {
+      return;
+    }
+    _monitoringStaleVibrationTimer = Timer(
+      _monitoringStaleVibrationDuration,
+      () {
+        _monitoringStaleVibrationTimer = null;
+        if (!_isAlarming) {
+          unawaited(_stopMonitoringStaleVibrationIgnoringErrors());
+        }
+      },
+    );
+  }
+
+  void _cancelMonitoringStaleVibrationTimer() {
+    _monitoringStaleVibrationTimer?.cancel();
+    _monitoringStaleVibrationTimer = null;
+  }
+
+  Future<void> _stopMonitoringStaleVibrationIgnoringErrors() async {
+    try {
+      await _vibrationPlayer.stop();
+    } catch (_) {
+      // The short health pulse is best effort after it has already started.
+    }
+  }
+
+  Future<Object?> _captureError(Future<void> Function() action) async {
+    try {
+      await action();
+      return null;
+    } catch (error) {
+      return error;
+    }
+  }
+
+  void _throwFirstError(List<Object?> errors) {
+    for (final error in errors) {
+      if (error != null) {
+        throw error;
+      }
+    }
+  }
+}
+
+class _PlaybackStartResult {
+  const _PlaybackStartResult({this.alarmError, this.vibrationError});
+
+  final Object? alarmError;
+  final Object? vibrationError;
+
+  void throwIfFailed() {
+    if (alarmError != null) {
+      throw alarmError!;
+    }
+    if (vibrationError != null) {
+      throw vibrationError!;
+    }
   }
 }
 
