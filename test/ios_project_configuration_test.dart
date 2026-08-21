@@ -180,7 +180,19 @@ void main() {
       expect(workflow, contains('simctl privacy'));
       expect(workflow, contains('location-always'));
       expect(workflow, contains('simctl location'));
+      expect(
+        workflow,
+        contains(
+          '--target=integration_test/monitoring_review_geojson_test.dart',
+        ),
+      );
       expect(workflow, contains('flutter drive --no-pub'));
+      expect(
+        workflow,
+        contains(
+          '--use-application-binary=build/ios/iphonesimulator/Runner.app',
+        ),
+      );
     });
 
     test('does not depend on flutter_ringtone_player fallback', () {

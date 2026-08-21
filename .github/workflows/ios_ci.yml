@@ -63,6 +63,8 @@ jobs:
       - name: Run monitoring flow through native iOS channels
         run: |
           set -euo pipefail
+          flutter build ios --simulator --debug --no-pub \
+            --target=integration_test/monitoring_review_geojson_test.dart
           simulator_udid="$(
             xcrun simctl list devices available -j |
               python3 -c 'import json, sys; devices = json.load(sys.stdin)["devices"]; print(next(device["udid"] for runtime in devices.values() for device in runtime if device["name"].startswith("iPhone")))'
@@ -80,6 +82,7 @@ jobs:
           location_injector_pid=$!
           trap 'kill "$location_injector_pid" 2>/dev/null || true' EXIT
           flutter drive --no-pub \
+            --use-application-binary=build/ios/iphonesimulator/Runner.app \
             --driver=test_driver/ui_smoke_driver.dart \
             --target=integration_test/monitoring_review_geojson_test.dart \
             -d "$simulator_udid"
