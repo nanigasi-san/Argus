@@ -121,13 +121,19 @@ void main() {
         () {
       final workflow =
           File('.github/workflows/android_emulator_ci.yml').readAsStringSync();
+      final runner =
+          File('scripts/run_android_monitoring_flow.sh').readAsStringSync();
       final integration = File(
         'integration_test/monitoring_review_geojson_test.dart',
       ).readAsStringSync();
 
-      expect(workflow, contains('adb emu geo fix'));
-      expect(workflow, contains('ACCESS_BACKGROUND_LOCATION'));
-      expect(workflow, contains('--use-application-binary='));
+      expect(
+        workflow,
+        contains('bash scripts/run_android_monitoring_flow.sh'),
+      );
+      expect(runner, contains('adb emu geo fix'));
+      expect(runner, contains('ACCESS_BACKGROUND_LOCATION'));
+      expect(runner, contains('--use-application-binary='));
       expect(integration, contains('GeolocatorLocationService()'));
       expect(integration, contains('MethodChannelAlertDiagnosticsClient'));
     });

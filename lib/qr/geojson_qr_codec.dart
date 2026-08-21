@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
@@ -679,10 +680,10 @@ DecodedGeoJson _agzDiffTextToGeoJson(String diffText) {
       pointCount++;
     }
   }
-  final vertexLimit = GeoJsonLimits.defaults.maxVerticesPerPolygon <
-          GeoJsonLimits.defaults.maxTotalVertices
-      ? GeoJsonLimits.defaults.maxVerticesPerPolygon
-      : GeoJsonLimits.defaults.maxTotalVertices;
+  final vertexLimit = math.min(
+    GeoJsonLimits.defaults.maxVerticesPerPolygon,
+    GeoJsonLimits.defaults.maxTotalVertices,
+  );
   if (pointCount > vertexLimit) {
     throw PayloadTooLargeException(
       'AGZ polygon vertex count exceeds the limit ($vertexLimit)',

@@ -918,23 +918,20 @@ class _LargeStatusDisplay extends StatelessWidget {
   final MonitoringLifecycle lifecycle;
   final VoidCallback? onTap;
 
-  bool get _showLifecycle =>
-      lifecycle != MonitoringLifecycle.idle &&
-      lifecycle != MonitoringLifecycle.active;
-
   Color _color(LocationStateStatus status) {
-    if (_showLifecycle) {
-      return switch (lifecycle) {
-        MonitoringLifecycle.starting ||
-        MonitoringLifecycle.acquiring =>
-          Colors.blue,
-        MonitoringLifecycle.stale ||
-        MonitoringLifecycle.reconnecting =>
-          Colors.deepOrange,
-        MonitoringLifecycle.stopping => Colors.blueGrey,
-        MonitoringLifecycle.failed => Colors.red,
-        MonitoringLifecycle.idle || MonitoringLifecycle.active => Colors.blue,
-      };
+    final lifecycleColor = switch (lifecycle) {
+      MonitoringLifecycle.idle || MonitoringLifecycle.active => null,
+      MonitoringLifecycle.starting ||
+      MonitoringLifecycle.acquiring =>
+        Colors.blue,
+      MonitoringLifecycle.stale ||
+      MonitoringLifecycle.reconnecting =>
+        Colors.deepOrange,
+      MonitoringLifecycle.stopping => Colors.blueGrey,
+      MonitoringLifecycle.failed => Colors.red,
+    };
+    if (lifecycleColor != null) {
+      return lifecycleColor;
     }
     switch (status) {
       case LocationStateStatus.inner:
@@ -955,16 +952,17 @@ class _LargeStatusDisplay extends StatelessWidget {
   }
 
   String _statusText(LocationStateStatus status) {
-    if (_showLifecycle) {
-      return switch (lifecycle) {
-        MonitoringLifecycle.starting => '開始中',
-        MonitoringLifecycle.acquiring => 'GPS取得中',
-        MonitoringLifecycle.stale => 'GPS停止',
-        MonitoringLifecycle.reconnecting => '再接続中',
-        MonitoringLifecycle.stopping => '停止中',
-        MonitoringLifecycle.failed => '開始失敗',
-        MonitoringLifecycle.idle || MonitoringLifecycle.active => '',
-      };
+    final lifecycleLabel = switch (lifecycle) {
+      MonitoringLifecycle.idle || MonitoringLifecycle.active => null,
+      MonitoringLifecycle.starting => '開始中',
+      MonitoringLifecycle.acquiring => 'GPS取得中',
+      MonitoringLifecycle.stale => 'GPS停止',
+      MonitoringLifecycle.reconnecting => '再接続中',
+      MonitoringLifecycle.stopping => '停止中',
+      MonitoringLifecycle.failed => '開始失敗',
+    };
+    if (lifecycleLabel != null) {
+      return lifecycleLabel;
     }
     switch (status) {
       case LocationStateStatus.inner:
@@ -985,16 +983,17 @@ class _LargeStatusDisplay extends StatelessWidget {
   }
 
   String _statusCode(LocationStateStatus status) {
-    if (_showLifecycle) {
-      return switch (lifecycle) {
-        MonitoringLifecycle.starting => 'STARTING',
-        MonitoringLifecycle.acquiring => 'ACQUIRING GPS',
-        MonitoringLifecycle.stale => 'GPS STALE',
-        MonitoringLifecycle.reconnecting => 'RECONNECTING',
-        MonitoringLifecycle.stopping => 'STOPPING',
-        MonitoringLifecycle.failed => 'FAILED',
-        MonitoringLifecycle.idle || MonitoringLifecycle.active => '',
-      };
+    final lifecycleCode = switch (lifecycle) {
+      MonitoringLifecycle.idle || MonitoringLifecycle.active => null,
+      MonitoringLifecycle.starting => 'STARTING',
+      MonitoringLifecycle.acquiring => 'ACQUIRING GPS',
+      MonitoringLifecycle.stale => 'GPS STALE',
+      MonitoringLifecycle.reconnecting => 'RECONNECTING',
+      MonitoringLifecycle.stopping => 'STOPPING',
+      MonitoringLifecycle.failed => 'FAILED',
+    };
+    if (lifecycleCode != null) {
+      return lifecycleCode;
     }
     switch (status) {
       case LocationStateStatus.inner:

@@ -380,10 +380,13 @@ bool _segmentsIntersect(LatLng a, LatLng b, LatLng c, LatLng d) {
   if (_oppositeSigns(abC, abD) && _oppositeSigns(cdA, cdB)) {
     return true;
   }
-  return (_isZero(abC) && _isOnSegment(a, b, c)) ||
-      (_isZero(abD) && _isOnSegment(a, b, d)) ||
-      (_isZero(cdA) && _isOnSegment(c, d, a)) ||
-      (_isZero(cdB) && _isOnSegment(c, d, b));
+  final collinearTouches = <bool>[
+    _isZero(abC) && _isOnSegment(a, b, c),
+    _isZero(abD) && _isOnSegment(a, b, d),
+    _isZero(cdA) && _isOnSegment(c, d, a),
+    _isZero(cdB) && _isOnSegment(c, d, b),
+  ];
+  return collinearTouches.any((touches) => touches);
 }
 
 double _orientation(LatLng a, LatLng b, LatLng c) {

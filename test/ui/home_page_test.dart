@@ -150,6 +150,28 @@ void main() {
     expect(find.text('ファイルを\n読み込む'), findsNothing);
   });
 
+  testWidgets('shows stopping and failed lifecycle states', (tester) async {
+    final stoppingController = buildTestController(
+      hasGeoJson: true,
+      monitoringLifecycle: MonitoringLifecycle.stopping,
+    );
+
+    await _pumpHome(tester, stoppingController);
+
+    expect(find.text('停止中'), findsOneWidget);
+    expect(find.text('STOPPING'), findsOneWidget);
+
+    final failedController = buildTestController(
+      hasGeoJson: true,
+      monitoringLifecycle: MonitoringLifecycle.failed,
+    );
+
+    await _pumpHome(tester, failedController);
+
+    expect(find.text('開始失敗'), findsOneWidget);
+    expect(find.text('FAILED'), findsOneWidget);
+  });
+
   testWidgets('shows snooze button only while OUTER', (tester) async {
     final outerController = buildTestController(
       hasGeoJson: true,

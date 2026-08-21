@@ -1154,7 +1154,11 @@ class AppController extends ChangeNotifier {
     StateSnapshot? snapshot,
     MonitoringPermissionState? permissionState,
     MonitoringLifecycle? monitoringLifecycle,
+    bool clearConfig = false,
   }) {
+    if (clearConfig) {
+      _config = null;
+    }
     if (config != null) {
       _config = config.normalized();
       stateMachine.updateConfig(_config!);

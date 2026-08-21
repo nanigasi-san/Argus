@@ -36,6 +36,12 @@ void main() {
           [1, 1],
           [181, 0],
         ],
+        [
+          [0, 91],
+          [1, 0],
+          [1, 1],
+          [0, 91],
+        ],
       ];
 
       for (final ring in invalidRings) {
@@ -80,6 +86,32 @@ void main() {
             [1, 0],
             [3, 2],
             [0, 2],
+            [0, 0],
+          ],
+        ]),
+      ]);
+
+      expect(
+        () => GeoModel.fromGeoJson(raw),
+        throwsA(
+          isA<FormatException>().having(
+            (error) => error.message,
+            'message',
+            contains('自己交差'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects a non-adjacent edge touching another edge', () {
+      final raw = _featureCollection([
+        _polygon([
+          <List<num>>[
+            [0, 0],
+            [4, 0],
+            [4, 4],
+            [2, 0],
+            [0, 4],
             [0, 0],
           ],
         ]),

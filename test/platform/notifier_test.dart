@@ -201,6 +201,35 @@ void main() {
       expect(vibration.startCount, 1);
     });
 
+    test('delivery report summarizes every failed channel', () {
+      final report = AlertDeliveryReport(
+        notificationError: StateError('notification failed'),
+        alarmError: StateError('alarm failed'),
+        vibrationError: StateError('vibration failed'),
+      );
+
+      expect(report.hasFailures, isTrue);
+      expect(report.failureSummary, contains('notification='));
+      expect(report.failureSummary, contains('alarm='));
+      expect(report.failureSummary, contains('vibration='));
+    });
+
+    test('vibration startup and cleanup failures are reported', () async {
+      final vibration = _FailingVibrationPlayer();
+      final notifier = Notifier(
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: FakeAlarmPlayer(),
+        vibrationPlayer: vibration,
+      );
+
+      final report = await notifier.notifyOuter();
+
+      expect(report.vibrationError, isA<StateError>());
+      expect(vibration.startCount, 1);
+      expect(vibration.stopCount, 1);
+      await expectLater(notifier.resumeAlarm(), throwsStateError);
+    });
+
     test('alarm failure does not block notification or vibration', () async {
       final notifications = FakeLocalNotificationsClient();
       final vibration = FakeVibrationPlayer();
@@ -939,6 +968,13 @@ void main() {
       expect(platform.pulseDurations, [const Duration(milliseconds: 350)]);
       expect(platform.stopCount, 1);
     });
+
+    test('alert diagnostics client can be created at runtime', () {
+      final clientFactory = MethodChannelAlertDiagnosticsClient.new;
+      final client = clientFactory();
+
+      expect(client, isA<MethodChannelAlertDiagnosticsClient>());
+    });
   });
 }
 
@@ -1050,6 +1086,20 @@ class _FailingStopAlarmPlayer extends FakeAlarmPlayer {
   Future<void> stop() {
     stopCount += 1;
     throw StateError('stop failed');
+  }
+}
+
+class _FailingVibrationPlayer extends FakeVibrationPlayer {
+  @override
+  Future<void> start() async {
+    startCount += 1;
+    throw StateError('vibration start failed');
+  }
+
+  @override
+  Future<void> stop() async {
+    stopCount += 1;
+    throw StateError('vibration stop failed');
   }
 }
 

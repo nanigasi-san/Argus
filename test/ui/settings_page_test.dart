@@ -162,6 +162,26 @@ void main() {
     );
   });
 
+  testWidgets('save callback rejects a monitoring state change',
+      (tester) async {
+    final controller = buildTestController(hasGeoJson: true);
+
+    await _pumpSettings(tester, controller);
+    await _scrollUntilVisible(
+      tester,
+      find.byKey(const Key('saveSettingsButton')),
+    );
+    final saveCallback = tester
+        .widget<ElevatedButton>(find.byKey(const Key('saveSettingsButton')))
+        .onPressed!;
+    controller.debugSeed(monitoringLifecycle: MonitoringLifecycle.active);
+
+    saveCallback();
+    await tester.pump();
+
+    expect(find.text('監視を停止してから設定を変更してください。'), findsOneWidget);
+  });
+
   testWidgets('falls back when default config asset cannot load',
       (tester) async {
     await clearDefaultConfigAssetMock();

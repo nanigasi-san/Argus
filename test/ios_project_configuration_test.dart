@@ -175,6 +175,8 @@ void main() {
 
       expect(gitignore, contains('!/ios/Podfile.lock'));
       expect(workflow, contains('xcodebuild test \\'));
+      expect(workflow, contains('simctl list devices available'));
+      expect(workflow, contains('simctl bootstatus'));
       expect(workflow, contains('simctl privacy'));
       expect(workflow, contains('location-always'));
       expect(workflow, contains('simctl location'));

@@ -401,6 +401,30 @@ void main() {
       ),
       throwsA(isA<InvalidCoordinateException>()),
     );
+    await expectLater(
+      decodeGeoJsonWithMetadata(
+        GeoJsonQrDecodeInput(
+          qrTexts: [
+            _agzQrText(
+              'a3:6:$name:0,91000000|1000000,0;0,-1000000;-1000000,1000000',
+            ),
+          ],
+        ),
+      ),
+      throwsA(isA<InvalidCoordinateException>()),
+    );
+    await expectLater(
+      decodeGeoJsonWithMetadata(
+        GeoJsonQrDecodeInput(
+          qrTexts: [
+            _agzQrText(
+              'a3:6:$name:12345678901234567,0|1,0;0,1;-1,-1',
+            ),
+          ],
+        ),
+      ),
+      throwsA(isA<InvalidCoordinateException>()),
+    );
   });
 
   test('agz1 encode rejects coordinates outside latitude/longitude bounds',
@@ -412,6 +436,20 @@ void main() {
               '{"type":"Feature","properties":{},"geometry":{'
               '"type":"Polygon","coordinates":['
               '[[181,0],[181,1],[180,1],[181,0]]]}}]}',
+          sourceFileName: 'hoge.geojson',
+          scheme: GeoJsonQrScheme.agz1,
+          generatePng: false,
+        ),
+      ),
+      throwsA(isA<InvalidCoordinateException>()),
+    );
+    await expectLater(
+      encodeGeoJson(
+        const GeoJsonQrEncodeInput(
+          geoJson: '{"type":"FeatureCollection","features":['
+              '{"type":"Feature","properties":{},"geometry":{'
+              '"type":"Polygon","coordinates":['
+              '[[0,91],[1,0],[1,1],[0,91]]]}}]}',
           sourceFileName: 'hoge.geojson',
           scheme: GeoJsonQrScheme.agz1,
           generatePng: false,
