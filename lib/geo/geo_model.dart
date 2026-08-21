@@ -277,6 +277,15 @@ List<LatLng> _parseAndValidateRing(
     throw const FormatException('Polygonには3つ以上の異なる頂点が必要です。');
   }
 
+  final longitudes = points.map((point) => point.longitude);
+  final longitudeSpan = longitudes.max - longitudes.min;
+  if (longitudeSpan > 180) {
+    throw const FormatException(
+      '日付変更線をまたぐPolygonには対応していません。'
+      '日付変更線をまたがない座標系へ変換してください。',
+    );
+  }
+
   var twiceArea = 0.0;
   for (var index = 0; index < points.length - 1; index++) {
     final current = points[index];
@@ -288,5 +297,135 @@ List<LatLng> _parseAndValidateRing(
     throw const FormatException('面積が0に近いPolygonは使用できません。');
   }
 
+  if (_hasSelfIntersection(points)) {
+    throw const FormatException(
+      '自己交差するPolygonは使用できません。'
+      '辺が交差しない外周に修正してください。',
+    );
+  }
+
   return List<LatLng>.unmodifiable(points);
+}
+
+bool _hasSelfIntersection(List<LatLng> points) {
+  final segmentCount = points.length - 1;
+  for (var index = 0; index < segmentCount; index++) {
+    final start = points[index];
+    final end = points[index + 1];
+    if (start.latitude == end.latitude && start.longitude == end.longitude) {
+      return true;
+    }
+  }
+
+  // 隣り合う辺は共通頂点で交わるのが正常だが、同じ直線上を
+  // 折り返す辺は重なりを持つため自己交差として扱う。
+  for (var index = 0; index < segmentCount; index++) {
+    final previous = points[(index - 1 + segmentCount) % segmentCount];
+    final vertex = points[index];
+    final next = points[(index + 1) % segmentCount];
+    if (!_isZero(_orientation(previous, vertex, next))) {
+      continue;
+    }
+    final previousRayLon = previous.longitude - vertex.longitude;
+    final previousRayLat = previous.latitude - vertex.latitude;
+    final nextRayLon = next.longitude - vertex.longitude;
+    final nextRayLat = next.latitude - vertex.latitude;
+    final rayDotProduct =
+        previousRayLon * nextRayLon + previousRayLat * nextRayLat;
+    if (rayDotProduct > 1e-12) {
+      return true;
+    }
+  }
+
+  final segments = <_RingSegment>[
+    for (var index = 0; index < segmentCount; index++)
+      _RingSegment(index, points[index], points[index + 1]),
+  ]..sort((left, right) => left.minLon.compareTo(right.minLon));
+
+  // 経度の範囲が重なる辺だけを比較する。単純な図形では、
+  // 全5000頂点の総当たり比較を避けられる。
+  for (var leftIndex = 0; leftIndex < segments.length; leftIndex++) {
+    final left = segments[leftIndex];
+    for (var rightIndex = leftIndex + 1;
+        rightIndex < segments.length;
+        rightIndex++) {
+      final right = segments[rightIndex];
+      if (right.minLon > left.maxLon) {
+        break;
+      }
+      if (_areAdjacentSegments(left.index, right.index, segmentCount) ||
+          right.minLat > left.maxLat ||
+          right.maxLat < left.minLat) {
+        continue;
+      }
+      if (_segmentsIntersect(left.start, left.end, right.start, right.end)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool _areAdjacentSegments(int left, int right, int segmentCount) {
+  final difference = (left - right).abs();
+  return difference == 1 || difference == segmentCount - 1;
+}
+
+bool _segmentsIntersect(LatLng a, LatLng b, LatLng c, LatLng d) {
+  final abC = _orientation(a, b, c);
+  final abD = _orientation(a, b, d);
+  final cdA = _orientation(c, d, a);
+  final cdB = _orientation(c, d, b);
+
+  if (_oppositeSigns(abC, abD) && _oppositeSigns(cdA, cdB)) {
+    return true;
+  }
+  return (_isZero(abC) && _isOnSegment(a, b, c)) ||
+      (_isZero(abD) && _isOnSegment(a, b, d)) ||
+      (_isZero(cdA) && _isOnSegment(c, d, a)) ||
+      (_isZero(cdB) && _isOnSegment(c, d, b));
+}
+
+double _orientation(LatLng a, LatLng b, LatLng c) {
+  return (b.longitude - a.longitude) * (c.latitude - a.latitude) -
+      (b.latitude - a.latitude) * (c.longitude - a.longitude);
+}
+
+bool _oppositeSigns(double left, double right) =>
+    (left > 1e-12 && right < -1e-12) || (left < -1e-12 && right > 1e-12);
+
+bool _isZero(double value) => value.abs() <= 1e-12;
+
+bool _isOnSegment(LatLng start, LatLng end, LatLng point) {
+  const epsilon = 1e-12;
+  return point.longitude >=
+          (start.longitude < end.longitude ? start.longitude : end.longitude) -
+              epsilon &&
+      point.longitude <=
+          (start.longitude > end.longitude ? start.longitude : end.longitude) +
+              epsilon &&
+      point.latitude >=
+          (start.latitude < end.latitude ? start.latitude : end.latitude) -
+              epsilon &&
+      point.latitude <=
+          (start.latitude > end.latitude ? start.latitude : end.latitude) +
+              epsilon;
+}
+
+class _RingSegment {
+  _RingSegment(this.index, this.start, this.end)
+      : minLat = start.latitude < end.latitude ? start.latitude : end.latitude,
+        maxLat = start.latitude > end.latitude ? start.latitude : end.latitude,
+        minLon =
+            start.longitude < end.longitude ? start.longitude : end.longitude,
+        maxLon =
+            start.longitude > end.longitude ? start.longitude : end.longitude;
+
+  final int index;
+  final LatLng start;
+  final LatLng end;
+  final double minLat;
+  final double maxLat;
+  final double minLon;
+  final double maxLon;
 }

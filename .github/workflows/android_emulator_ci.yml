@@ -48,7 +48,23 @@ jobs:
           profile: pixel_7
           disable-animations: true
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
-          script: >-
-            flutter drive --no-pub
-            --driver=test_driver/ui_smoke_driver.dart
-            --target=integration_test/monitoring_review_geojson_test.dart
+          script: |
+            set -euo pipefail
+            flutter build apk --debug --no-pub \
+              --target=integration_test/monitoring_review_geojson_test.dart
+            adb install -r build/app/outputs/flutter-apk/app-debug.apk
+            adb shell pm grant com.argus.orienteering android.permission.ACCESS_COARSE_LOCATION
+            adb shell pm grant com.argus.orienteering android.permission.ACCESS_FINE_LOCATION
+            adb shell pm grant com.argus.orienteering android.permission.ACCESS_BACKGROUND_LOCATION
+            (
+              while true; do
+                adb emu geo fix 139.767125 35.681236
+                sleep 2
+              done
+            ) &
+            location_injector_pid=$!
+            trap 'kill "$location_injector_pid" 2>/dev/null || true' EXIT
+            flutter drive --no-pub \
+              --use-application-binary=build/app/outputs/flutter-apk/app-debug.apk \
+              --driver=test_driver/ui_smoke_driver.dart \
+              --target=integration_test/monitoring_review_geojson_test.dart

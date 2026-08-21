@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -73,10 +72,11 @@ class Notifier {
   static const int _monitoringStaleNotificationId = 1002;
 
   bool _initialized = false;
-  bool _isAlarming = false;
+  bool _isAlarmChannelActive = false;
+  bool _isVibrationChannelActive = false;
   bool _isAlarmPreviewPlaying = false;
   int _generation = 0;
-  Timer? _monitoringStaleVibrationTimer;
+  Future<void> _monitoringHealthNotificationQueue = Future<void>.value();
 
   bool get isAlarmPreviewPlaying => _isAlarmPreviewPlaying;
 
@@ -91,10 +91,10 @@ class Notifier {
   }
 
   Future<void> startAlarmPreview() async {
-    _cancelMonitoringStaleVibrationTimer();
     final generation = ++_generation;
     _isAlarmPreviewPlaying = false;
-    _isAlarming = false;
+    _isAlarmChannelActive = false;
+    _isVibrationChannelActive = false;
     await _alarmPlayer.stop();
     await _vibrationPlayer.stop();
     if (generation != _generation) {
@@ -116,9 +116,9 @@ class Notifier {
   }
 
   Future<void> stopAlarmPreview() async {
-    _cancelMonitoringStaleVibrationTimer();
     _generation += 1;
     _isAlarmPreviewPlaying = false;
+    _isAlarmChannelActive = false;
     await _alarmPlayer.stop();
   }
 
@@ -234,23 +234,27 @@ class Notifier {
       ),
     );
     final errors = await Future.wait<Object?>([
-      _captureError(() async {
-        await initialize();
-        await _notifications.show(
-          _monitoringStaleNotificationId,
-          'ARGUS監視警告',
-          'GPSを受信できません。位置情報へ再接続しています。',
-          details,
-        );
-      }),
+      _captureError(
+        () => _enqueueMonitoringHealthNotification(() async {
+          await initialize();
+          await _notifications.show(
+            _monitoringStaleNotificationId,
+            'ARGUS監視警告',
+            'GPSを受信できません。位置情報へ再接続しています。',
+            details,
+          );
+        }),
+      ),
       _captureError(_startMonitoringStaleVibration),
     ]);
     _throwFirstError(errors);
   }
 
   Future<void> clearMonitoringStale() async {
-    await initialize();
-    await _notifications.cancel(_monitoringStaleNotificationId);
+    await _enqueueMonitoringHealthNotification(() async {
+      await initialize();
+      await _notifications.cancel(_monitoringStaleNotificationId);
+    });
   }
 
   Future<void> notifyRecover() async {
@@ -263,9 +267,9 @@ class Notifier {
   }
 
   Future<void> stopAlarm() async {
-    _cancelMonitoringStaleVibrationTimer();
     _generation += 1;
-    _isAlarming = false;
+    _isAlarmChannelActive = false;
+    _isVibrationChannelActive = false;
     _isAlarmPreviewPlaying = false;
     final errors = await Future.wait<Object?>([
       _captureError(_alarmPlayer.stop),
@@ -280,23 +284,13 @@ class Notifier {
   }
 
   Future<void> reassertAlarm() async {
-    _cancelMonitoringStaleVibrationTimer();
-    if (!_isAlarming) {
-      final result = await _resumeAlarm(_generation);
-      result.throwIfFailed();
-      return;
-    }
-
     final generation = _generation;
     final results = await Future.wait<Object?>([
-      _startAlarmChannel(generation),
+      _startAlarmChannel(generation, restart: true),
       _startVibrationChannel(generation, restart: true),
     ]);
     final alarmError = results[0];
     final vibrationError = results[1];
-    if (alarmError != null || vibrationError != null) {
-      _isAlarming = false;
-    }
     _PlaybackStartResult(
       alarmError: alarmError,
       vibrationError: vibrationError,
@@ -304,28 +298,26 @@ class Notifier {
   }
 
   Future<_PlaybackStartResult> _resumeAlarm(int generation) async {
-    _cancelMonitoringStaleVibrationTimer();
     var activeGeneration = generation;
     if (_isAlarmPreviewPlaying) {
       await stopAlarmPreview();
       activeGeneration = _generation;
     }
-    if (_isAlarming || activeGeneration != _generation) {
+    if (activeGeneration != _generation) {
       return const _PlaybackStartResult();
     }
-    _isAlarming = true;
     final results = await Future.wait<Object?>([
-      _startAlarmChannel(activeGeneration),
-      _startVibrationChannel(activeGeneration),
+      _isAlarmChannelActive
+          ? Future<Object?>.value()
+          : _startAlarmChannel(activeGeneration),
+      _isVibrationChannelActive
+          ? Future<Object?>.value()
+          : _startVibrationChannel(activeGeneration),
     ]);
     final alarmError = results[0];
     final vibrationError = results[1];
     if (activeGeneration != _generation) {
-      _isAlarming = false;
       return const _PlaybackStartResult();
-    }
-    if (alarmError != null || vibrationError != null) {
-      _isAlarming = false;
     }
     return _PlaybackStartResult(
       alarmError: alarmError,
@@ -333,14 +325,24 @@ class Notifier {
     );
   }
 
-  Future<Object?> _startAlarmChannel(int generation) async {
+  Future<Object?> _startAlarmChannel(
+    int generation, {
+    bool restart = false,
+  }) async {
     try {
+      if (restart) {
+        _isAlarmChannelActive = false;
+      }
       await _alarmPlayer.start();
       if (generation != _generation) {
         await _alarmPlayer.stop();
+        _isAlarmChannelActive = false;
+      } else {
+        _isAlarmChannelActive = true;
       }
       return null;
     } catch (error) {
+      _isAlarmChannelActive = false;
       try {
         await _alarmPlayer.stop();
       } catch (_) {}
@@ -354,14 +356,19 @@ class Notifier {
   }) async {
     try {
       if (restart) {
+        _isVibrationChannelActive = false;
         await _vibrationPlayer.stop();
       }
       await _vibrationPlayer.start();
       if (generation != _generation) {
         await _vibrationPlayer.stop();
+        _isVibrationChannelActive = false;
+      } else {
+        _isVibrationChannelActive = true;
       }
       return null;
     } catch (error) {
+      _isVibrationChannelActive = false;
       try {
         await _vibrationPlayer.stop();
       } catch (_) {}
@@ -370,9 +377,9 @@ class Notifier {
   }
 
   Future<void> dismissOuterAlert() async {
-    _cancelMonitoringStaleVibrationTimer();
     _generation += 1;
-    _isAlarming = false;
+    _isAlarmChannelActive = false;
+    _isVibrationChannelActive = false;
     _isAlarmPreviewPlaying = false;
     final errors = await Future.wait<Object?>([
       _captureError(() async {
@@ -386,36 +393,23 @@ class Notifier {
   }
 
   Future<void> _startMonitoringStaleVibration() async {
-    if (_isAlarming) {
+    if (_isVibrationChannelActive) {
       return;
     }
-    _cancelMonitoringStaleVibrationTimer();
-    await _vibrationPlayer.start();
-    if (_isAlarming) {
-      return;
-    }
-    _monitoringStaleVibrationTimer = Timer(
-      _monitoringStaleVibrationDuration,
-      () {
-        _monitoringStaleVibrationTimer = null;
-        if (!_isAlarming) {
-          unawaited(_stopMonitoringStaleVibrationIgnoringErrors());
-        }
-      },
+    await _vibrationPlayer.pulse(_monitoringStaleVibrationDuration);
+  }
+
+  Future<void> _enqueueMonitoringHealthNotification(
+    Future<void> Function() operation,
+  ) {
+    final result = _monitoringHealthNotificationQueue.then(
+      (_) => operation(),
     );
-  }
-
-  void _cancelMonitoringStaleVibrationTimer() {
-    _monitoringStaleVibrationTimer?.cancel();
-    _monitoringStaleVibrationTimer = null;
-  }
-
-  Future<void> _stopMonitoringStaleVibrationIgnoringErrors() async {
-    try {
-      await _vibrationPlayer.stop();
-    } catch (_) {
-      // The short health pulse is best effort after it has already started.
-    }
+    _monitoringHealthNotificationQueue = result.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace __) {},
+    );
+    return result;
   }
 
   Future<Object?> _captureError(Future<void> Function() action) async {
@@ -549,6 +543,28 @@ class AlarmVolumeState {
   final double percent;
 }
 
+class AlertPlaybackState {
+  const AlertPlaybackState({
+    required this.alarmActive,
+    required this.vibrationPatternActive,
+  });
+
+  factory AlertPlaybackState.fromMap(Map<Object?, Object?> map) {
+    final alarmActive = map['alarmActive'];
+    final vibrationPatternActive = map['vibrationPatternActive'];
+    if (alarmActive is! bool || vibrationPatternActive is! bool) {
+      throw const FormatException('Invalid alert playback state.');
+    }
+    return AlertPlaybackState(
+      alarmActive: alarmActive,
+      vibrationPatternActive: vibrationPatternActive,
+    );
+  }
+
+  final bool alarmActive;
+  final bool vibrationPatternActive;
+}
+
 abstract class AlarmVolumeClient {
   Future<AlarmVolumeState> getAlarmVolumeState();
   Future<bool> openSoundSettings();
@@ -574,7 +590,7 @@ class MethodChannelAlarmClient
 
   @override
   Future<void> stop() {
-    return _channel.invokeMethod<void>('stop');
+    return _channel.invokeMethod<void>('stopAlarm');
   }
 
   @override
@@ -591,6 +607,22 @@ class MethodChannelAlarmClient
   @override
   Future<bool> openSoundSettings() async {
     return await _channel.invokeMethod<bool>('openSoundSettings') ?? false;
+  }
+}
+
+class MethodChannelAlertDiagnosticsClient {
+  const MethodChannelAlertDiagnosticsClient();
+
+  static const MethodChannel _channel = MethodChannel('argus/alarm');
+
+  Future<AlertPlaybackState> getPlaybackState() async {
+    final result = await _channel.invokeMapMethod<Object?, Object?>(
+      'getAlertPlaybackState',
+    );
+    if (result == null) {
+      throw const FormatException('Missing alert playback state.');
+    }
+    return AlertPlaybackState.fromMap(result);
   }
 }
 
@@ -647,11 +679,13 @@ class NativeAlarmPlayer implements AlarmPlayer {
 
 abstract class VibrationPlayer {
   Future<void> start();
+  Future<void> pulse(Duration duration);
   Future<void> stop();
 }
 
 abstract class VibrationPlatformClient {
   Future<void> startPattern();
+  Future<void> pulse(Duration duration);
   Future<void> stop();
 }
 
@@ -663,6 +697,16 @@ class MethodChannelVibrationClient implements VibrationPlatformClient {
   @override
   Future<void> startPattern() {
     return _channel.invokeMethod<void>('startVibration');
+  }
+
+  @override
+  Future<void> pulse(Duration duration) {
+    return _channel.invokeMethod<void>(
+      'pulseVibration',
+      <String, Object?>{
+        'durationMs': duration.inMilliseconds,
+      },
+    );
   }
 
   @override
@@ -694,6 +738,13 @@ class NativeVibrationPlayer implements VibrationPlayer {
   Future<void> start() async {
     if (_usesNativePlatformClient) {
       await _client.startPattern();
+    }
+  }
+
+  @override
+  Future<void> pulse(Duration duration) async {
+    if (_usesNativePlatformClient) {
+      await _client.pulse(duration);
     }
   }
 

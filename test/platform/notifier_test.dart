@@ -217,6 +217,11 @@ void main() {
       expect(report.vibrationError, isNull);
       expect(notifications.shownIds, [1001]);
       expect(vibration.startCount, 1);
+
+      await notifier.notifyMonitoringStale();
+
+      expect(vibration.pulseCount, 0);
+      expect(vibration.stopCount, 0);
     });
 
     test('monitoring stale notification uses a separate notification id',
@@ -227,11 +232,10 @@ void main() {
         notificationsClient: notifications,
         alarmPlayer: FakeAlarmPlayer(),
         vibrationPlayer: vibration,
-        monitoringStaleVibrationDuration: Duration.zero,
+        monitoringStaleVibrationDuration: const Duration(milliseconds: 350),
       );
 
       await notifier.notifyMonitoringStale();
-      await Future<void>.delayed(Duration.zero);
       await notifier.clearMonitoringStale();
 
       expect(notifications.shownIds, [1002]);
@@ -239,8 +243,10 @@ void main() {
       expect(notifications.lastShownDetails?.android?.channelId,
           'argus_monitoring_health_v1');
       expect(notifications.lastShownDetails?.android?.enableVibration, isFalse);
-      expect(vibration.startCount, 1);
-      expect(vibration.stopCount, 1);
+      expect(vibration.pulseCount, 1);
+      expect(vibration.pulseDurations, [const Duration(milliseconds: 350)]);
+      expect(vibration.startCount, 0);
+      expect(vibration.stopCount, 0);
     });
 
     test('monitoring stale vibration still runs when notification fails',
@@ -250,14 +256,35 @@ void main() {
         notificationsClient: _FailingShowNotificationsClient(),
         alarmPlayer: FakeAlarmPlayer(),
         vibrationPlayer: vibration,
-        monitoringStaleVibrationDuration: Duration.zero,
+        monitoringStaleVibrationDuration: const Duration(milliseconds: 350),
       );
 
       await expectLater(notifier.notifyMonitoringStale(), throwsStateError);
+      expect(vibration.pulseCount, 1);
+      expect(vibration.startCount, 0);
+      expect(vibration.stopCount, 0);
+    });
+
+    test('monitoring health show and clear operations stay ordered', () async {
+      final notifications = _BlockingLocalNotificationsClient();
+      final notifier = Notifier(
+        notificationsClient: notifications,
+        alarmPlayer: FakeAlarmPlayer(),
+        vibrationPlayer: FakeVibrationPlayer(),
+      );
+
+      final showFuture = notifier.notifyMonitoringStale();
+      await notifications.showEntered.future;
+      final clearFuture = notifier.clearMonitoringStale();
       await Future<void>.delayed(Duration.zero);
 
-      expect(vibration.startCount, 1);
-      expect(vibration.stopCount, 1);
+      expect(notifications.cancelledIds, isEmpty);
+
+      notifications.allowShow.complete();
+      await Future.wait([showFuture, clearFuture]);
+
+      expect(notifications.shownIds, [1002]);
+      expect(notifications.cancelledIds, [1002]);
     });
 
     test('resumeAlarm restarts playback without showing another notification',
@@ -565,7 +592,8 @@ void main() {
       await notifier.resumeAlarm();
 
       expect(alarm.playCount, 2);
-      expect(vibration.startCount, 2);
+      expect(vibration.startCount, 1);
+      expect(vibration.stopCount, 0);
     });
 
     test('stopAlarm suppresses an in-flight vibration start', () async {
@@ -745,7 +773,7 @@ void main() {
 
       expect(calls.map((call) => call.method), [
         'play',
-        'stop',
+        'stopAlarm',
         'getAlarmVolumeState',
         'openSoundSettings',
       ]);
@@ -783,6 +811,37 @@ void main() {
             'max': 6,
             'percent': 0.5,
           },
+        ),
+        throwsFormatException,
+      );
+    });
+
+    test('MethodChannel alert diagnostics reports independent channel state',
+        () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('argus/alarm'),
+        (call) async {
+          expect(call.method, 'getAlertPlaybackState');
+          return <String, Object?>{
+            'alarmActive': false,
+            'vibrationPatternActive': true,
+          };
+        },
+      );
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(const MethodChannel('argus/alarm'), null);
+      });
+
+      final state =
+          await const MethodChannelAlertDiagnosticsClient().getPlaybackState();
+
+      expect(state.alarmActive, isFalse);
+      expect(state.vibrationPatternActive, isTrue);
+      expect(
+        () => AlertPlaybackState.fromMap(
+          const <Object?, Object?>{'alarmActive': true},
         ),
         throwsFormatException,
       );
@@ -827,7 +886,8 @@ void main() {
       expect(await client.openSoundSettings(), isFalse);
     });
 
-    test('MethodChannelVibrationClient sends start and stop methods', () async {
+    test('MethodChannelVibrationClient sends start, pulse, and stop methods',
+        () async {
       final calls = <MethodCall>[];
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(
@@ -844,12 +904,15 @@ void main() {
 
       const client = MethodChannelVibrationClient();
       await client.startPattern();
+      await client.pulse(const Duration(milliseconds: 350));
       await client.stop();
 
       expect(calls.map((call) => call.method), [
         'startVibration',
+        'pulseVibration',
         'stopVibration',
       ]);
+      expect(calls[1].arguments, {'durationMs': 350});
     });
 
     test('NativeVibrationPlayer uses injected mobile platform client',
@@ -865,11 +928,15 @@ void main() {
       );
 
       await nonMobilePlayer.start();
+      await nonMobilePlayer.pulse(const Duration(milliseconds: 350));
       await nonMobilePlayer.stop();
       await mobilePlayer.start();
+      await mobilePlayer.pulse(const Duration(milliseconds: 350));
       await mobilePlayer.stop();
 
       expect(platform.startCount, 1);
+      expect(platform.pulseCount, 1);
+      expect(platform.pulseDurations, [const Duration(milliseconds: 350)]);
       expect(platform.stopCount, 1);
     });
   });
@@ -1003,11 +1070,19 @@ class _RecordingAlarmPlatformClient implements AlarmPlatformClient {
 
 class _RecordingVibrationPlatformClient implements VibrationPlatformClient {
   int startCount = 0;
+  int pulseCount = 0;
   int stopCount = 0;
+  final List<Duration> pulseDurations = <Duration>[];
 
   @override
   Future<void> startPattern() async {
     startCount += 1;
+  }
+
+  @override
+  Future<void> pulse(Duration duration) async {
+    pulseCount += 1;
+    pulseDurations.add(duration);
   }
 
   @override

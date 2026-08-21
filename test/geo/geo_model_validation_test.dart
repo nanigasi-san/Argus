@@ -46,6 +46,99 @@ void main() {
       }
     });
 
+    test('rejects a self-intersecting exterior ring', () {
+      final raw = _featureCollection([
+        _polygon([
+          <List<num>>[
+            [0, 0],
+            [4, 0],
+            [1, 3],
+            [3, 3],
+            [0, 0],
+          ],
+        ]),
+      ]);
+
+      expect(
+        () => GeoModel.fromGeoJson(raw),
+        throwsA(
+          isA<FormatException>().having(
+            (error) => error.message,
+            'message',
+            contains('自己交差'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects adjacent edges that double back over each other', () {
+      final raw = _featureCollection([
+        _polygon([
+          <List<num>>[
+            [0, 0],
+            [3, 0],
+            [1, 0],
+            [3, 2],
+            [0, 2],
+            [0, 0],
+          ],
+        ]),
+      ]);
+
+      expect(
+        () => GeoModel.fromGeoJson(raw),
+        throwsA(
+          isA<FormatException>().having(
+            (error) => error.message,
+            'message',
+            contains('自己交差'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects a ring that crosses the international date line', () {
+      final raw = _featureCollection([
+        _polygon([
+          <List<num>>[
+            [179, 0],
+            [-179, 0],
+            [-179, 1],
+            [179, 1],
+            [179, 0],
+          ],
+        ]),
+      ]);
+
+      expect(
+        () => GeoModel.fromGeoJson(raw),
+        throwsA(
+          isA<FormatException>().having(
+            (error) => error.message,
+            'message',
+            contains('日付変更線'),
+          ),
+        ),
+      );
+    });
+
+    test('accepts a non-intersecting concave exterior ring', () {
+      final raw = _featureCollection([
+        _polygon([
+          <List<num>>[
+            [0, 0],
+            [3, 0],
+            [1.5, 1],
+            [3, 3],
+            [0, 3],
+            [0, 0],
+          ],
+        ]),
+      ]);
+
+      expect(GeoModel.fromGeoJson(raw).polygons, hasLength(1));
+    });
+
     test('rejects source bytes above the configured limit', () {
       final raw = _featureCollection([
         _polygon([_ring(0)]),

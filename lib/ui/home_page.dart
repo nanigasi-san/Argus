@@ -123,6 +123,12 @@ class _HomeScrollableContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDeveloperMode = controller.developerMode;
     final isMonitoring = controller.isMonitoringSession;
+    final accuracyThreshold = controller.config?.gpsAccuracyBadMeters;
+    final usesLastReliableNavigation =
+        snapshot.status == LocationStateStatus.outer &&
+            (snapshot.horizontalAccuracyM == null ||
+                (accuracyThreshold != null &&
+                    snapshot.horizontalAccuracyM! > accuracyThreshold));
     return LayoutBuilder(
       builder: (context, constraints) {
         return SingleChildScrollView(
@@ -193,6 +199,23 @@ class _HomeScrollableContent extends StatelessWidget {
                           ),
                         if (showNavigationDetails) ...[
                           const SizedBox(height: 24),
+                          if (usesLastReliableNavigation) ...[
+                            Container(
+                              key: const Key('low-accuracy-navigation-warning'),
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .errorContainer,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Text(
+                                'GPS精度が悪いため、最後に精度が良かった位置からの案内を表示しています。現在位置として過信しないでください。',
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                          ],
                           Text(
                             '境界までの距離: '
                             '${snapshot.distanceToBoundaryM?.toStringAsFixed(1) ?? '-'} m',

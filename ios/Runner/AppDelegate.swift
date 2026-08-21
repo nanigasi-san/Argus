@@ -55,14 +55,18 @@ import UserNotifications
           )
         )
       }
-    case "stop":
+    case "stopAlarm":
       alarmPlayer.stop()
-      vibrationPlayer.stop()
       result(nil)
     case "getAlarmVolumeState":
       result([
         "supported": false,
         "message": "iOSではアプリ内から警告音量を正確に確認できません。端末の音量とサイレントモードを確認してください。",
+      ])
+    case "getAlertPlaybackState":
+      result([
+        "alarmActive": alarmPlayer.isActive,
+        "vibrationPatternActive": vibrationPlayer.isPatternActive,
       ])
     case "openSoundSettings":
       guard let url = URL(string: UIApplication.openSettingsURLString) else {
@@ -84,6 +88,9 @@ import UserNotifications
     case "stopVibration":
       vibrationPlayer.stop()
       result(nil)
+    case "pulseVibration":
+      vibrationPlayer.pulse()
+      result(nil)
     default:
       result(FlutterMethodNotImplemented)
     }
@@ -94,6 +101,10 @@ private final class IOSAlarmPlayer: NSObject {
   private var player: AVAudioPlayer?
   private var isAlarming = false
   private var lastVolume = 1.0
+
+  var isActive: Bool {
+    isAlarming && player?.isPlaying == true
+  }
 
   override init() {
     super.init()
@@ -193,6 +204,10 @@ private final class IOSAlarmPlayer: NSObject {
 private final class IOSVibrationPlayer {
   private var timer: Timer?
 
+  var isPatternActive: Bool {
+    timer != nil
+  }
+
   func start() {
     if timer != nil {
       return
@@ -209,6 +224,10 @@ private final class IOSVibrationPlayer {
   func stop() {
     timer?.invalidate()
     timer = nil
+  }
+
+  func pulse() {
+    vibrate()
   }
 
   private func vibrate() {

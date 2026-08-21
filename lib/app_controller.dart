@@ -114,7 +114,10 @@ class AppController extends ChangeNotifier {
   int _reconnectAttempt = 0;
   bool _reconnectInProgress = false;
   bool _monitoringStaleWarningActive = false;
+  int _monitoringHealthGeneration = 0;
+  int _locationFixSequence = 0;
   Future<void> _fixProcessingQueue = Future<void>.value();
+  Future<void> _locationServiceOperationQueue = Future<void>.value();
   bool _isAlarmSnoozed = false;
   int _monitoringRunId = 0;
   bool _isDisposed = false;
@@ -257,33 +260,17 @@ class AppController extends ChangeNotifier {
       return;
     }
 
-    LocationServiceStartResult result;
+    stateMachine.resetMonitoring();
     try {
-      result = await locationService.start(_config!);
+      await _subscription?.cancel();
     } catch (error) {
-      result = LocationServiceStartResult(
-        status: LocationServiceStartStatus.error,
-        message: error.toString(),
-      );
+      _logWarning('GPS', 'Failed to cancel previous location stream: $error');
+    } finally {
+      _subscription = null;
     }
     if (!_isCurrentStartAttempt(startAttemptId)) {
-      try {
-        await locationService.stop();
-      } catch (_) {
-        // A concurrent explicit stop already owns error reporting.
-      }
       return;
     }
-    if (result.status != LocationServiceStartStatus.started) {
-      _monitoringLifecycle = MonitoringLifecycle.failed;
-      _lastErrorMessage = result.message ?? '位置情報の監視を開始できませんでした。';
-      _logError('APP', _lastErrorMessage!);
-      notifyListeners();
-      return;
-    }
-
-    stateMachine.resetMonitoring();
-    await _subscription?.cancel();
     final runId = startAttemptId;
     _subscription = locationService.stream.listen(
       (fix) => _onLocationFix(fix, runId),
@@ -296,6 +283,48 @@ class AppController extends ChangeNotifier {
     _reconnectAttempt = 0;
     _reconnectInProgress = false;
     _monitoringLifecycle = MonitoringLifecycle.acquiring;
+    notifyListeners();
+
+    LocationServiceStartResult result;
+    try {
+      result = await _runLocationServiceOperation(
+        () => locationService.start(_config!),
+      );
+    } catch (error) {
+      result = LocationServiceStartResult(
+        status: LocationServiceStartStatus.error,
+        message: error.toString(),
+      );
+    }
+    if (!_isCurrentMonitoringRun(runId)) {
+      return;
+    }
+    if (result.status != LocationServiceStartStatus.started) {
+      _monitoringRunId += 1;
+      _cancelLocationRecovery();
+      try {
+        await _subscription?.cancel();
+      } catch (error) {
+        _logWarning('GPS', 'Failed to cancel failed location stream: $error');
+      } finally {
+        _subscription = null;
+      }
+      try {
+        await _runLocationServiceOperation(locationService.stop);
+      } catch (error) {
+        _logWarning('GPS', 'Failed to clean up location start: $error');
+      }
+      _monitoringLifecycle = MonitoringLifecycle.failed;
+      _lastErrorMessage = result.message ?? '位置情報の監視を開始できませんでした。';
+      _logError('APP', _lastErrorMessage!);
+      notifyListeners();
+      return;
+    }
+
+    if (_monitoringLifecycle != MonitoringLifecycle.active) {
+      _lastFixReceivedAt = _now();
+      _monitoringLifecycle = MonitoringLifecycle.acquiring;
+    }
     _startLocationWatchdog(runId);
     _lastErrorMessage = null;
     _logInfo('APP', 'Monitoring started.');
@@ -389,7 +418,7 @@ class AppController extends ChangeNotifier {
       _subscription = null;
     }
     try {
-      await locationService.stop();
+      await _runLocationServiceOperation(locationService.stop);
     } catch (error) {
       _logWarning('GPS', 'Failed to stop location service cleanly: $error');
     }
@@ -440,7 +469,7 @@ class AppController extends ChangeNotifier {
       _subscription = null;
     }
     try {
-      await locationService.stop();
+      await _runLocationServiceOperation(locationService.stop);
     } catch (error) {
       _logWarning(
           'GPS', 'Failed to stop location service on termination: $error');
@@ -451,7 +480,11 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> handleAppResumed() async {
-    await refreshMonitoringPermissionState();
+    try {
+      await refreshMonitoringPermissionState();
+    } catch (error) {
+      _logWarning('APP', 'Failed to refresh permissions on resume: $error');
+    }
     if ((_monitoringLifecycle == MonitoringLifecycle.stale ||
             _monitoringLifecycle == MonitoringLifecycle.reconnecting) &&
         _reconnectTimer == null &&
@@ -788,14 +821,18 @@ class AppController extends ChangeNotifier {
       return;
     }
     final shouldClearStaleWarning = _monitoringStaleWarningActive;
+    _locationFixSequence += 1;
     _lastFixReceivedAt = _now();
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     _reconnectAttempt = 0;
-    _reconnectInProgress = false;
     _monitoringLifecycle = MonitoringLifecycle.active;
     if (shouldClearStaleWarning) {
-      unawaited(_clearMonitoringStaleWarning(runId));
+      _monitoringStaleWarningActive = false;
+      final healthGeneration = ++_monitoringHealthGeneration;
+      unawaited(
+        _clearMonitoringStaleWarning(runId, healthGeneration),
+      );
     }
     notifyListeners();
 
@@ -809,11 +846,15 @@ class AppController extends ChangeNotifier {
     });
   }
 
-  Future<void> _clearMonitoringStaleWarning(int runId) async {
+  Future<void> _clearMonitoringStaleWarning(
+    int runId,
+    int healthGeneration,
+  ) async {
     try {
       await notifier.clearMonitoringStale();
-      if (_isCurrentMonitoringRun(runId)) {
-        _monitoringStaleWarningActive = false;
+      if (_isCurrentMonitoringRun(runId) &&
+          healthGeneration == _monitoringHealthGeneration &&
+          !_monitoringStaleWarningActive) {
         _logInfo('GPS', 'Location updates recovered.');
       }
     } catch (error) {
@@ -843,20 +884,33 @@ class AppController extends ChangeNotifier {
     if (!alreadyRecovering) {
       _monitoringLifecycle = MonitoringLifecycle.stale;
       _monitoringStaleWarningActive = true;
+      final healthGeneration = ++_monitoringHealthGeneration;
       _logWarning('GPS', 'Location updates stopped: $reason.');
       notifyListeners();
-      try {
-        await notifier.notifyMonitoringStale();
-      } catch (error) {
-        if (_isCurrentMonitoringRun(runId)) {
-          _logWarning('ALERT', 'Failed to show GPS warning: $error');
-        }
-      }
+      _scheduleLocationReconnect(runId);
+      unawaited(
+        _showMonitoringStaleWarning(runId, healthGeneration),
+      );
     }
     if (_isCurrentMonitoringRun(runId) &&
         _reconnectTimer == null &&
         !_reconnectInProgress) {
       _scheduleLocationReconnect(runId);
+    }
+  }
+
+  Future<void> _showMonitoringStaleWarning(
+    int runId,
+    int healthGeneration,
+  ) async {
+    try {
+      await notifier.notifyMonitoringStale();
+    } catch (error) {
+      if (_isCurrentMonitoringRun(runId) &&
+          healthGeneration == _monitoringHealthGeneration &&
+          _monitoringStaleWarningActive) {
+        _logWarning('ALERT', 'Failed to show GPS warning: $error');
+      }
     }
   }
 
@@ -892,29 +946,38 @@ class AppController extends ChangeNotifier {
     _monitoringLifecycle = MonitoringLifecycle.reconnecting;
     notifyListeners();
     try {
-      await locationService.stop();
-      if (!_isCurrentMonitoringRun(runId)) {
-        return;
-      }
       final config = _config;
       if (config == null) {
         throw StateError('Configuration is unavailable.');
       }
-      final result = await locationService.start(config);
-      if (!_isCurrentMonitoringRun(runId)) {
-        try {
-          await locationService.stop();
-        } catch (_) {
-          // The explicit stop path owns error reporting for this run.
+      final fixSequenceBeforeStart = _locationFixSequence;
+      final result = await _runLocationServiceOperation(() async {
+        await locationService.stop();
+        if (!_isCurrentMonitoringRun(runId)) {
+          return null;
         }
+        return locationService.start(config);
+      });
+      if (result == null) {
+        return;
+      }
+      if (!_isCurrentMonitoringRun(runId)) {
         return;
       }
       if (result.status != LocationServiceStartStatus.started) {
         throw StateError(result.message ?? 'Location service restart failed.');
       }
-      _lastFixReceivedAt = _now();
-      _monitoringLifecycle = MonitoringLifecycle.acquiring;
-      _logInfo('GPS', 'Location service reconnected; waiting for a fix.');
+      final fixArrivedDuringStart =
+          _locationFixSequence != fixSequenceBeforeStart;
+      if (fixArrivedDuringStart ||
+          _monitoringLifecycle == MonitoringLifecycle.active) {
+        _monitoringLifecycle = MonitoringLifecycle.active;
+        _logInfo('GPS', 'Location service reconnected with a fresh fix.');
+      } else if (_monitoringLifecycle != MonitoringLifecycle.stale) {
+        _lastFixReceivedAt = _now();
+        _monitoringLifecycle = MonitoringLifecycle.acquiring;
+        _logInfo('GPS', 'Location service reconnected; waiting for a fix.');
+      }
       notifyListeners();
     } catch (error) {
       if (_isCurrentMonitoringRun(runId)) {
@@ -940,6 +1003,20 @@ class AppController extends ChangeNotifier {
     _reconnectAttempt = 0;
     _reconnectInProgress = false;
     _monitoringStaleWarningActive = false;
+    _monitoringHealthGeneration += 1;
+  }
+
+  Future<T> _runLocationServiceOperation<T>(
+    Future<T> Function() operation,
+  ) {
+    final result = _locationServiceOperationQueue.then<T>(
+      (_) => operation(),
+    );
+    _locationServiceOperationQueue = result.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace __) {},
+    );
+    return result;
   }
 
   void _rejectConfigurationChange() {

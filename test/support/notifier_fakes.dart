@@ -104,13 +104,22 @@ class FakeAlarmPlayer implements AlarmPlayer {
 
 class FakeVibrationPlayer implements VibrationPlayer {
   int startCount = 0;
+  int pulseCount = 0;
   int stopCount = 0;
+  final List<Duration> pulseDurations = <Duration>[];
   final List<String> calls = <String>[];
 
   @override
   Future<void> start() async {
     calls.add('start');
     startCount += 1;
+  }
+
+  @override
+  Future<void> pulse(Duration duration) async {
+    calls.add('pulse');
+    pulseCount += 1;
+    pulseDurations.add(duration);
   }
 
   @override

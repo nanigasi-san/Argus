@@ -193,11 +193,17 @@ class HarnessAlarmPlayer implements AlarmPlayer {
 
 class HarnessVibrationPlayer implements VibrationPlayer {
   int startCount = 0;
+  int pulseCount = 0;
   int stopCount = 0;
 
   @override
   Future<void> start() async {
     startCount += 1;
+  }
+
+  @override
+  Future<void> pulse(Duration duration) async {
+    pulseCount += 1;
   }
 
   @override

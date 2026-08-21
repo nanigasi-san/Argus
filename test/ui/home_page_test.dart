@@ -105,6 +105,30 @@ void main() {
     expect(find.text('方角: 180度 (南)'), findsOneWidget);
   });
 
+  testWidgets('labels cached OUTER guidance when GPS accuracy is poor',
+      (tester) async {
+    final controller = buildTestController(
+      hasGeoJson: true,
+      snapshot: StateSnapshot(
+        status: LocationStateStatus.outer,
+        timestamp: DateTime.utc(2024, 1, 1),
+        horizontalAccuracyM: 100,
+        distanceToBoundaryM: 5,
+        bearingToBoundaryDeg: 180,
+        geoJsonLoaded: true,
+      ),
+    );
+
+    await _pumpHome(tester, controller);
+
+    expect(
+      find.byKey(const Key('low-accuracy-navigation-warning')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('最後に精度が良かった位置'), findsOneWidget);
+    expect(find.text('方角: 180度 (南)'), findsOneWidget);
+  });
+
   testWidgets('shows reconnecting lifecycle and force-close warning',
       (tester) async {
     final controller = buildTestController(

@@ -36,7 +36,7 @@ class MainActivity : FlutterActivity() {
                             )
                         }
                     }
-                    "stop" -> {
+                    "stopAlarm" -> {
                         NativeAlarmPlayer.stop(applicationContext)
                         result.success(null)
                     }
@@ -48,8 +48,22 @@ class MainActivity : FlutterActivity() {
                         NativeVibrationPlayer.stop(applicationContext)
                         result.success(null)
                     }
+                    "pulseVibration" -> {
+                        val durationMs =
+                            call.argument<Number>("durationMs")?.toLong() ?: 350L
+                        NativeVibrationPlayer.pulse(applicationContext, durationMs)
+                        result.success(null)
+                    }
                     "getAlarmVolumeState" -> {
                         result.success(NativeAlarmPlayer.getAlarmVolumeState(applicationContext))
+                    }
+                    "getAlertPlaybackState" -> {
+                        result.success(
+                            mapOf(
+                                "alarmActive" to NativeAlarmPlayer.isActive(),
+                                "vibrationPatternActive" to NativeVibrationPlayer.isPatternActive()
+                            )
+                        )
                     }
                     "openSoundSettings" -> {
                         result.success(openSoundSettings())
@@ -62,12 +76,14 @@ class MainActivity : FlutterActivity() {
     override fun onStop() {
         if (isFinishing) {
             NativeAlarmPlayer.stop(applicationContext)
+            NativeVibrationPlayer.stop(applicationContext)
         }
         super.onStop()
     }
 
     override fun onDestroy() {
         NativeAlarmPlayer.stop(applicationContext)
+        NativeVibrationPlayer.stop(applicationContext)
         super.onDestroy()
     }
 
@@ -189,7 +205,6 @@ private object NativeAlarmPlayer {
             val audioManager =
                 appContext.applicationContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
             releaseAudioFocus(audioManager)
-            NativeVibrationPlayer.stop(appContext)
         }
     }
 
@@ -203,6 +218,15 @@ private object NativeAlarmPlayer {
             "max" to max,
             "percent" to percent,
         )
+    }
+
+    @Synchronized
+    fun isActive(): Boolean {
+        return try {
+            mediaPlayer?.isPlaying == true
+        } catch (_: IllegalStateException) {
+            false
+        }
     }
 
     private fun requestAudioFocus(audioManager: AudioManager): Boolean {
@@ -248,9 +272,11 @@ private object NativeAlarmPlayer {
 
 private object NativeVibrationPlayer {
     private val pattern = longArrayOf(0, 5000, 2000)
+    private var patternActive = false
 
     @Synchronized
     fun start(context: Context) {
+        patternActive = false
         val vibrator = getVibrator(context.applicationContext) ?: return
         if (!vibrator.hasVibrator()) {
             return
@@ -260,17 +286,46 @@ private object NativeVibrationPlayer {
             vibrator.vibrate(
                 VibrationEffect.createWaveform(pattern, 0)
             )
+            patternActive = true
             return
         }
 
         @Suppress("DEPRECATION")
         vibrator.vibrate(pattern, 0)
+        patternActive = true
+    }
+
+    @Synchronized
+    fun pulse(context: Context, requestedDurationMs: Long) {
+        patternActive = false
+        val vibrator = getVibrator(context.applicationContext) ?: return
+        if (!vibrator.hasVibrator()) {
+            return
+        }
+
+        val durationMs = requestedDurationMs.coerceIn(1L, 2_000L)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(
+                VibrationEffect.createOneShot(
+                    durationMs,
+                    VibrationEffect.DEFAULT_AMPLITUDE
+                )
+            )
+            return
+        }
+
+        @Suppress("DEPRECATION")
+        vibrator.vibrate(durationMs)
     }
 
     @Synchronized
     fun stop(context: Context) {
+        patternActive = false
         getVibrator(context.applicationContext)?.cancel()
     }
+
+    @Synchronized
+    fun isPatternActive(): Boolean = patternActive
 
     private fun getVibrator(context: Context): Vibrator? {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {

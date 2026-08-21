@@ -672,15 +672,39 @@ DecodedGeoJson _agzDiffTextToGeoJson(String diffText) {
     );
   }
 
+  final deltaSection = coordinateSections[1];
+  var pointCount = 2; // 絶対座標1点 + 最初の差分1点
+  for (final codeUnit in deltaSection.codeUnits) {
+    if (codeUnit == 0x3b) {
+      pointCount++;
+    }
+  }
+  final vertexLimit = GeoJsonLimits.defaults.maxVerticesPerPolygon <
+          GeoJsonLimits.defaults.maxTotalVertices
+      ? GeoJsonLimits.defaults.maxVerticesPerPolygon
+      : GeoJsonLimits.defaults.maxTotalVertices;
+  if (pointCount > vertexLimit) {
+    throw PayloadTooLargeException(
+      'AGZ polygon vertex count exceeds the limit ($vertexLimit)',
+    );
+  }
+
+  var integerFactor = 1;
+  for (var i = 0; i < scale; i++) {
+    integerFactor *= 10;
+  }
+
   final first = _parseIntegerCoordinate(coordinateSections[0]);
+  _validateScaledCoordinate(first, integerFactor);
   final points = <_IntegerCoordinate>[first];
   var previous = first;
-  for (final deltaText in coordinateSections[1].split(';')) {
+  for (final deltaText in deltaSection.split(';')) {
     final delta = _parseIntegerCoordinate(deltaText);
     final current = _IntegerCoordinate(
       previous.lon + delta.lon,
       previous.lat + delta.lat,
     );
+    _validateScaledCoordinate(current, integerFactor);
     points.add(current);
     previous = current;
   }
@@ -696,12 +720,13 @@ DecodedGeoJson _agzDiffTextToGeoJson(String diffText) {
     );
   }
 
-  var factor = 1.0;
-  for (var i = 0; i < scale; i++) {
-    factor *= 10;
-  }
   final ring = points
-      .map((point) => <double>[point.lon / factor, point.lat / factor])
+      .map(
+        (point) => <double>[
+          point.lon / integerFactor,
+          point.lat / integerFactor,
+        ],
+      )
       .toList(growable: false);
   final geoJson = jsonEncode({
     'type': 'FeatureCollection',
@@ -768,6 +793,12 @@ _Coordinate _readCoordinate(dynamic value) {
   if (!lonValue.isFinite || !latValue.isFinite) {
     throw InvalidCoordinateException('Coordinate values must be finite');
   }
+  if (lonValue < -180 || lonValue > 180) {
+    throw InvalidCoordinateException('Longitude is outside -180 to 180');
+  }
+  if (latValue < -90 || latValue > 90) {
+    throw InvalidCoordinateException('Latitude is outside -90 to 90');
+  }
   return _Coordinate(lonValue, latValue);
 }
 
@@ -776,12 +807,24 @@ _IntegerCoordinate _parseIntegerCoordinate(String value) {
   if (parts.length != 2) {
     throw InvalidCoordinateException('Coordinate must contain two integers');
   }
+  if (parts.any((part) => part.isEmpty || part.length > 16)) {
+    throw InvalidCoordinateException('Coordinate integer is too long');
+  }
   final lon = int.tryParse(parts[0]);
   final lat = int.tryParse(parts[1]);
   if (lon == null || lat == null) {
     throw InvalidCoordinateException('Coordinate values must be integers');
   }
   return _IntegerCoordinate(lon, lat);
+}
+
+void _validateScaledCoordinate(_IntegerCoordinate value, int factor) {
+  if (value.lon < -180 * factor || value.lon > 180 * factor) {
+    throw InvalidCoordinateException('Longitude is outside -180 to 180');
+  }
+  if (value.lat < -90 * factor || value.lat > 90 * factor) {
+    throw InvalidCoordinateException('Latitude is outside -90 to 90');
+  }
 }
 
 class _Coordinate {

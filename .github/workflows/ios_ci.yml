@@ -13,7 +13,7 @@ concurrency:
 jobs:
   ios-simulator-build:
     runs-on: macos-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
 
     steps:
       - name: Checkout repository
@@ -59,3 +59,25 @@ jobs:
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,id=$simulator_udid" \
             CODE_SIGNING_ALLOWED=NO
+
+      - name: Run monitoring flow through native iOS channels
+        run: |
+          set -euo pipefail
+          simulator_udid="$(
+            xcrun simctl list devices booted -j |
+              python3 -c 'import json, sys; devices = json.load(sys.stdin)["devices"]; print(next(device["udid"] for runtime in devices.values() for device in runtime))'
+          )"
+          xcrun simctl install "$simulator_udid" build/ios/iphonesimulator/Runner.app
+          xcrun simctl privacy "$simulator_udid" grant location-always com.argus.orienteering
+          (
+            while true; do
+              xcrun simctl location "$simulator_udid" set 35.681236,139.767125
+              sleep 2
+            done
+          ) &
+          location_injector_pid=$!
+          trap 'kill "$location_injector_pid" 2>/dev/null || true' EXIT
+          flutter drive --no-pub \
+            --driver=test_driver/ui_smoke_driver.dart \
+            --target=integration_test/monitoring_review_geojson_test.dart \
+            -d "$simulator_udid"

@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:argus/geo/geo_model.dart';
+import 'package:argus/io/config.dart';
 import 'package:argus/platform/location_service.dart';
 import 'package:argus/platform/notifier.dart';
 import 'package:argus/ui/settings_page.dart';
@@ -39,7 +42,7 @@ void main() {
       notifier: notifier,
       permissionCoordinator: HarnessPermissionCoordinator(),
       alarmVolumeClient: const HarnessAlarmVolumeClient(),
-      isAndroid: true,
+      isAndroid: Platform.isAndroid,
     );
 
     await tester.pumpWidget(HarnessBuilder.buildApp(controller));
@@ -115,6 +118,82 @@ void main() {
     expect(find.byKey(const Key('settings-monitoring-lock')), findsOneWidget);
 
     controller.dispose();
+  });
+
+  testWidgets('native alarm and vibration channels remain independent',
+      (tester) async {
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      return;
+    }
+
+    const alarm = MethodChannelAlarmClient();
+    const vibration = MethodChannelVibrationClient();
+    const diagnostics = MethodChannelAlertDiagnosticsClient();
+
+    try {
+      await alarm.stop();
+      await vibration.stop();
+
+      await vibration.startPattern();
+      var state = await diagnostics.getPlaybackState();
+      expect(state.vibrationPatternActive, isTrue);
+
+      await alarm.stop();
+      state = await diagnostics.getPlaybackState();
+      expect(state.alarmActive, isFalse);
+      expect(
+        state.vibrationPatternActive,
+        isTrue,
+        reason: 'アラーム停止で連続振動を止めてはいけない',
+      );
+
+      await vibration.stop();
+      await alarm.play(volume: 0.1);
+      state = await diagnostics.getPlaybackState();
+      expect(state.alarmActive, isTrue);
+      expect(state.vibrationPatternActive, isFalse);
+
+      await vibration.pulse(const Duration(milliseconds: 50));
+      state = await diagnostics.getPlaybackState();
+      expect(
+        state.alarmActive,
+        isTrue,
+        reason: '単発振動でアラーム音を止めてはいけない',
+      );
+      expect(state.vibrationPatternActive, isFalse);
+    } finally {
+      await alarm.stop();
+      await vibration.stop();
+    }
+  });
+
+  testWidgets('native geolocator stream receives the simulated device fix',
+      (tester) async {
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      return;
+    }
+
+    final service = GeolocatorLocationService();
+    final config = await AppConfig.loadDefault();
+    try {
+      final fixFuture = service.stream.first.timeout(
+        const Duration(seconds: 30),
+      );
+      final result = await service.start(config);
+      expect(
+        result.status,
+        LocationServiceStartStatus.started,
+        reason: result.message,
+      );
+
+      final fix = await fixFuture;
+      expect(fix.latitude, closeTo(35.681236, 0.001));
+      expect(fix.longitude, closeTo(139.767125, 0.001));
+      expect(fix.accuracyMeters, isNotNull);
+      expect(fix.monitoringElapsed, isNotNull);
+    } finally {
+      await service.stop();
+    }
   });
 }
 

@@ -36,10 +36,22 @@ void main() {
       final notifier = File('lib/platform/notifier.dart').readAsStringSync();
 
       expect(manifest, contains('android.permission.VIBRATE'));
+      expect(mainActivity, contains('"stopAlarm"'));
       expect(mainActivity, contains('"startVibration"'));
+      expect(mainActivity, contains('"pulseVibration"'));
       expect(mainActivity, contains('"stopVibration"'));
+      expect(mainActivity, contains('"getAlertPlaybackState"'));
+      expect(mainActivity, contains('"vibrationPatternActive"'));
       expect(mainActivity, contains('NativeVibrationPlayer'));
       expect(mainActivity, contains('VibrationEffect.createWaveform'));
+      expect(mainActivity, contains('VibrationEffect.createOneShot'));
+      expect(
+        RegExp(
+          r'fun stop\(context: Context\? = null\)[\s\S]*?^    }',
+          multiLine: true,
+        ).firstMatch(mainActivity)?.group(0),
+        isNot(contains('NativeVibrationPlayer.stop')),
+      );
       expect(notifier, contains('NativeVibrationPlayer'));
       expect(notifier, isNot(contains("package:vibration")));
     });
@@ -103,6 +115,21 @@ void main() {
       expect(pubspec, isNot(contains('vibration:')));
       expect(lockfile, isNot(contains('vibration_platform_interface')));
       expect(lockfile, isNot(contains('name: vibration')));
+    });
+
+    test('runs device integration through native alert and location channels',
+        () {
+      final workflow =
+          File('.github/workflows/android_emulator_ci.yml').readAsStringSync();
+      final integration = File(
+        'integration_test/monitoring_review_geojson_test.dart',
+      ).readAsStringSync();
+
+      expect(workflow, contains('adb emu geo fix'));
+      expect(workflow, contains('ACCESS_BACKGROUND_LOCATION'));
+      expect(workflow, contains('--use-application-binary='));
+      expect(integration, contains('GeolocatorLocationService()'));
+      expect(integration, contains('MethodChannelAlertDiagnosticsClient'));
     });
   });
 }

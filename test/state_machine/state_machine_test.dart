@@ -311,6 +311,9 @@ void main() {
       );
     }
     expect(snapshot.status, LocationStateStatus.outer);
+    final trustedDistance = snapshot.distanceToBoundaryM;
+    final trustedBoundary = snapshot.nearestBoundaryPoint;
+    final trustedBearing = snapshot.bearingToBoundaryDeg;
 
     // Now move back inside with bad GPS accuracy
     final insideWithBadGPS = LocationFix(
@@ -324,6 +327,12 @@ void main() {
     // A low-quality fix must never silence an active OUTER alert.
     expect(snapshot.status, LocationStateStatus.outer);
     expect(snapshot.horizontalAccuracyM, 50);
+    expect(snapshot.distanceToBoundaryM, trustedDistance);
+    expect(snapshot.nearestBoundaryPoint?.latitude, trustedBoundary?.latitude);
+    expect(
+        snapshot.nearestBoundaryPoint?.longitude, trustedBoundary?.longitude);
+    expect(snapshot.bearingToBoundaryDeg, trustedBearing);
+    expect(snapshot.notes, contains('last reliable guidance'));
   });
 
   test('maintains OUTER with bad GPS when still outside', () {

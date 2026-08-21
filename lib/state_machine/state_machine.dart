@@ -34,6 +34,9 @@ class StateMachine {
   final PointInPolygon _pip;
   HysteresisCounter _hysteresis;
   LocationStateStatus _current = LocationStateStatus.waitGeoJson;
+  double? _lastTrustedOuterDistanceM;
+  LatLng? _lastTrustedOuterBoundaryPoint;
+  double? _lastTrustedOuterBearingDeg;
 
   /// 現在の状態を取得します。
   LocationStateStatus get current => _current;
@@ -45,6 +48,7 @@ class StateMachine {
 
   void resetMonitoring() {
     _hysteresis.reset();
+    _clearTrustedOuterNavigation();
     _current = _geoModel.hasGeometry
         ? LocationStateStatus.waitStart
         : LocationStateStatus.waitGeoJson;
@@ -69,6 +73,7 @@ class StateMachine {
     _geoModel = geoModel;
     _areaIndex = index;
     _hysteresis.reset();
+    _clearTrustedOuterNavigation();
     _current = geoModel.hasGeometry
         ? LocationStateStatus.waitStart
         : LocationStateStatus.waitGeoJson;
@@ -82,6 +87,16 @@ class StateMachine {
     final observedAt = fix.monitoringElapsed ??
         Duration(microseconds: fix.timestamp.microsecondsSinceEpoch);
     final snapshot = _evaluateInternal(fix, observedAt);
+    final hasHealthyAccuracy = fix.accuracyMeters != null &&
+        fix.accuracyMeters! <= _config.gpsAccuracyBadMeters;
+    if (hasHealthyAccuracy && snapshot.status == LocationStateStatus.outer) {
+      _lastTrustedOuterDistanceM = snapshot.distanceToBoundaryM;
+      _lastTrustedOuterBoundaryPoint = snapshot.nearestBoundaryPoint;
+      _lastTrustedOuterBearingDeg = snapshot.bearingToBoundaryDeg;
+    } else if (hasHealthyAccuracy &&
+        snapshot.status != LocationStateStatus.outerPending) {
+      _clearTrustedOuterNavigation();
+    }
     _current = snapshot.status;
     return snapshot;
   }
@@ -101,50 +116,18 @@ class StateMachine {
         fix.accuracyMeters! > _config.gpsAccuracyBadMeters) {
       // 確定済みOUTERは、精度不良の測位では解除しない。
       // 誤差の大きい1点が偶然エリア内を指して警報を止める方が危険なため、
-      // 距離と方位だけをbest-effortで更新する。
+      // 警報は維持し、案内には最後の信頼できるfixだけを使用する。
       if (_current == LocationStateStatus.outer) {
-        final searchPolys = _candidatePolygons(fix.latitude, fix.longitude);
-        if (searchPolys.isEmpty) {
-          final boundsEval = _nearestBoundsEvaluation(
-            fix.latitude,
-            fix.longitude,
-          );
-          return StateSnapshot(
-            status: LocationStateStatus.outer,
-            timestamp: fix.timestamp,
-            horizontalAccuracyM: fix.accuracyMeters,
-            distanceToBoundaryM: boundsEval?.distanceToBoundaryM,
-            geoJsonLoaded: true,
-            nearestBoundaryPoint: boundsEval?.nearestPoint,
-            bearingToBoundaryDeg: boundsEval?.bearingToBoundaryDeg,
-            notes:
-                'Low accuracy ${fix.accuracyMeters?.toStringAsFixed(1) ?? '-'}m, but maintaining OUTER state',
-          );
-        }
-
-        final polygonEval = _evaluatePolygons(
-          fix.latitude,
-          fix.longitude,
-          searchPolys,
-        );
-        final nearestEval = polygonEval.nearest;
-        // coverage:ignore-start
-        // nearestEval is defensive-nullable; valid geometry evaluations always
-        // produce a nearest boundary candidate.
-        final distance = nearestEval?.distanceToBoundaryM;
-        // coverage:ignore-end
         return StateSnapshot(
           status: LocationStateStatus.outer,
           timestamp: fix.timestamp,
           horizontalAccuracyM: fix.accuracyMeters,
-          distanceToBoundaryM: distance,
+          distanceToBoundaryM: _lastTrustedOuterDistanceM,
           geoJsonLoaded: true,
-          nearestBoundaryPoint:
-              nearestEval?.nearestPoint, // coverage:ignore-line
-          bearingToBoundaryDeg:
-              nearestEval?.bearingToBoundaryDeg, // coverage:ignore-line
+          nearestBoundaryPoint: _lastTrustedOuterBoundaryPoint,
+          bearingToBoundaryDeg: _lastTrustedOuterBearingDeg,
           notes:
-              'Low accuracy ${fix.accuracyMeters?.toStringAsFixed(1) ?? '-'}m, but maintaining OUTER state',
+              'Low accuracy ${fix.accuracyMeters?.toStringAsFixed(1) ?? '-'}m; maintaining OUTER with last reliable guidance',
         );
       }
       // OUTER状態でない場合のみ、GPS_BADに遷移
@@ -328,6 +311,12 @@ class StateMachine {
     }
 
     return _PolygonEvaluationResult(inside: inside, nearest: nearest);
+  }
+
+  void _clearTrustedOuterNavigation() {
+    _lastTrustedOuterDistanceM = null;
+    _lastTrustedOuterBoundaryPoint = null;
+    _lastTrustedOuterBearingDeg = null;
   }
 
   double _haversine(

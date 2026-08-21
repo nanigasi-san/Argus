@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'package:argus/app_controller.dart';
 import 'package:argus/geo/geo_model.dart';
@@ -452,6 +453,119 @@ void main() {
       expect(controller.monitoringLifecycle, MonitoringLifecycle.idle);
     });
 
+    test('GPS warning delivery never delays a scheduled reconnect', () async {
+      final config = _testConfig();
+      final locationService = FakeLocationService();
+      final notifications = _BlockingHealthNotificationsClient();
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: locationService,
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: notifications,
+          alarmPlayer: FakeAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+        reconnectDelays: const [Duration(milliseconds: 5)],
+      );
+      controller.debugSeed(
+        config: config,
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+      await controller.startMonitoring();
+
+      locationService.addError(StateError('stream stopped'));
+      await notifications.healthShowEntered.future;
+      await Future<void>.delayed(const Duration(milliseconds: 15));
+
+      expect(locationService.startCount, 2);
+      expect(locationService.stopCount, 1);
+
+      notifications.allowHealthShow.complete();
+      await Future<void>.delayed(Duration.zero);
+      await controller.stopMonitoring();
+    });
+
+    test('a fix received while the GPS warning is pending cancels reconnect',
+        () async {
+      final config = _testConfig();
+      final locationService = FakeLocationService();
+      final notifications = _BlockingHealthNotificationsClient();
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: locationService,
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: notifications,
+          alarmPlayer: FakeAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+        reconnectDelays: const [Duration(milliseconds: 100)],
+      );
+      controller.debugSeed(
+        config: config,
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+      await controller.startMonitoring();
+
+      locationService.addError(StateError('stream stopped'));
+      await notifications.healthShowEntered.future;
+      locationService.add(
+        LocationFix(
+          latitude: 0.5,
+          longitude: 0.5,
+          accuracyMeters: 5,
+          timestamp: DateTime.utc(2024, 1, 1),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.monitoringLifecycle, MonitoringLifecycle.active);
+
+      notifications.allowHealthShow.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+
+      expect(controller.monitoringLifecycle, MonitoringLifecycle.active);
+      expect(locationService.startCount, 1);
+      expect(locationService.stopCount, 0);
+      await controller.stopMonitoring();
+    });
+
+    test('a fix emitted during initial service start is not dropped', () async {
+      final config = _testConfig();
+      final locationService = _EmittingStartLocationService(
+        emitOnStartNumbers: const {1},
+      );
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: locationService,
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+      );
+      controller.debugSeed(
+        config: config,
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+
+      await controller.startMonitoring();
+
+      expect(controller.monitoringLifecycle, MonitoringLifecycle.active);
+      expect(locationService.startCount, 1);
+      await controller.stopMonitoring();
+    });
+
     test('location stream errors trigger automatic reconnect', () async {
       final config = _testConfig();
       final locationService = FakeLocationService();
@@ -494,6 +608,89 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 2));
       expect(controller.monitoringLifecycle, MonitoringLifecycle.active);
 
+      await controller.stopMonitoring();
+    });
+
+    test('a fix emitted during reconnect remains active after start returns',
+        () async {
+      final config = _testConfig();
+      final locationService = _EmittingStartLocationService(
+        emitOnStartNumbers: const {2},
+      );
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: locationService,
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+        reconnectDelays: const [Duration(milliseconds: 2)],
+      );
+      controller.debugSeed(
+        config: config,
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+      await controller.startMonitoring();
+
+      locationService.addError(StateError('stream stopped'));
+      await Future<void>.delayed(const Duration(milliseconds: 15));
+
+      expect(locationService.startCount, 2);
+      expect(controller.monitoringLifecycle, MonitoringLifecycle.active);
+      expect(
+        controller.logs.map((entry) => entry.message),
+        contains('Location service reconnected with a fresh fix.'),
+      );
+      await controller.stopMonitoring();
+    });
+
+    test('stop and a later restart cannot overlap an in-flight reconnect',
+        () async {
+      final config = _testConfig();
+      final locationService = _BlockingReconnectLocationService();
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: locationService,
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+        reconnectDelays: const [Duration(milliseconds: 1)],
+      );
+      controller.debugSeed(
+        config: config,
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+      await controller.startMonitoring();
+
+      locationService.addError(StateError('stream stopped'));
+      await locationService.reconnectStartEntered.future;
+
+      var stopCompleted = false;
+      final stopFuture = controller.stopMonitoring().then((_) {
+        stopCompleted = true;
+      });
+      await Future<void>.delayed(Duration.zero);
+      expect(stopCompleted, isFalse);
+
+      locationService.allowReconnectStart.complete();
+      await stopFuture;
+      await controller.startMonitoring();
+
+      expect(locationService.startCount, 3);
+      expect(locationService.stopCount, 2);
+      expect(locationService.maxConcurrentOperations, 1);
+      expect(controller.monitoringLifecycle, MonitoringLifecycle.acquiring);
       await controller.stopMonitoring();
     });
 
@@ -890,6 +1087,42 @@ void main() {
 
       expect(controller.logs.last.message,
           startsWith('Failed to reassert alarm after app resume:'));
+    });
+
+    test('handleAppResumed continues recovery when permission refresh fails',
+        () async {
+      final config = _testConfig();
+      final alarm = FakeAlarmPlayer();
+      final notifier = Notifier(
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: alarm,
+        vibrationPlayer: FakeVibrationPlayer(),
+      );
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: FakeLocationService(),
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: notifier,
+        permissionCoordinator: _ThrowingRefreshPermissionCoordinator(),
+      );
+      controller.debugSeed(
+        config: config,
+        snapshot: StateSnapshot(
+          status: LocationStateStatus.outer,
+          timestamp: DateTime.utc(2024, 1, 1),
+          geoJsonLoaded: true,
+        ),
+      );
+      await notifier.notifyOuter();
+
+      await controller.handleAppResumed();
+
+      expect(alarm.playCount, 2);
+      expect(
+        controller.logs.map((entry) => entry.message),
+        contains(startsWith('Failed to refresh permissions on resume:')),
+      );
     });
 
     test('handleAppResumed does not start an alarm outside OUTER', () async {
@@ -2099,6 +2332,122 @@ class FakeLocationService implements LocationService {
 
   void addError(Object error) {
     _controller.addError(error);
+  }
+}
+
+class _EmittingStartLocationService implements LocationService {
+  _EmittingStartLocationService({
+    required this.emitOnStartNumbers,
+  });
+
+  final Set<int> emitOnStartNumbers;
+  final StreamController<LocationFix> _controller =
+      StreamController<LocationFix>.broadcast(sync: true);
+  int startCount = 0;
+  int stopCount = 0;
+
+  @override
+  Stream<LocationFix> get stream => _controller.stream;
+
+  @override
+  Future<LocationServiceStartResult> start(AppConfig config) async {
+    startCount += 1;
+    if (emitOnStartNumbers.contains(startCount)) {
+      _controller.add(
+        LocationFix(
+          latitude: 0.5,
+          longitude: 0.5,
+          accuracyMeters: 5,
+          timestamp: DateTime.utc(2024, 1, 1, 0, 0, startCount),
+        ),
+      );
+    }
+    return const LocationServiceStartResult.started();
+  }
+
+  @override
+  Future<void> stop() async {
+    stopCount += 1;
+  }
+
+  void addError(Object error) {
+    _controller.addError(error);
+  }
+}
+
+class _BlockingReconnectLocationService implements LocationService {
+  final StreamController<LocationFix> _controller =
+      StreamController<LocationFix>.broadcast();
+  final Completer<void> reconnectStartEntered = Completer<void>();
+  final Completer<void> allowReconnectStart = Completer<void>();
+  int startCount = 0;
+  int stopCount = 0;
+  int _activeOperations = 0;
+  int maxConcurrentOperations = 0;
+
+  @override
+  Stream<LocationFix> get stream => _controller.stream;
+
+  @override
+  Future<LocationServiceStartResult> start(AppConfig config) async {
+    _enterOperation();
+    try {
+      startCount += 1;
+      if (startCount == 2) {
+        reconnectStartEntered.complete();
+        await allowReconnectStart.future;
+      }
+      return const LocationServiceStartResult.started();
+    } finally {
+      _leaveOperation();
+    }
+  }
+
+  @override
+  Future<void> stop() async {
+    _enterOperation();
+    try {
+      stopCount += 1;
+      await Future<void>.delayed(Duration.zero);
+    } finally {
+      _leaveOperation();
+    }
+  }
+
+  void addError(Object error) {
+    _controller.addError(error);
+  }
+
+  void _enterOperation() {
+    _activeOperations += 1;
+    if (_activeOperations > maxConcurrentOperations) {
+      maxConcurrentOperations = _activeOperations;
+    }
+  }
+
+  void _leaveOperation() {
+    _activeOperations -= 1;
+  }
+}
+
+class _BlockingHealthNotificationsClient extends FakeLocalNotificationsClient {
+  final Completer<void> healthShowEntered = Completer<void>();
+  final Completer<void> allowHealthShow = Completer<void>();
+
+  @override
+  Future<void> show(
+    int id,
+    String? title,
+    String? body,
+    NotificationDetails details,
+  ) async {
+    if (id == 1002) {
+      if (!healthShowEntered.isCompleted) {
+        healthShowEntered.complete();
+      }
+      await allowHealthShow.future;
+    }
+    await super.show(id, title, body, details);
   }
 }
 
