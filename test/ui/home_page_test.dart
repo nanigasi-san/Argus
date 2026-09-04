@@ -401,6 +401,22 @@ void main() {
     expect(find.text('GeoJSONを選択'), findsNothing);
   });
 
+  testWidgets('QR generation notice reports contact page launch failure',
+      (tester) async {
+    await mockUrlLauncher(launchResult: false);
+    final controller = buildTestController(hasGeoJson: true);
+
+    await _pumpHome(tester, controller);
+    await tester.tap(find.byType(PopupMenuButton<int>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('QRコードを生成'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('お問い合わせ'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('お問い合わせページを開けませんでした。'), findsOneWidget);
+  });
+
   testWidgets(
       'tapping start opens background disclosure when always permission is missing',
       (tester) async {
