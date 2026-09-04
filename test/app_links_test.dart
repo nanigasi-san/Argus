@@ -47,4 +47,19 @@ void main() {
       isTrue,
     );
   });
+
+  test('openContactPage launches external contact page URL', () async {
+    final calls = await mockUrlLauncher(launchResult: true);
+
+    final launched = await openContactPage();
+
+    expect(launched, isTrue);
+    expect(calls, isNotEmpty);
+    expect(
+      calls.any((call) =>
+          call.method.toLowerCase().contains('launch') &&
+          call.arguments.toString().contains(contactPageUrl)),
+      isTrue,
+    );
+  });
 }

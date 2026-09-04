@@ -493,7 +493,7 @@ class AppController extends ChangeNotifier {
         return false;
       }
 
-      return reloadGeoJsonFromQr(qrText);
+      return await reloadGeoJsonFromQr(qrText);
     } catch (e) {
       final errorMessage = e.toString().toLowerCase();
       if (errorMessage.contains('cancel') ||

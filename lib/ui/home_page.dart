@@ -761,6 +761,12 @@ class _CreditFooter extends StatelessWidget {
           textAlign: TextAlign.center,
           style: footerStyle,
         ),
+        const SizedBox(height: 2),
+        Text(
+          'Special thanks for K.M, R.M',
+          textAlign: TextAlign.center,
+          style: footerStyle,
+        ),
         const SizedBox(height: 4),
         InkWell(
           onTap: () => _openContact(context),
@@ -782,6 +788,48 @@ class _CreditFooter extends StatelessWidget {
 class _OverflowMenu extends StatelessWidget {
   const _OverflowMenu();
 
+  Future<void> _showQrGenerationNotice(BuildContext context) async {
+    final action = await showDialog<_QrGenerationNoticeAction>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('大会でのご利用について'),
+        content: const Text('大会での利用の際はご相談ください。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(
+              _QrGenerationNoticeAction.generate,
+            ),
+            child: const Text('このまま生成'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(
+              _QrGenerationNoticeAction.contact,
+            ),
+            child: const Text('お問い合わせ'),
+          ),
+        ],
+      ),
+    );
+
+    if (!context.mounted || action == null) {
+      return;
+    }
+    if (action == _QrGenerationNoticeAction.generate) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const QrGeneratorPage()),
+      );
+      return;
+    }
+
+    final launched = await openContactPage();
+    if (!context.mounted || launched) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('お問い合わせページを開けませんでした。')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopupMenuButton<int>(
@@ -795,13 +843,16 @@ class _OverflowMenu extends StatelessWidget {
             MaterialPageRoute(builder: (_) => const SettingsPage()),
           );
         } else if (value == 2) {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const QrGeneratorPage()),
-          );
+          _showQrGenerationNotice(context);
         }
       },
     );
   }
+}
+
+enum _QrGenerationNoticeAction {
+  generate,
+  contact,
 }
 
 class _LargeStatusDisplay extends StatelessWidget {
