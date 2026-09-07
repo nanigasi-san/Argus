@@ -248,8 +248,19 @@ class AppController extends ChangeNotifier {
     await notifier.initialize();
     _monitoringPermissionState =
         await permissionCoordinator.refreshMonitoringPermissionState();
-    _config ??= (await fileManager.readConfig()).normalized();
+    final configLoad = await fileManager.readConfig();
+    _config ??= configLoad.config.normalized();
     stateMachine.updateConfig(_config!);
+    if (configLoad.fallbackReason != null) {
+      // 保存済みの閾値が黙って初期値へ戻るのは、利用者が「調整したつもりの
+      // 設定」で走ることを意味する。起動時に必ず知らせる。
+      _logError(
+          'APP',
+          'Saved settings were not usable: '
+              '${configLoad.fallbackReason}');
+      _lastErrorMessage = '保存された設定を読み込めなかったため、初期設定で起動しました。'
+          '設定画面で内容を確認してください。';
+    }
 
     // アラーム音量を設定
     notifier.setAlarmVolume(_config!.alarmVolume);
@@ -668,16 +679,24 @@ class AppController extends ChangeNotifier {
       return;
     }
 
-    // 設定を更新
     final normalizedConfig = newConfig.normalized();
+
+    // 先に永続化してから適用する。逆順だと、保存に失敗したとき画面には
+    // 「設定の反映に失敗しました」と出るのに動作中の閾値はすでに変わって
+    // おり、次回起動で元へ戻る。利用者は「変えたつもりの値」で走ることに
+    // なるので、見えている状態と保存された状態を一致させる。
+    await fileManager.saveConfig(normalizedConfig);
+
+    // 保存を待つ間に監視が始まっていたら適用しない。監視中に閾値や
+    // ヒステリシス条件が入れ替わると、状態機械の前提が途中で変わる。
+    if (!canModifyConfiguration) {
+      _rejectConfigurationChange();
+      return;
+    }
+
     _config = normalizedConfig;
     stateMachine.updateConfig(normalizedConfig);
-
-    // アラーム音量を設定
     notifier.setAlarmVolume(normalizedConfig.alarmVolume);
-
-    // 設定をファイルに保存
-    await fileManager.saveConfig(normalizedConfig);
 
     _logInfo(
       'APP',
@@ -1598,7 +1617,7 @@ class AppController extends ChangeNotifier {
   // coverage:ignore-start
   static Future<AppController> bootstrap() async {
     final fileManager = FileManager();
-    final config = (await fileManager.readConfig()).normalized();
+    final config = (await fileManager.readConfig()).config.normalized();
     final stateMachine = StateMachine(config: config);
     final locationService = GeolocatorLocationService();
     final logger = EventLogger();

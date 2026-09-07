@@ -2137,6 +2137,78 @@ void main() {
       );
     });
 
+    test('a failed config save leaves the running config untouched', () async {
+      // 回帰テスト: メモリを先に更新すると、保存に失敗したとき画面には
+      // 「反映に失敗」と出るのに動作中の閾値は変わっており、次回起動で
+      // 元へ戻る。利用者は「変えたつもりの値」で走ることになる。
+      final config = _testConfig();
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: FakeLocationService(),
+        fileManager: _FailingSaveFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+      );
+      controller.debugSeed(
+        config: config,
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+
+      final updated = AppConfig(
+        innerBufferM: 12,
+        leaveConfirmSamples: 2,
+        leaveConfirmSeconds: 5,
+        gpsAccuracyBadMeters: 20,
+        sampleIntervalS: const {'fast': 2},
+        alarmVolume: 0.8,
+      );
+
+      await expectLater(
+        controller.updateConfig(updated),
+        throwsA(isA<StateError>()),
+      );
+
+      // 保存できなかったので、動作中の設定は変わらない。
+      expect(controller.config!.innerBufferM, config.innerBufferM);
+      expect(
+        controller.config!.gpsAccuracyBadMeters,
+        config.gpsAccuracyBadMeters,
+      );
+      expect(controller.config!.alarmVolume, config.alarmVolume);
+    });
+
+    test('initialize reports that saved settings were unusable', () async {
+      // 回帰テスト: 保存済みの閾値が黙って初期値へ戻ると、利用者は
+      // 「調整したつもりの設定」で走ることになる。
+      final config = _testConfig();
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: FakeLocationService(),
+        fileManager: _CorruptConfigFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+      );
+
+      await controller.initialize();
+
+      expect(controller.lastErrorMessage, contains('初期設定で起動しました'));
+      expect(
+        controller.logs.map((entry) => entry.message),
+        contains(startsWith('Saved settings were not usable')),
+      );
+    });
+
     test('reconnect does not delay OUTER confirmation', () async {
       // 回帰テスト: 再接続は locationService.stop()/start() を呼ぶ。監視の経過時間を
       // 位置サービス側で計測していると、この stop/start でクロックが 0 に戻り、
@@ -3430,7 +3502,8 @@ class FakeFileManager extends FileManager {
   GeoModel get _model => _squareModel();
 
   @override
-  Future<AppConfig> readConfig() async => config;
+  Future<ConfigLoadResult> readConfig() async =>
+      ConfigLoadResult(config: config);
 
   Future<GeoModel?> pickAndLoadGeoJson() async => _model;
 
@@ -3477,6 +3550,25 @@ class _SavingFileManager extends FakeFileManager {
   @override
   Future<void> saveConfig(AppConfig config) async {
     savedConfig = config;
+  }
+}
+
+class _CorruptConfigFileManager extends FakeFileManager {
+  _CorruptConfigFileManager({required super.config});
+
+  @override
+  Future<ConfigLoadResult> readConfig() async => ConfigLoadResult(
+        config: config,
+        fallbackReason: '設定ファイルを読み込めません: FormatException',
+      );
+}
+
+class _FailingSaveFileManager extends FakeFileManager {
+  _FailingSaveFileManager({required super.config});
+
+  @override
+  Future<void> saveConfig(AppConfig config) async {
+    throw StateError('config save failed');
   }
 }
 

@@ -41,7 +41,8 @@ class FakeFileManager extends FileManager {
   GeoModel get _model => createSquareModel();
 
   @override
-  Future<AppConfig> readConfig() async => config;
+  Future<ConfigLoadResult> readConfig() async =>
+      ConfigLoadResult(config: config);
 
   Future<GeoModel?> pickAndLoadGeoJson() async => _model;
 

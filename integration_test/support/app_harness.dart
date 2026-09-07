@@ -100,7 +100,8 @@ class HarnessFileManager extends FileManager {
   final AppConfig config;
 
   @override
-  Future<AppConfig> readConfig() async => config;
+  Future<ConfigLoadResult> readConfig() async =>
+      ConfigLoadResult(config: config);
 
   @override
   Future<XFile?> pickGeoJsonFile() async {
