@@ -203,6 +203,47 @@ void main() {
     expect(label.style?.color, Colors.red);
   });
 
+  testWidgets('alert reliability warning stays until dismissed',
+      (tester) async {
+    // 回帰テスト: Snackbar だと4秒で消えるため、走行中に数十秒後へ画面を
+    // 見た利用者には「サイレンが鳴っていない」事実が届かない。
+    final controller = buildTestController(
+      hasGeoJson: true,
+      alertReliabilityWarning: '警報音を発報できませんでした。',
+      snapshot: StateSnapshot(
+        status: LocationStateStatus.outer,
+        timestamp: DateTime.utc(2024, 1, 1),
+        geoJsonLoaded: true,
+        horizontalAccuracyM: 5,
+      ),
+    );
+
+    await _pumpHome(tester, controller);
+
+    expect(
+      find.byKey(const Key('alert-reliability-warning')),
+      findsOneWidget,
+    );
+
+    // 時間が経っても消えない。
+    await tester.pump(const Duration(seconds: 30));
+    expect(
+      find.byKey(const Key('alert-reliability-warning')),
+      findsOneWidget,
+    );
+
+    final dismiss = find.byKey(
+      const Key('alert-reliability-warning-dismiss'),
+    );
+    await tester.ensureVisible(dismiss);
+    await tester.pumpAndSettle();
+    await tester.tap(dismiss);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('alert-reliability-warning')), findsNothing);
+    expect(controller.alertReliabilityWarning, isNull);
+  });
+
   testWidgets('shows stopping and failed lifecycle states', (tester) async {
     final stoppingController = buildTestController(
       hasGeoJson: true,

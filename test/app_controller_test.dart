@@ -1649,7 +1649,12 @@ void main() {
 
       // 停止に失敗したので再生中フラグは倒れず、利用者にも伝わる。
       expect(notifier.hasActiveAlertPlayback, isTrue);
-      expect(controller.lastErrorMessage, contains('警報を停止できませんでした'));
+      // Snackbarで4秒で消える lastErrorMessage ではなく、閉じるまで残る
+      // 専用の警告に出す。見逃したら取り返しがつかない情報のため。
+      expect(
+        controller.alertReliabilityWarning,
+        contains('警報を停止できませんでした'),
+      );
       expect(
         controller.logs.map((entry) => entry.message),
         contains(startsWith('Alert playback could not be stopped')),
@@ -1707,7 +1712,12 @@ void main() {
 
       // 実際に止まっていないので「ミュート中」にはしない。
       expect(controller.isAlarmSnoozed, isFalse);
-      expect(controller.lastErrorMessage, contains('警報を停止できませんでした'));
+      // Snackbarで4秒で消える lastErrorMessage ではなく、閉じるまで残る
+      // 専用の警告に出す。見逃したら取り返しがつかない情報のため。
+      expect(
+        controller.alertReliabilityWarning,
+        contains('警報を停止できませんでした'),
+      );
       await controller.stopMonitoring();
     });
 
@@ -1831,7 +1841,9 @@ void main() {
 
       expect(outcome, MonitoringStartOutcome.alarmVolumeTooLow);
       expect(locationService.started, isFalse);
-      expect(controller.monitoringLifecycle, MonitoringLifecycle.failed);
+      // 音量が低いのは「失敗」ではなくワンタップで直せる前提条件なので、
+      // 赤い「開始失敗」を残さず idle に戻す。
+      expect(controller.monitoringLifecycle, MonitoringLifecycle.idle);
       // 呼び出し元が専用ダイアログを出すため、文字列では重ねない。
       expect(controller.lastErrorMessage, isNull);
       expect(
@@ -1918,8 +1930,11 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 10));
 
       expect(controller.snapshot.status, LocationStateStatus.outer);
-      expect(controller.lastErrorMessage, contains('警報音'));
-      expect(controller.lastErrorMessage, contains('発報できませんでした'));
+      expect(controller.alertReliabilityWarning, contains('警報音'));
+      expect(
+        controller.alertReliabilityWarning,
+        contains('発報できませんでした'),
+      );
       await controller.stopMonitoring();
     });
 
@@ -1981,6 +1996,108 @@ void main() {
 
       await controller.stopMonitoring();
       expect(notifications.shownIds, contains(1002));
+    });
+
+    test('startMonitoring stops alert playback left over from a failed stop',
+        () async {
+      // 回帰テスト: 停止に失敗した警報を残したまま次のセッションを始めると、
+      // 鳴り続けたうえ _isAlarmChannelActive が true のままなので、次の
+      // OUTER で警報の開始自体がスキップされる。
+      final config = _testConfig();
+      final locationService = FakeLocationService();
+      final alarm = _AlwaysFailStopAlarmPlayer();
+      final notifier = Notifier(
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: alarm,
+        vibrationPlayer: FakeVibrationPlayer(),
+      );
+      var elapsed = Duration.zero;
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: locationService,
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: notifier,
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+        elapsedProvider: () => elapsed,
+      );
+      controller.debugSeed(
+        config: config,
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+      await controller.startMonitoring();
+      locationService.add(
+        LocationFix(
+          latitude: 2,
+          longitude: 2,
+          accuracyMeters: 5,
+          timestamp: DateTime.utc(2024, 1, 1),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      elapsed += const Duration(seconds: 2);
+      locationService.add(
+        LocationFix(
+          latitude: 2,
+          longitude: 2,
+          accuracyMeters: 5,
+          timestamp: DateTime.utc(2024, 1, 1, 0, 0, 2),
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      await controller.stopMonitoring();
+      expect(notifier.hasActiveAlertPlayback, isTrue);
+
+      final stopsBeforeRestart = alarm.stopCount;
+      await controller.startMonitoring();
+
+      // 再開時に停止を試み、それでも止まらないなら警告を出し続ける。
+      expect(alarm.stopCount, greaterThan(stopsBeforeRestart));
+      expect(
+        controller.alertReliabilityWarning,
+        contains('警報を停止できませんでした'),
+      );
+      await controller.stopMonitoring();
+    });
+
+    test('resume grants a single retry instead of a fresh budget', () async {
+      // 回帰テスト: レジュームのたびに失敗回数を0へ戻すと、競技中によくある
+      // アプリ切り替えのたびに満額の再試行が復活し打ち切りが効かなくなる。
+      final config = _testConfig();
+      final locationService = _AlwaysFailRestartLocationService();
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: locationService,
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+        reconnectDelays: const [Duration(milliseconds: 1)],
+        maxReconnectFailures: 3,
+      );
+      controller.debugSeed(
+        config: config,
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+      await controller.startMonitoring();
+
+      locationService.addError(const LocationStreamEndedException());
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      expect(locationService.restartCount, 3);
+
+      await controller.handleAppResumed();
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+
+      // 満額（さらに3回）ではなく1回だけ。
+      expect(locationService.restartCount, 4);
+
+      await controller.stopMonitoring();
     });
 
     test('reconnect does not delay OUTER confirmation', () async {

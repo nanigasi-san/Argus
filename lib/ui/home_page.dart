@@ -174,6 +174,16 @@ class _HomeScrollableContent extends StatelessWidget {
                               : null,
                         ),
                         const SizedBox(height: 12),
+                        // 警報の発報・停止に失敗したことは、閉じるまで消えない
+                        // バナーで出す。Snackbarだと4秒で消えるため、走行中に
+                        // 数十秒後へ画面を見た利用者にはまず届かない。
+                        if (controller.alertReliabilityWarning != null) ...[
+                          _AlertReliabilityWarning(
+                            message: controller.alertReliabilityWarning!,
+                            onDismiss: controller.clearAlertReliabilityWarning,
+                          ),
+                          const SizedBox(height: 12),
+                        ],
                         if (isMonitoring) ...[
                           const _ForceCloseWarning(),
                           const SizedBox(height: 12),
@@ -600,6 +610,58 @@ class _BottomActions extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// 警報を発報・停止できなかったことを伝える常設バナー。
+///
+/// 利用者が明示的に閉じるまで残す。「サイレンが鳴っていない」「警報が
+/// 止まっていない」は、見逃したら取り返しがつかない種類の情報なので、
+/// 自動で消える通知経路には載せない。
+class _AlertReliabilityWarning extends StatelessWidget {
+  const _AlertReliabilityWarning({
+    required this.message,
+    required this.onDismiss,
+  });
+
+  final String message;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      key: const Key('alert-reliability-warning'),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 12, 4, 12),
+      decoration: BoxDecoration(
+        color: colors.errorContainer,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colors.error),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.notification_important, color: colors.error),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                color: colors.onErrorContainer,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          IconButton(
+            key: const Key('alert-reliability-warning-dismiss'),
+            icon: Icon(Icons.close, color: colors.error),
+            tooltip: '閉じる',
+            onPressed: onDismiss,
+          ),
+        ],
+      ),
     );
   }
 }

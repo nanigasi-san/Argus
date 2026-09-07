@@ -178,6 +178,14 @@ class AppController extends ChangeNotifier {
   /// 自動再接続を打ち切ったか。打ち切り後はアプリ復帰時にのみ再試行する。
   bool _locationRecoveryAbandoned = false;
   bool _monitoringStaleWarningActive = false;
+
+  /// 警報の発報・停止に失敗したことを伝える警告。
+  ///
+  /// `lastErrorMessage` とは別に持つ。あちらはSnackbarで4秒表示して自動的に
+  /// 消える経路で、「サイレントが鳴っていない」「警報が止まっていない」という
+  /// 事実の伝達には向かない。ポケットに入れて走っている利用者が見るのは
+  /// 数十秒後なので、明示的に閉じるまで残す必要がある。
+  String? _alertReliabilityWarning;
   int _monitoringHealthGeneration = 0;
   int _locationFixSequence = 0;
   Future<void> _fixProcessingQueue = Future<void>.value();
@@ -260,6 +268,17 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 警報の発報・停止に失敗したことを伝える警告。閉じるまで残ります。
+  String? get alertReliabilityWarning => _alertReliabilityWarning;
+
+  /// 警報の信頼性に関する警告を閉じます。
+  void clearAlertReliabilityWarning() {
+    if (_alertReliabilityWarning != null) {
+      _alertReliabilityWarning = null;
+      notifyListeners();
+    }
+  }
+
   /// エラーメッセージをクリアします。
   void clearError() {
     if (_lastErrorMessage != null) {
@@ -283,6 +302,18 @@ class AppController extends ChangeNotifier {
     _monitoringLifecycle = MonitoringLifecycle.starting;
     _lastErrorMessage = null;
     notifyListeners();
+
+    // 前回のセッションで停止に失敗した警報が残っていることがある。放置すると
+    // 鳴り続けたまま新しいセッションが始まり、_isAlarmChannelActive が true の
+    // ままなので次のOUTERで警報の開始自体がスキップされる。
+    if (notifier.hasActiveAlertPlayback) {
+      try {
+        await notifier.stopAlarm();
+      } catch (error) {
+        _logWarning('ALERT', 'Failed to stop leftover alert on start: $error');
+      }
+      _reportUnstoppedAlert();
+    }
 
     if (isAlarmPreviewPlaying) {
       try {
@@ -333,7 +364,10 @@ class AppController extends ChangeNotifier {
     // その間に音量を下げられても検出できない。
     if (!await canStartWithCurrentAlarmVolume()) {
       if (_isCurrentStartAttempt(startAttemptId)) {
-        _monitoringLifecycle = MonitoringLifecycle.failed;
+        // failed ではなく idle に戻す。音量が低いのは「失敗」ではなく
+        // ワンタップで直せる前提条件であり、赤い「開始失敗」を残すと
+        // 何か壊れたように見える。stopMonitoring は failed を解除できない。
+        _monitoringLifecycle = MonitoringLifecycle.idle;
         // lastErrorMessage は立てない。この理由だけは呼び出し元が
         // 音量を上げる手段を含む専用ダイアログを出すため、文字列で重ねると
         // その案内を上書きしてしまう。戻り値が利用者向けの伝達経路になる。
@@ -587,8 +621,12 @@ class AppController extends ChangeNotifier {
         !_reconnectInProgress) {
       // 打ち切り後の復帰契機。利用者が設定で権限を直して戻ってきた可能性が
       // あるので、レジューム時だけは打ち切りを解除して再試行する。
+      // ただし失敗回数は 0 に戻さず「あと1回」だけ与える。0 に戻すと、
+      // 競技中によくあるアプリ切り替えのたびに満額の再試行が復活し、
+      // 打ち切りが実質的に効かなくなる。復帰に成功すれば fix 受信時に
+      // 0 へ戻るので、本当に直った場合は通常運転に復帰できる。
       _locationRecoveryAbandoned = false;
-      _reconnectFailureCount = 0;
+      _reconnectFailureCount = _maxReconnectFailures - 1;
       _scheduleLocationReconnect(_monitoringRunId);
     }
     if (_snapshot.status != LocationStateStatus.outer || _isAlarmSnoozed) {
@@ -1018,8 +1056,14 @@ class AppController extends ChangeNotifier {
   /// 途絶が続くあいだ、一定間隔で警告を出し直します。
   void _startStaleEscalation(int runId) {
     _staleEscalationTimer?.cancel();
-    _staleEscalationTimer = Timer.periodic(_staleReminderInterval, (_) {
+    _staleEscalationTimer = Timer.periodic(_staleReminderInterval, (timer) {
+      // 条件を判定して return するだけだと、フラグを倒す経路が増えたときに
+      // 永久に発火し続けるタイマーが残る。自分で止める。
       if (!_isCurrentMonitoringRun(runId) || !_monitoringStaleWarningActive) {
+        timer.cancel();
+        if (identical(timer, _staleEscalationTimer)) {
+          _staleEscalationTimer = null;
+        }
         return;
       }
       final healthGeneration = ++_monitoringHealthGeneration;
@@ -1245,9 +1289,10 @@ class AppController extends ChangeNotifier {
     if (!notifier.hasActiveAlertPlayback) {
       return false;
     }
-    _lastErrorMessage = '警報を停止できませんでした。'
+    _alertReliabilityWarning = '警報を停止できませんでした。'
         '音やバイブが続く場合は端末の音量を下げ、アプリを再起動してください。';
     _logError('ALERT', 'Alert playback could not be stopped.');
+    notifyListeners();
     return true;
   }
 
@@ -1312,8 +1357,8 @@ class AppController extends ChangeNotifier {
         );
         // 発報経路が欠けたことをログだけに残すと、警報音が鳴っていないのに
         // 通常のOUTER画面が出て「警報は動いている」と誤解される。
-        _lastErrorMessage = '${delivery.failedChannelsLabel}を発報できませんでした。'
-            'エリア外の警告に気づけない可能性があります。'
+        _alertReliabilityWarning = '${delivery.failedChannelsLabel}'
+            'を発報できませんでした。エリア外の警告に気づけない可能性があります。'
             '端末の音量・サイレントモード・通知設定を確認してください。';
       }
       _logWarning(
@@ -1407,8 +1452,12 @@ class AppController extends ChangeNotifier {
     StateSnapshot? snapshot,
     MonitoringPermissionState? permissionState,
     MonitoringLifecycle? monitoringLifecycle,
+    String? alertReliabilityWarning,
     bool clearConfig = false,
   }) {
+    if (alertReliabilityWarning != null) {
+      _alertReliabilityWarning = alertReliabilityWarning;
+    }
     if (clearConfig) {
       _config = null;
     }
@@ -1471,9 +1520,14 @@ class AppController extends ChangeNotifier {
   @override
   void dispose() {
     _isDisposed = true;
+    // 他の終了経路と同じく runId を進めてから購読を捨てる。進めないと
+    // _isCurrentMonitoringRun が true のままで、購読解除が効くまでの間に
+    // 届いた fix が破棄済みのコントローラで処理されてしまう。
+    _monitoringRunId += 1;
     _cancelLocationRecovery();
     _clearAlarmSnooze();
     _subscription?.cancel();
+    _subscription = null;
     // dispose()は同期メソッドなので、非同期処理は実行しない
     // アプリ終了時のクリーンアップはmain.dartのWidgetsBindingObserverで処理
     super.dispose();

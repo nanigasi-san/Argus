@@ -156,6 +156,7 @@ AppController buildTestController({
   AlarmVolumeClient? alarmVolumeClient,
   bool? isAndroid,
   MonitoringLifecycle? monitoringLifecycle,
+  String? alertReliabilityWarning,
 }) {
   final config = createTestConfig();
   final stateMachine = StateMachine(config: config);
@@ -190,6 +191,7 @@ AppController buildTestController({
     snapshot: snapshot,
     developerMode: developerMode,
     monitoringLifecycle: monitoringLifecycle,
+    alertReliabilityWarning: alertReliabilityWarning,
     permissionState: permissionState ??
         const MonitoringPermissionState(
           notificationStatus: PermissionStatus.granted,
