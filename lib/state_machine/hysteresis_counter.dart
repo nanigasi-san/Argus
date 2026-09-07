@@ -27,7 +27,15 @@ class HysteresisCounter {
   /// 新しいサンプルを追加し、ヒステリシス閾値を満たしている場合はtrueを返します。
   bool addSample(Duration observedAt) {
     _sampleCount += 1;
-    _firstSampleAt ??= observedAt;
+    final firstSampleAt = _firstSampleAt;
+    if (firstSampleAt == null || observedAt < firstSampleAt) {
+      // 基準時刻より前のサンプルが来た場合は基準を貼り直す。
+      // elapsedAt() の 0 クランプに任せると、クロックが巻き戻ったときに
+      // 経過時間が永久に閾値を満たさず、実際にエリア外にいるのに
+      // OUTER が確定しなくなる（警報が鳴らない）。
+      // 貼り直しなら確定が最大 requiredDuration だけ遅れるだけで済む。
+      _firstSampleAt = observedAt;
+    }
     return isSatisfied(observedAt);
   }
 

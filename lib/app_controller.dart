@@ -23,6 +23,18 @@ import 'state_machine/state_machine.dart';
 typedef QrImageAnalyzer = Future<String?> Function(String imagePath);
 typedef AppNowProvider = DateTime Function();
 
+/// 監視の経過時間を返す単調増加クロック。
+///
+/// 壁時計（`AppNowProvider`）はNTP補正・タイムゾーン変更・手動変更で前後に飛ぶため、
+/// 「GPSが何秒来ていないか」「エリア外が何秒続いたか」の判定には使えない。
+/// 監視の継続時間に関わる判定はすべてこちらを使う。
+typedef AppElapsedProvider = Duration Function();
+
+/// プロセス起動からの単調増加時間。既定の [AppElapsedProvider]。
+final Stopwatch _processStopwatch = Stopwatch()..start();
+
+Duration _processElapsed() => _processStopwatch.elapsed;
+
 const double minRequiredAlarmVolumePercent = 0.5;
 
 enum MonitoringLifecycle {
@@ -52,6 +64,7 @@ class AppController extends ChangeNotifier {
     AlarmVolumeClient? alarmVolumeClient,
     bool? isAndroid,
     AppNowProvider? nowProvider,
+    AppElapsedProvider? elapsedProvider,
     Duration? staleTimeoutOverride,
     Duration watchdogInterval = const Duration(seconds: 1),
     List<Duration> reconnectDelays = const <Duration>[
@@ -69,6 +82,7 @@ class AppController extends ChangeNotifier {
             alarmVolumeClient ?? const MethodChannelAlarmClient(),
         _isAndroidOverride = isAndroid,
         _now = nowProvider ?? DateTime.now,
+        _elapsed = elapsedProvider ?? _processElapsed,
         _staleTimeoutOverride = staleTimeoutOverride,
         _watchdogInterval = watchdogInterval,
         _reconnectDelays = List<Duration>.unmodifiable(reconnectDelays) {
@@ -82,6 +96,7 @@ class AppController extends ChangeNotifier {
   final AlarmVolumeClient alarmVolumeClient;
   final bool? _isAndroidOverride;
   final AppNowProvider _now;
+  final AppElapsedProvider _elapsed;
   final Duration? _staleTimeoutOverride;
   final Duration _watchdogInterval;
   final List<Duration> _reconnectDelays;
@@ -109,7 +124,16 @@ class AppController extends ChangeNotifier {
   Timer? _alarmSnoozeTimer;
   Timer? _locationWatchdogTimer;
   Timer? _reconnectTimer;
-  DateTime? _lastFixReceivedAt;
+
+  /// 監視セッション開始時点の単調クロック値。
+  ///
+  /// 位置サービスは再接続で stop/start を繰り返すため、経過時間を位置サービス側で
+  /// 計測するとヒステリシスの基準時刻が再接続ごとに巻き戻り、OUTER 確定が
+  /// 無期限に遅延する。監視セッションを所有する側で1本だけ持つ。
+  Duration? _monitoringStartedElapsed;
+
+  /// 直近のfixを受け取った時点の監視セッション経過時間。
+  Duration? _lastFixElapsed;
   MonitoringLifecycle _monitoringLifecycle = MonitoringLifecycle.idle;
   int _reconnectAttempt = 0;
   bool _reconnectInProgress = false;
@@ -279,7 +303,8 @@ class AppController extends ChangeNotifier {
       },
     );
     _fixProcessingQueue = Future<void>.value();
-    _lastFixReceivedAt = _now();
+    _monitoringStartedElapsed = _elapsed();
+    _lastFixElapsed = Duration.zero;
     _reconnectAttempt = 0;
     _reconnectInProgress = false;
     _monitoringLifecycle = MonitoringLifecycle.acquiring;
@@ -322,7 +347,7 @@ class AppController extends ChangeNotifier {
     }
 
     if (_monitoringLifecycle != MonitoringLifecycle.active) {
-      _lastFixReceivedAt = _now();
+      _lastFixElapsed = _monitoringElapsed();
       _monitoringLifecycle = MonitoringLifecycle.acquiring;
     }
     _startLocationWatchdog(runId);
@@ -786,6 +811,16 @@ class AppController extends ChangeNotifier {
         _monitoringLifecycle == MonitoringLifecycle.starting;
   }
 
+  /// 監視開始からの単調増加経過時間。監視中でなければ [Duration.zero]。
+  Duration _monitoringElapsed() {
+    final startedAt = _monitoringStartedElapsed;
+    if (startedAt == null) {
+      return Duration.zero;
+    }
+    final elapsed = _elapsed() - startedAt;
+    return elapsed.isNegative ? Duration.zero : elapsed;
+  }
+
   Duration get _locationStaleTimeout {
     final override = _staleTimeoutOverride;
     if (override != null) {
@@ -808,9 +843,9 @@ class AppController extends ChangeNotifier {
           _monitoringLifecycle != MonitoringLifecycle.active) {
         return;
       }
-      final lastFix = _lastFixReceivedAt;
+      final lastFix = _lastFixElapsed;
       if (lastFix != null &&
-          _now().difference(lastFix) >= _locationStaleTimeout) {
+          _monitoringElapsed() - lastFix >= _locationStaleTimeout) {
         unawaited(_markLocationStale(runId, reason: 'GPS fix timeout'));
       }
     });
@@ -820,9 +855,11 @@ class AppController extends ChangeNotifier {
     if (!_isCurrentMonitoringRun(runId)) {
       return;
     }
+    final sessionElapsed = _monitoringElapsed();
+    final stampedFix = fix.withMonitoringElapsed(sessionElapsed);
     final shouldClearStaleWarning = _monitoringStaleWarningActive;
     _locationFixSequence += 1;
-    _lastFixReceivedAt = _now();
+    _lastFixElapsed = sessionElapsed;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     _reconnectAttempt = 0;
@@ -837,7 +874,7 @@ class AppController extends ChangeNotifier {
     notifyListeners();
 
     _fixProcessingQueue = _fixProcessingQueue.then((_) async {
-      await _handleFix(fix, runId);
+      await _handleFix(stampedFix, runId);
     }).catchError((Object error, StackTrace stackTrace) {
       if (_isCurrentMonitoringRun(runId)) {
         _logError('GPS', 'Failed to process location fix: $error');
@@ -974,7 +1011,7 @@ class AppController extends ChangeNotifier {
         _monitoringLifecycle = MonitoringLifecycle.active;
         _logInfo('GPS', 'Location service reconnected with a fresh fix.');
       } else if (_monitoringLifecycle != MonitoringLifecycle.stale) {
-        _lastFixReceivedAt = _now();
+        _lastFixElapsed = _monitoringElapsed();
         _monitoringLifecycle = MonitoringLifecycle.acquiring;
         _logInfo('GPS', 'Location service reconnected; waiting for a fix.');
       }
@@ -995,11 +1032,12 @@ class AppController extends ChangeNotifier {
   }
 
   void _cancelLocationRecovery() {
+    _monitoringStartedElapsed = null;
     _locationWatchdogTimer?.cancel();
     _locationWatchdogTimer = null;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
-    _lastFixReceivedAt = null;
+    _lastFixElapsed = null;
     _reconnectAttempt = 0;
     _reconnectInProgress = false;
     _monitoringStaleWarningActive = false;

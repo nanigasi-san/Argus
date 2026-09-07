@@ -589,7 +589,7 @@ void main() {
       final config = _testConfig();
       final locationService = FakeLocationService();
       final notifications = FakeLocalNotificationsClient();
-      var now = DateTime.utc(2024, 1, 1);
+      var elapsed = Duration.zero;
       final controller = AppController(
         stateMachine: StateMachine(config: config),
         locationService: locationService,
@@ -601,7 +601,7 @@ void main() {
           vibrationPlayer: FakeVibrationPlayer(),
         ),
         permissionCoordinator: _GrantedPermissionCoordinator(),
-        nowProvider: () => now,
+        elapsedProvider: () => elapsed,
         staleTimeoutOverride: const Duration(milliseconds: 10),
         watchdogInterval: const Duration(milliseconds: 5),
         reconnectDelays: const [Duration(seconds: 1)],
@@ -615,7 +615,7 @@ void main() {
       await controller.startMonitoring();
       expect(controller.monitoringLifecycle, MonitoringLifecycle.acquiring);
 
-      now = now.add(const Duration(milliseconds: 20));
+      elapsed += const Duration(milliseconds: 20);
       await Future<void>.delayed(const Duration(milliseconds: 15));
       expect(controller.monitoringLifecycle, MonitoringLifecycle.reconnecting);
       expect(notifications.shownIds, contains(1002));
@@ -1587,9 +1587,78 @@ void main() {
       );
     });
 
+    test('reconnect does not delay OUTER confirmation', () async {
+      // 回帰テスト: 再接続は locationService.stop()/start() を呼ぶ。監視の経過時間を
+      // 位置サービス側で計測していると、この stop/start でクロックが 0 に戻り、
+      // ヒステリシスの基準時刻より手前の値しか来なくなるため OUTER が確定しない。
+      // 経過時間は監視セッション側で持つので、再接続をまたいでも確定できる。
+      final config = _testConfig();
+      final locationService = FakeLocationService();
+      var elapsed = Duration.zero;
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: locationService,
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+        elapsedProvider: () => elapsed,
+        reconnectDelays: const [Duration(milliseconds: 1)],
+      );
+      controller.debugSeed(
+        config: config,
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+      await controller.startMonitoring();
+
+      // 監視をしばらく続けたあとにエリア外へ出る。
+      elapsed += const Duration(minutes: 30);
+      locationService.add(
+        LocationFix(
+          latitude: 2,
+          longitude: 2,
+          accuracyMeters: 5,
+          timestamp: DateTime.utc(2024, 1, 1),
+          monitoringElapsed: const Duration(minutes: 30),
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      expect(controller.snapshot.status, LocationStateStatus.outerPending);
+
+      // ここでGPSが途絶し、再接続が走る。
+      locationService.addError(const LocationStreamEndedException());
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(locationService.stopCount, greaterThan(0));
+
+      // 再接続後もエリア外のまま確定時間を超える。
+      // 位置サービスが巻き戻った monitoringElapsed を載せてきても（旧実装の
+      // GeolocatorLocationService は start() ごとに Stopwatch を作り直していた）、
+      // 監視セッション側の値で上書きされるので確定できる。
+      elapsed += const Duration(seconds: 2);
+      locationService.add(
+        LocationFix(
+          latitude: 2,
+          longitude: 2,
+          accuracyMeters: 5,
+          timestamp: DateTime.utc(2024, 1, 1, 0, 0, 2),
+          monitoringElapsed: Duration.zero,
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(controller.snapshot.status, LocationStateStatus.outer);
+      await controller.stopMonitoring();
+    });
+
     test('outer alert channel failures are retained in the app log', () async {
       final config = _testConfig();
       final locationService = FakeLocationService();
+      var elapsed = Duration.zero;
       final controller = AppController(
         stateMachine: StateMachine(config: config),
         locationService: locationService,
@@ -1601,6 +1670,7 @@ void main() {
           vibrationPlayer: FakeVibrationPlayer(),
         ),
         permissionCoordinator: _GrantedPermissionCoordinator(),
+        elapsedProvider: () => elapsed,
       );
       controller.debugSeed(
         config: config,
@@ -1618,6 +1688,9 @@ void main() {
         ),
       );
       await Future<void>.delayed(Duration.zero);
+      // ヒステリシスは監視セッションの単調クロックで確定する。
+      // GPSタイムスタンプを進めても確定しない（仕様どおり）。
+      elapsed += const Duration(seconds: 2);
       locationService.add(
         LocationFix(
           latitude: 2,
@@ -1650,6 +1723,7 @@ void main() {
         alarmPlayer: alarm,
         vibrationPlayer: vibration,
       );
+      var elapsed = Duration.zero;
       final controller = AppController(
         stateMachine: stateMachine,
         locationService: locationService,
@@ -1657,6 +1731,7 @@ void main() {
         logger: logger,
         notifier: notifier,
         permissionCoordinator: _GrantedPermissionCoordinator(),
+        elapsedProvider: () => elapsed,
       );
 
       controller.debugSeed(
@@ -1675,6 +1750,7 @@ void main() {
         ),
       );
       await tester.pump();
+      elapsed += const Duration(seconds: 2);
       locationService.add(
         LocationFix(
           latitude: 2,

@@ -65,5 +65,25 @@ void main() {
       expect(counter.elapsedAt(const Duration(seconds: 2)), Duration.zero);
       expect(counter.isSatisfied(const Duration(seconds: 2)), isFalse);
     });
+
+    test('re-anchors after a backwards clock jump instead of stalling', () {
+      // クロックが巻き戻ったとき 0 クランプに任せると、経過時間が永久に
+      // 閾値を満たさず、実際にエリア外にいるのに OUTER が確定しなくなる。
+      // 基準を貼り直せば確定が最大 requiredDuration だけ遅れるだけで済む。
+      final counter = HysteresisCounter(
+        requiredSamples: 1,
+        requiredDuration: const Duration(seconds: 5),
+      );
+
+      counter.addSample(const Duration(minutes: 30));
+
+      // 巻き戻ったサンプルで基準が貼り直される。
+      expect(counter.addSample(Duration.zero), isFalse);
+      expect(counter.elapsedAt(const Duration(seconds: 5)),
+          const Duration(seconds: 5));
+
+      // 貼り直し後の経過時間で確定できる。
+      expect(counter.addSample(const Duration(seconds: 5)), isTrue);
+    });
   });
 }

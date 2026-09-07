@@ -190,7 +190,9 @@ void main() {
       expect(fix.latitude, closeTo(35.681236, 0.001));
       expect(fix.longitude, closeTo(139.767125, 0.001));
       expect(fix.accuracyMeters, isNotNull);
-      expect(fix.monitoringElapsed, isNotNull);
+      // 監視セッションの経過時間は AppController が付与する。位置サービスは
+      // 再接続で stop/start を繰り返すため、ここでは計測しない。
+      expect(fix.monitoringElapsed, isNull);
     } finally {
       await service.stop();
     }
