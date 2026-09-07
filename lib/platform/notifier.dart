@@ -93,10 +93,12 @@ class Notifier {
   Future<void> startAlarmPreview() async {
     final generation = ++_generation;
     _isAlarmPreviewPlaying = false;
-    _isAlarmChannelActive = false;
-    _isVibrationChannelActive = false;
-    await _alarmPlayer.stop();
-    await _vibrationPlayer.stop();
+    _throwFirstError(
+      await Future.wait<Object?>([
+        _stopAlarmChannel(),
+        _stopVibrationChannel(),
+      ]),
+    );
     if (generation != _generation) {
       return;
     }
@@ -118,8 +120,10 @@ class Notifier {
   Future<void> stopAlarmPreview() async {
     _generation += 1;
     _isAlarmPreviewPlaying = false;
-    _isAlarmChannelActive = false;
-    await _alarmPlayer.stop();
+    final error = await _stopAlarmChannel();
+    if (error != null) {
+      throw error;
+    }
   }
 
   Future<void> initialize() async {
@@ -268,12 +272,10 @@ class Notifier {
 
   Future<void> stopAlarm() async {
     _generation += 1;
-    _isAlarmChannelActive = false;
-    _isVibrationChannelActive = false;
     _isAlarmPreviewPlaying = false;
     final errors = await Future.wait<Object?>([
-      _captureError(_alarmPlayer.stop),
-      _captureError(_vibrationPlayer.stop),
+      _stopAlarmChannel(),
+      _stopVibrationChannel(),
     ]);
     _throwFirstError(errors);
   }
@@ -378,18 +380,45 @@ class Notifier {
 
   Future<void> dismissOuterAlert() async {
     _generation += 1;
-    _isAlarmChannelActive = false;
-    _isVibrationChannelActive = false;
     _isAlarmPreviewPlaying = false;
     final errors = await Future.wait<Object?>([
       _captureError(() async {
         await initialize();
         await _notifications.cancel(_outerNotificationId);
       }),
-      _captureError(_alarmPlayer.stop),
-      _captureError(_vibrationPlayer.stop),
+      _stopAlarmChannel(),
+      _stopVibrationChannel(),
     ]);
     _throwFirstError(errors);
+  }
+
+  /// 停止できずに鳴り続けている可能性のある発報経路があるか。
+  ///
+  /// 停止に失敗した経路のフラグは倒さないため、`stopAlarm()` や
+  /// `dismissOuterAlert()` のあとに true ならネイティブ側で警報が
+  /// 継続している可能性がある。
+  bool get hasActiveAlertPlayback =>
+      _isAlarmChannelActive || _isVibrationChannelActive;
+
+  /// 警報音を停止する。成功した場合だけ再生中フラグを倒す。
+  ///
+  /// フラグを先に倒すと、停止が失敗して実際には鳴り続けているのに
+  /// アプリ側は「停止済み」と認識してしまい、再試行も検知もできなくなる。
+  Future<Object?> _stopAlarmChannel() async {
+    final error = await _captureError(_alarmPlayer.stop);
+    if (error == null) {
+      _isAlarmChannelActive = false;
+    }
+    return error;
+  }
+
+  /// 連続バイブを停止する。成功した場合だけ再生中フラグを倒す。
+  Future<Object?> _stopVibrationChannel() async {
+    final error = await _captureError(_vibrationPlayer.stop);
+    if (error == null) {
+      _isVibrationChannelActive = false;
+    }
+    return error;
   }
 
   Future<void> _startMonitoringStaleVibration() async {

@@ -427,6 +427,7 @@ class AppController extends ChangeNotifier {
     } catch (error) {
       _logWarning('ALERT', 'Failed to dismiss alert while stopping: $error');
     }
+    _reportUnstoppedAlert();
     try {
       await notifier.clearMonitoringStale();
     } catch (error) {
@@ -480,6 +481,7 @@ class AppController extends ChangeNotifier {
     } catch (error) {
       _logWarning('ALERT', 'Failed to dismiss alert on termination: $error');
     }
+    _reportUnstoppedAlert();
     try {
       await notifier.clearMonitoringStale();
     } catch (error) {
@@ -1057,6 +1059,20 @@ class AppController extends ChangeNotifier {
     return result;
   }
 
+  /// 警報の停止に失敗して鳴り続けている可能性があれば利用者に伝えます。
+  ///
+  /// 停止失敗をログだけに残すと、警報が鳴り続けているのに画面には何も出ず、
+  /// 利用者は原因も対処も分からないまま強制終了するしかなくなる。
+  bool _reportUnstoppedAlert() {
+    if (!notifier.hasActiveAlertPlayback) {
+      return false;
+    }
+    _lastErrorMessage = '警報を停止できませんでした。'
+        '音やバイブが続く場合は端末の音量を下げ、アプリを再起動してください。';
+    _logError('ALERT', 'Alert playback could not be stopped.');
+    return true;
+  }
+
   void _rejectConfigurationChange() {
     _lastErrorMessage = '監視中は設定やGeoJSONを変更できません。先に監視を停止してください。';
     _logWarning('APP', _lastErrorMessage!);
@@ -1125,10 +1141,15 @@ class AppController extends ChangeNotifier {
     } else if (previous == LocationStateStatus.outer &&
         _snapshot.status != LocationStateStatus.outer) {
       _clearAlarmSnooze();
-      await notifier.notifyRecover();
+      try {
+        await notifier.notifyRecover();
+      } catch (error) {
+        _logWarning('ALERT', 'Failed to dismiss alert on re-entry: $error');
+      }
       if (!_isCurrentMonitoringRun(runId)) {
         return;
       }
+      _reportUnstoppedAlert();
       _logInfo(
         'ALERT',
         'Returned to safe zone.',
@@ -1145,7 +1166,18 @@ class AppController extends ChangeNotifier {
 
     _clearAlarmSnooze();
     _isAlarmSnoozed = true;
-    await notifier.stopAlarm();
+    try {
+      await notifier.stopAlarm();
+    } catch (error) {
+      _logWarning('ALERT', 'Failed to stop alarm for snooze: $error');
+    }
+    // 実際に止まっていないのに「ミュート中」と表示すると、鳴り続けている
+    // 理由を利用者が誤解する。ミュート状態に入らず、停止失敗として伝える。
+    if (_reportUnstoppedAlert()) {
+      _isAlarmSnoozed = false;
+      notifyListeners();
+      return;
+    }
     _logInfo(
       'ALERT',
       'Alarm snoozed for 1 minute.${_buildNavHint(_snapshot)}',
