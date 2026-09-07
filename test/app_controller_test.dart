@@ -3086,6 +3086,66 @@ void main() {
       // (実際のファイル削除はテスト環境では確認できないため、ファイル名の確認のみ)
     });
 
+    test('QR reload keeps exactly one temp file and deletes the previous one',
+        () async {
+      // 回帰テスト: 書き込み後に旧パスで削除していると、同一ミリ秒の連続
+      // 読み込みで旧パスと新パスが一致し、書いたばかりのファイルを消す。
+      final tempDir =
+          await Directory.systemTemp.createTemp('argus_qr_temp_test_');
+      addTearDown(() async {
+        if (await tempDir.exists()) {
+          await tempDir.delete(recursive: true);
+        }
+      });
+      PathProviderPlatform.instance = _FakePathProviderPlatform(tempDir.path);
+
+      final config = _testConfig();
+      // 同一ミリ秒での連続読み込みを再現するため時刻を固定する。
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: FakeLocationService(),
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+        nowProvider: () => DateTime.utc(2024, 1, 1),
+      );
+      final bundle = await encodeGeoJson(
+        const GeoJsonQrEncodeInput(
+          geoJson: _squareGeoJson,
+          scheme: GeoJsonQrScheme.gjz1,
+          generatePng: false,
+        ),
+      );
+      final qrText = bundle.qrTexts.first;
+
+      expect(await controller.reloadGeoJsonFromQr(qrText), isTrue);
+      expect(await controller.reloadGeoJsonFromQr(qrText), isTrue);
+
+      final files = tempDir
+          .listSync()
+          .whereType<File>()
+          .where((file) => file.path.endsWith('.geojson'))
+          .toList();
+
+      // 記録しているパスのファイルは必ず存在する。
+      expect(files, hasLength(1));
+      expect(files.single.readAsStringSync(), isNotEmpty);
+
+      await controller.cleanupTempGeoJsonFile();
+      expect(
+        tempDir
+            .listSync()
+            .whereType<File>()
+            .where((file) => file.path.endsWith('.geojson')),
+        isEmpty,
+      );
+    });
+
     test('reloadGeoJsonFromQr resets state and stops monitoring', () async {
       final config = _testConfig();
       final stateMachine = StateMachine(config: config);

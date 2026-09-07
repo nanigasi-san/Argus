@@ -784,17 +784,35 @@ class AppController extends ChangeNotifier {
       final model = GeoModel.fromGeoJson(restoredGeoJson);
       _requireMonitorableGeometry(model);
 
-      // 一時ディレクトリに保存
+      // 一時ディレクトリに保存。
+      // 旧ファイルの削除は「新しいパスを記録したあと」「パスが異なる場合だけ」
+      // 行う。書き込み後に旧パスで削除すると、同一ミリ秒の連続読み込みで
+      // 旧パスと新パスが一致し、書いたばかりのファイルを消してしまう。
       final tempDir = await getTemporaryDirectory();
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      // 注入済みクロックを使う。DateTime.now() 直呼びだと、同一ミリ秒に
+      // 連続読み込みしたときのファイル名衝突をテストで再現できない。
+      final timestamp = _now().millisecondsSinceEpoch;
       final tempFile = File('${tempDir.path}/temp_geojson_$timestamp.geojson');
-      await tempFile.writeAsString(restoredGeoJson);
+      final previousTempPath = _tempGeoJsonFilePath;
+      try {
+        await tempFile.writeAsString(restoredGeoJson, flush: true);
+      } catch (error) {
+        // 書き込み途中で失敗した断片を残さない。残すと誰も参照しないまま
+        // 端末に溜まり続ける。
+        try {
+          if (await tempFile.exists()) {
+            await tempFile.delete();
+          }
+        } catch (_) {
+          // 削除できなくても読み込み失敗として扱えばよい。
+        }
+        rethrow;
+      }
 
-      // 既存の一時ファイルがあれば削除
-      await cleanupTempGeoJsonFile();
-
-      // 新しい一時ファイルパスを保存
       _tempGeoJsonFilePath = tempFile.path;
+      if (previousTempPath != null && previousTempPath != tempFile.path) {
+        await _deleteTempGeoJsonFile(previousTempPath);
+      }
 
       _geoModel = model;
       _geoJsonFileName = decoded.fileName ?? 'temp_geojson_$timestamp.geojson';
@@ -878,21 +896,26 @@ class AppController extends ChangeNotifier {
   ///
   /// アプリ終了時や新しいQRコードを読み込む際に呼び出されます。
   Future<void> cleanupTempGeoJsonFile() async {
-    if (_tempGeoJsonFilePath != null) {
-      try {
-        final file = File(_tempGeoJsonFilePath!);
-        if (await file.exists()) {
-          await file.delete();
-          _logInfo(
-              'APP', 'Temporary GeoJSON file deleted: $_tempGeoJsonFilePath');
-        }
-      } catch (e) {
-        // coverage:ignore-start
-        // File.delete failures depend on the host filesystem and permissions.
-        _logError('APP', 'Failed to delete temporary GeoJSON file: $e');
-        // coverage:ignore-end
+    final path = _tempGeoJsonFilePath;
+    if (path == null) {
+      return;
+    }
+    _tempGeoJsonFilePath = null;
+    await _deleteTempGeoJsonFile(path);
+  }
+
+  Future<void> _deleteTempGeoJsonFile(String path) async {
+    try {
+      final file = File(path);
+      if (await file.exists()) {
+        await file.delete();
+        _logInfo('APP', 'Temporary GeoJSON file deleted: $path');
       }
-      _tempGeoJsonFilePath = null;
+    } catch (e) {
+      // coverage:ignore-start
+      // File.delete failures depend on the host filesystem and permissions.
+      _logError('APP', 'Failed to delete temporary GeoJSON file: $e');
+      // coverage:ignore-end
     }
   }
 
