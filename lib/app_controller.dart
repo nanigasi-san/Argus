@@ -83,6 +83,7 @@ class AppController extends ChangeNotifier {
     Duration watchdogInterval = const Duration(seconds: 1),
     int maxReconnectFailures = 5,
     Duration staleReminderInterval = const Duration(seconds: 60),
+    Duration platformCallTimeout = const Duration(seconds: 5),
     List<Duration> reconnectDelays = const <Duration>[
       Duration(seconds: 1),
       Duration(seconds: 2),
@@ -103,10 +104,12 @@ class AppController extends ChangeNotifier {
         _watchdogInterval = watchdogInterval,
         _maxReconnectFailures = maxReconnectFailures,
         _staleReminderInterval = staleReminderInterval,
+        _platformCallTimeout = platformCallTimeout,
         _reconnectDelays = List<Duration>.unmodifiable(reconnectDelays) {
     assert(watchdogInterval > Duration.zero);
     assert(maxReconnectFailures > 0);
     assert(staleReminderInterval > Duration.zero);
+    assert(platformCallTimeout > Duration.zero);
     assert(reconnectDelays.isNotEmpty);
     assert(reconnectDelays.every((delay) => delay > Duration.zero));
   }
@@ -121,6 +124,9 @@ class AppController extends ChangeNotifier {
   final Duration _watchdogInterval;
   final int _maxReconnectFailures;
   final Duration _staleReminderInterval;
+
+  /// プラットフォームチャネル越しの呼び出しを待つ上限。
+  final Duration _platformCallTimeout;
   final List<Duration> _reconnectDelays;
 
   final StateMachine stateMachine;
@@ -416,7 +422,7 @@ class AppController extends ChangeNotifier {
     try {
       result = await _runLocationServiceOperation(
         () => locationService.start(_config!),
-      );
+      ).timeout(_platformCallTimeout);
     } catch (error) {
       result = LocationServiceStartResult(
         status: LocationServiceStartStatus.error,
@@ -525,32 +531,29 @@ class AppController extends ChangeNotifier {
     _monitoringRunId += 1;
     _cancelLocationRecovery();
     _clearAlarmSnooze();
-    try {
-      await notifier.dismissOuterAlert();
-    } catch (error) {
-      _logWarning('ALERT', 'Failed to dismiss alert while stopping: $error');
-    }
+    await _guardedCleanup(
+      'ALERT',
+      'Dismissing alert while stopping',
+      notifier.dismissOuterAlert,
+    );
     _reportUnstoppedAlert();
-    try {
-      await notifier.clearMonitoringStale();
-    } catch (error) {
-      _logWarning(
-        'ALERT',
-        'Failed to clear GPS warning while stopping: $error',
-      );
-    }
-    try {
-      await _subscription?.cancel();
-    } catch (error) {
-      _logWarning('GPS', 'Failed to cancel location stream cleanly: $error');
-    } finally {
-      _subscription = null;
-    }
-    try {
-      await _runLocationServiceOperation(locationService.stop);
-    } catch (error) {
-      _logWarning('GPS', 'Failed to stop location service cleanly: $error');
-    }
+    await _guardedCleanup(
+      'ALERT',
+      'Clearing GPS warning while stopping',
+      notifier.clearMonitoringStale,
+    );
+    final subscription = _subscription;
+    _subscription = null;
+    await _guardedCleanup(
+      'GPS',
+      'Cancelling location stream while stopping',
+      () async => subscription?.cancel(),
+    );
+    await _guardedCleanup(
+      'GPS',
+      'Stopping location service while stopping',
+      () => _runLocationServiceOperation(locationService.stop),
+    );
     stateMachine.updateGeometry(_geoModel, _areaIndex);
     _snapshot = StateSnapshot(
       status: geoJsonLoaded
@@ -579,31 +582,29 @@ class AppController extends ChangeNotifier {
         _logWarning('ALERT', 'Failed to stop preview on termination: $error');
       }
     }
-    try {
-      await notifier.dismissOuterAlert();
-    } catch (error) {
-      _logWarning('ALERT', 'Failed to dismiss alert on termination: $error');
-    }
+    await _guardedCleanup(
+      'ALERT',
+      'Dismissing alert on termination',
+      notifier.dismissOuterAlert,
+    );
     _reportUnstoppedAlert();
-    try {
-      await notifier.clearMonitoringStale();
-    } catch (error) {
-      _logWarning(
-          'ALERT', 'Failed to clear GPS warning on termination: $error');
-    }
-    try {
-      await _subscription?.cancel();
-    } catch (error) {
-      _logWarning('GPS', 'Failed to cancel location stream: $error');
-    } finally {
-      _subscription = null;
-    }
-    try {
-      await _runLocationServiceOperation(locationService.stop);
-    } catch (error) {
-      _logWarning(
-          'GPS', 'Failed to stop location service on termination: $error');
-    }
+    await _guardedCleanup(
+      'ALERT',
+      'Clearing GPS warning on termination',
+      notifier.clearMonitoringStale,
+    );
+    final subscription = _subscription;
+    _subscription = null;
+    await _guardedCleanup(
+      'GPS',
+      'Cancelling location stream on termination',
+      () async => subscription?.cancel(),
+    );
+    await _guardedCleanup(
+      'GPS',
+      'Stopping location service on termination',
+      () => _runLocationServiceOperation(locationService.stop),
+    );
     await cleanupTempGeoJsonFile();
     _monitoringLifecycle = MonitoringLifecycle.idle;
     _logInfo('APP', 'Application terminated. Monitoring and alert stopped.');
@@ -921,6 +922,30 @@ class AppController extends ChangeNotifier {
   bool _isCurrentStartAttempt(int attemptId) {
     return attemptId == _monitoringRunId &&
         _monitoringLifecycle == MonitoringLifecycle.starting;
+  }
+
+  /// 後始末のためのプラットフォーム呼び出しを、失敗もタイムアウトも
+  /// 握りつぶしてログに残しつつ実行します。
+  ///
+  /// ネイティブ側が応答を返さないと、監視の開始・停止が `starting` /
+  /// `stopping` から抜けられなくなる。この状態では開始も停止も設定変更も
+  /// できず、アプリを再起動するしか復帰手段がなくなる。待つのをやめて
+  /// 後始末を先へ進めるほうが安全。
+  Future<void> _guardedCleanup(
+    String tag,
+    String description,
+    Future<void> Function() action,
+  ) async {
+    try {
+      await action().timeout(_platformCallTimeout);
+    } on TimeoutException {
+      _logWarning(
+          tag,
+          '$description timed out after '
+          '${_platformCallTimeout.inSeconds}s.');
+    } catch (error) {
+      _logWarning(tag, '$description failed: $error');
+    }
   }
 
   /// 監視開始からの単調増加経過時間。監視中でなければ [Duration.zero]。

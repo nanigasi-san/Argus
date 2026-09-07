@@ -2100,6 +2100,43 @@ void main() {
       await controller.stopMonitoring();
     });
 
+    test('stopMonitoring completes even when a native call never returns',
+        () async {
+      // 回帰テスト: ネイティブが応答しないと stopping から抜けられず、
+      // 開始も停止も設定変更もできないままアプリ再起動しか手がなくなる。
+      final config = _testConfig();
+      final locationService = FakeLocationService();
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: locationService,
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: _HangingNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+        platformCallTimeout: const Duration(milliseconds: 20),
+      );
+      controller.debugSeed(
+        config: config,
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+      await controller.startMonitoring();
+
+      await controller.stopMonitoring().timeout(const Duration(seconds: 5));
+
+      expect(controller.monitoringLifecycle, MonitoringLifecycle.idle);
+      expect(controller.canStartMonitoring, isTrue);
+      expect(controller.canModifyConfiguration, isTrue);
+      expect(
+        controller.logs.map((entry) => entry.message),
+        contains(contains('timed out')),
+      );
+    });
+
     test('reconnect does not delay OUTER confirmation', () async {
       // 回帰テスト: 再接続は locationService.stop()/start() を呼ぶ。監視の経過時間を
       // 位置サービス側で計測していると、この stop/start でクロックが 0 に戻り、
@@ -2373,10 +2410,19 @@ void main() {
 
       expect(controller.monitoringLifecycle, MonitoringLifecycle.idle);
       final messages = controller.logs.map((entry) => entry.message);
-      expect(messages, contains(startsWith('Failed to dismiss alert')));
-      expect(messages, contains(startsWith('Failed to clear GPS warning')));
-      expect(messages, contains(startsWith('Failed to cancel location')));
-      expect(messages, contains(startsWith('Failed to stop location')));
+      expect(messages, contains(startsWith('Dismissing alert while stopping')));
+      expect(
+        messages,
+        contains(startsWith('Clearing GPS warning while stopping')),
+      );
+      expect(
+        messages,
+        contains(startsWith('Cancelling location stream while stopping')),
+      );
+      expect(
+        messages,
+        contains(startsWith('Stopping location service while stopping')),
+      );
     });
 
     test('termination logs cleanup failures and continues through all steps',
@@ -2413,10 +2459,22 @@ void main() {
       expect(controller.monitoringLifecycle, MonitoringLifecycle.idle);
       final messages = controller.logs.map((entry) => entry.message);
       expect(messages, contains(startsWith('Failed to stop preview')));
-      expect(messages, contains(startsWith('Failed to dismiss alert')));
-      expect(messages, contains(startsWith('Failed to clear GPS warning')));
-      expect(messages, contains(startsWith('Failed to cancel location')));
-      expect(messages, contains(startsWith('Failed to stop location')));
+      expect(
+        messages,
+        contains(startsWith('Dismissing alert on termination')),
+      );
+      expect(
+        messages,
+        contains(startsWith('Clearing GPS warning on termination')),
+      );
+      expect(
+        messages,
+        contains(startsWith('Cancelling location stream on termination')),
+      );
+      expect(
+        messages,
+        contains(startsWith('Stopping location service on termination')),
+      );
     });
 
     test('stopMonitoring returns loaded race to waitStart and clears fix data',
@@ -3185,6 +3243,14 @@ class _AlwaysFailRestartLocationService extends FakeLocationService {
       status: LocationServiceStartStatus.error,
       message: 'restart failed',
     );
+  }
+}
+
+/// 応答を返さないネイティブ通知クライアント。
+class _HangingNotificationsClient extends FakeLocalNotificationsClient {
+  @override
+  Future<void> cancel(int id) {
+    return Completer<void>().future;
   }
 }
 
