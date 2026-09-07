@@ -918,19 +918,50 @@ class _LargeStatusDisplay extends StatelessWidget {
   final MonitoringLifecycle lifecycle;
   final VoidCallback? onTap;
 
+  /// ジオフェンスの警告状態。監視状態の表示で塗り替えてはいけない。
+  bool get _isGeofenceWarning =>
+      status == LocationStateStatus.outer ||
+      status == LocationStateStatus.outerPending;
+
+  Color? get _lifecycleColor => switch (lifecycle) {
+        MonitoringLifecycle.idle || MonitoringLifecycle.active => null,
+        MonitoringLifecycle.starting ||
+        MonitoringLifecycle.acquiring =>
+          Colors.blue,
+        MonitoringLifecycle.stale ||
+        MonitoringLifecycle.reconnecting =>
+          Colors.deepOrange,
+        MonitoringLifecycle.stopping => Colors.blueGrey,
+        MonitoringLifecycle.failed => Colors.red,
+      };
+
+  String? get _lifecycleLabel => switch (lifecycle) {
+        MonitoringLifecycle.idle || MonitoringLifecycle.active => null,
+        MonitoringLifecycle.starting => '開始中',
+        MonitoringLifecycle.acquiring => 'GPS取得中',
+        MonitoringLifecycle.stale => 'GPS停止',
+        MonitoringLifecycle.reconnecting => '再接続中',
+        MonitoringLifecycle.stopping => '停止中',
+        MonitoringLifecycle.failed => '開始失敗',
+      };
+
+  String? get _lifecycleCode => switch (lifecycle) {
+        MonitoringLifecycle.idle || MonitoringLifecycle.active => null,
+        MonitoringLifecycle.starting => 'STARTING',
+        MonitoringLifecycle.acquiring => 'ACQUIRING GPS',
+        MonitoringLifecycle.stale => 'GPS STALE',
+        MonitoringLifecycle.reconnecting => 'RECONNECTING',
+        MonitoringLifecycle.stopping => 'STOPPING',
+        MonitoringLifecycle.failed => 'FAILED',
+      };
+
+  // 監視状態（GPS途絶など）とジオフェンス警告は別の情報なので、どちらも隠さない。
+  // 色は深刻な側を採用する。OUTER を監視状態の色で塗り替えると
+  // 「エリア外なのに再接続中と表示される」ため警告が視覚的に消える。
+  // 逆にGPS途絶中の INNER を緑のままにすると、古い「安全」を信じてしまう。
   Color _color(LocationStateStatus status) {
-    final lifecycleColor = switch (lifecycle) {
-      MonitoringLifecycle.idle || MonitoringLifecycle.active => null,
-      MonitoringLifecycle.starting ||
-      MonitoringLifecycle.acquiring =>
-        Colors.blue,
-      MonitoringLifecycle.stale ||
-      MonitoringLifecycle.reconnecting =>
-        Colors.deepOrange,
-      MonitoringLifecycle.stopping => Colors.blueGrey,
-      MonitoringLifecycle.failed => Colors.red,
-    };
-    if (lifecycleColor != null) {
+    final lifecycleColor = _lifecycleColor;
+    if (lifecycleColor != null && !_isGeofenceWarning) {
       return lifecycleColor;
     }
     switch (status) {
@@ -952,16 +983,10 @@ class _LargeStatusDisplay extends StatelessWidget {
   }
 
   String _statusText(LocationStateStatus status) {
-    final lifecycleLabel = switch (lifecycle) {
-      MonitoringLifecycle.idle || MonitoringLifecycle.active => null,
-      MonitoringLifecycle.starting => '開始中',
-      MonitoringLifecycle.acquiring => 'GPS取得中',
-      MonitoringLifecycle.stale => 'GPS停止',
-      MonitoringLifecycle.reconnecting => '再接続中',
-      MonitoringLifecycle.stopping => '停止中',
-      MonitoringLifecycle.failed => '開始失敗',
-    };
-    if (lifecycleLabel != null) {
+    final lifecycleLabel = _lifecycleLabel;
+    // 警告中は必ずジオフェンス状態を主表示にする。それ以外は、まだ位置が
+    // 確定していない段階（waitStart等）なので監視状態のほうが情報量が多い。
+    if (lifecycleLabel != null && !_isGeofenceWarning) {
       return lifecycleLabel;
     }
     switch (status) {
@@ -983,16 +1008,8 @@ class _LargeStatusDisplay extends StatelessWidget {
   }
 
   String _statusCode(LocationStateStatus status) {
-    final lifecycleCode = switch (lifecycle) {
-      MonitoringLifecycle.idle || MonitoringLifecycle.active => null,
-      MonitoringLifecycle.starting => 'STARTING',
-      MonitoringLifecycle.acquiring => 'ACQUIRING GPS',
-      MonitoringLifecycle.stale => 'GPS STALE',
-      MonitoringLifecycle.reconnecting => 'RECONNECTING',
-      MonitoringLifecycle.stopping => 'STOPPING',
-      MonitoringLifecycle.failed => 'FAILED',
-    };
-    if (lifecycleCode != null) {
+    final lifecycleCode = _lifecycleCode;
+    if (lifecycleCode != null && !_isGeofenceWarning) {
       return lifecycleCode;
     }
     switch (status) {
@@ -1073,6 +1090,62 @@ class _LargeStatusDisplay extends StatelessWidget {
                     status == LocationStateStatus.waitGeoJson ? 0.8 : 1.2,
               ),
             ),
+            // 警告中は監視状態が主表示から外れるため、副表示で必ず併記する。
+            // これがないと OUTER 中のGPS途絶に気づけない。
+            if (_isGeofenceWarning && _lifecycleLabel != null) ...[
+              SizedBox(height: circleSize * 0.03),
+              SizedBox(
+                width: circleSize * 0.78,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Container(
+                    key: const Key('monitoring-lifecycle-badge'),
+                    padding: EdgeInsets.symmetric(
+                      vertical: circleSize * 0.015,
+                      horizontal: circleSize * 0.04,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(circleSize * 0.06),
+                      border: Border.all(
+                        color:
+                            (_lifecycleColor ?? color).withValues(alpha: 0.7),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.gps_off_rounded,
+                          size: circleSize * 0.06,
+                          color: _lifecycleColor ?? color,
+                        ),
+                        SizedBox(width: circleSize * 0.015),
+                        Text(
+                          _lifecycleLabel!,
+                          style: TextStyle(
+                            fontSize: circleSize * 0.07,
+                            fontWeight: FontWeight.w800,
+                            color: _lifecycleColor ?? color,
+                          ),
+                        ),
+                        SizedBox(width: circleSize * 0.02),
+                        Text(
+                          _lifecycleCode!,
+                          style: TextStyle(
+                            fontSize: circleSize * 0.05,
+                            fontWeight: FontWeight.w700,
+                            color: (_lifecycleColor ?? color)
+                                .withValues(alpha: 0.75),
+                            letterSpacing: 0.8,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
             if (onTap != null && status == LocationStateStatus.waitStart) ...[
               SizedBox(height: circleSize * 0.04),
               Container(

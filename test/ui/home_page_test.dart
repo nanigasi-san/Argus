@@ -150,6 +150,59 @@ void main() {
     expect(find.text('ファイルを\n読み込む'), findsNothing);
   });
 
+  testWidgets('keeps the OUTER warning visible while GPS is stale',
+      (tester) async {
+    // 回帰テスト: 監視状態のラベルでジオフェンス状態を塗り替えると、
+    // エリア外で警報が鳴っている最中にGPSが途絶したとき、円が
+    // 「再接続中」に変わって OUTER 警告が視覚的に消える。
+    for (final lifecycle in [
+      MonitoringLifecycle.stale,
+      MonitoringLifecycle.reconnecting,
+    ]) {
+      final controller = buildTestController(
+        hasGeoJson: true,
+        monitoringLifecycle: lifecycle,
+        snapshot: StateSnapshot(
+          status: LocationStateStatus.outer,
+          timestamp: DateTime.utc(2024, 1, 1),
+          geoJsonLoaded: true,
+          distanceToBoundaryM: 42,
+          horizontalAccuracyM: 5,
+        ),
+      );
+
+      await _pumpHome(tester, controller);
+
+      // 主表示はジオフェンス警告のまま。
+      expect(find.text('外側'), findsOneWidget);
+      expect(find.text('OUTER'), findsOneWidget);
+      // 監視状態は副表示で併記され、隠れない。
+      expect(
+        find.byKey(const Key('monitoring-lifecycle-badge')),
+        findsOneWidget,
+      );
+    }
+  });
+
+  testWidgets('shows the geofence warning colour while GPS is stale',
+      (tester) async {
+    final controller = buildTestController(
+      hasGeoJson: true,
+      monitoringLifecycle: MonitoringLifecycle.reconnecting,
+      snapshot: StateSnapshot(
+        status: LocationStateStatus.outer,
+        timestamp: DateTime.utc(2024, 1, 1),
+        geoJsonLoaded: true,
+        horizontalAccuracyM: 5,
+      ),
+    );
+
+    await _pumpHome(tester, controller);
+
+    final label = tester.widget<Text>(find.text('外側'));
+    expect(label.style?.color, Colors.red);
+  });
+
   testWidgets('shows stopping and failed lifecycle states', (tester) async {
     final stoppingController = buildTestController(
       hasGeoJson: true,
