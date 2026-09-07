@@ -197,6 +197,17 @@ class GeolocatorLocationService implements LocationService {
     if (startedAt == null || position.timestamp.isBefore(startedAt)) {
       return;
     }
+    // 使えない座標はここで捨てる。下流へ流すと候補ポリゴンの探索も距離計算も
+    // 破綻するうえ、fixが届いた扱いになるのでGPS途絶の警告も出なくなる。
+    // 捨てればウォッチドッグが途絶として検知し、利用者に伝わる。
+    if (!position.latitude.isFinite ||
+        !position.longitude.isFinite ||
+        position.latitude < -90 ||
+        position.latitude > 90 ||
+        position.longitude < -180 ||
+        position.longitude > 180) {
+      return;
+    }
     _controller.add(
       LocationFix(
         latitude: position.latitude,

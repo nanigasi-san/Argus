@@ -524,6 +524,98 @@ void main() {
     expect(snapshot.distanceToBoundaryM, greaterThan(0));
     expect(countingPip.evaluationCount, 0);
   });
+
+  test('treats non-finite coordinates as an unusable fix', () {
+    // 回帰テスト: NaN座標はバウンディングボックス比較がすべてfalseになるため
+    // 候補ポリゴンが空になり、距離もNaNになる。素通しすると「エリア外だが
+    // OUTERに確定しない」outerPending のまま警報が鳴らない。
+    machine.resetMonitoring();
+
+    final snapshot = machine.evaluate(
+      LocationFix(
+        latitude: double.nan,
+        longitude: 139.005,
+        accuracyMeters: 5,
+        timestamp: DateTime.utc(2024, 1, 1),
+        monitoringElapsed: Duration.zero,
+      ),
+    );
+
+    expect(snapshot.status, LocationStateStatus.gpsBad);
+  });
+
+  test('treats out-of-range coordinates as an unusable fix', () {
+    machine.resetMonitoring();
+
+    final snapshot = machine.evaluate(
+      LocationFix(
+        latitude: 91,
+        longitude: 139.005,
+        accuracyMeters: 5,
+        timestamp: DateTime.utc(2024, 1, 1),
+        monitoringElapsed: Duration.zero,
+      ),
+    );
+
+    expect(snapshot.status, LocationStateStatus.gpsBad);
+  });
+
+  test('a bad-accuracy fix does not discard exit evidence', () {
+    // 回帰テスト: 精度不良でヒステリシスをリセットすると、木の下などで精度が
+    // 周期的に悪化する環境では leaveConfirmSeconds に到達できず、実際に
+    // エリア外なのに警報が永久に鳴らない。
+    machine.resetMonitoring();
+
+    LocationFix outside(int second, {double accuracy = 5}) => LocationFix(
+          latitude: 35.05,
+          longitude: 139.05,
+          accuracyMeters: accuracy,
+          timestamp: DateTime.utc(2024, 1, 1).add(Duration(seconds: second)),
+          monitoringElapsed: Duration(seconds: second),
+        );
+
+    expect(
+      machine.evaluate(outside(0)).status,
+      LocationStateStatus.outerPending,
+    );
+    expect(
+      machine.evaluate(outside(4)).status,
+      LocationStateStatus.outerPending,
+    );
+
+    // 精度不良の1点をはさむ。エリア内に戻った証拠ではないので、
+    // これまでのエリア外サンプルは捨てない。
+    expect(
+      machine.evaluate(outside(6, accuracy: 999)).status,
+      LocationStateStatus.gpsBad,
+    );
+
+    expect(machine.evaluate(outside(11)).status, LocationStateStatus.outer);
+  });
+
+  test('a good fix inside still clears exit evidence', () {
+    machine.resetMonitoring();
+
+    LocationFix at(double lat, double lon, int second) => LocationFix(
+          latitude: lat,
+          longitude: lon,
+          accuracyMeters: 5,
+          timestamp: DateTime.utc(2024, 1, 1).add(Duration(seconds: second)),
+          monitoringElapsed: Duration(seconds: second),
+        );
+
+    machine.evaluate(at(35.05, 139.05, 0));
+    machine.evaluate(at(35.05, 139.05, 4));
+    // 精度良好でエリア内 → 証拠はリセットされる。
+    expect(
+      machine.evaluate(at(35.005, 139.005, 5)).status,
+      anyOf(LocationStateStatus.inner, LocationStateStatus.near),
+    );
+    expect(
+      machine.evaluate(at(35.05, 139.05, 20)).status,
+      LocationStateStatus.outerPending,
+    );
+  });
 }
 
 class _CountingPointInPolygon extends PointInPolygon {

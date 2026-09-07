@@ -67,7 +67,7 @@
 ### 5.5 状態機械（`state_machine.dart`）
 - 状態: `waitGeoJson` → `waitStart` → `inner / near / outerPending / outer / gpsBad`。
 - 距離閾値: `innerBufferM`（デフォルト 30m）より内側で `near`、それ以上は `inner`。
-- GPS 精度: `accuracyMeters == null` または `> gpsAccuracyBadMeters`（デフォルト 40m）のとき `gpsBad`。ただし直前が OUTER の場合は「外にいる前提」で最寄り境界距離だけ更新し OUTER を維持する。低精度fixでは警告を解除せず、精度が閾値内へ戻ったfixだけが `inner/near` に復帰できる。
+- 測位の可用性: `accuracyMeters == null`・非有限・`> gpsAccuracyBadMeters`（デフォルト 40m）、または緯度経度が非有限・範囲外のとき `gpsBad`。使えない測位ではヒステリシスをリセットしない（エリア内に戻った証拠ではないため）。ただし直前が OUTER の場合は「外にいる前提」で最寄り境界距離だけ更新し OUTER を維持する。低精度fixでは警告を解除せず、精度が閾値内へ戻ったfixだけが `inner/near` に復帰できる。
 - OUTER 確定条件: 最初の有効なエリア外判定から、単調増加する実経過時間で `leaveConfirmSeconds` 秒（デフォルト 10 秒）かつ `leaveConfirmSamples` 回（デフォルト 3）に到達すること。GPS timestampは確定時間に使わない。未達時は `outerPending`。
 - ポリゴン探索: AreaIndex の軸平行バウンディングボックスで候補絞り込み、ray-cast で包含判定。最短距離/方位を常に計算し `StateSnapshot` に積む。
 - ナビゲーション表示: OUTER になったタイミングで `navigationEnabled=true`。Developer mode ではエリア内でもナビ表示可。それ以外は OUTER 以降のみ距離/方位ヒントを UI に出す。

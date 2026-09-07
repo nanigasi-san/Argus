@@ -54,8 +54,9 @@
   - `gpsBad`: 位置精度不足（`accuracyMeters > gpsAccuracyBadMeters`）。ただし、OUTER 状態時は特別処理（後述）。
 - **判定フロー**:
   1. GeoJSON 未ロード → `waitGeoJson`
-  2. 精度不良チェック: `accuracyMeters == null || accuracyMeters > gpsAccuracyBadMeters`
-     - OUTER 状態でない場合: `gpsBad` に遷移し、ヒステリシスをリセット
+  2. 測位の可用性チェック: `accuracyMeters == null || 非有限 || > gpsAccuracyBadMeters`、または緯度経度が非有限・範囲外
+     - 座標がNaNや範囲外だとバウンディングボックス比較がすべてfalseになり、候補ポリゴンが空・距離がNaNになる。素通しすると「エリア外だがOUTERに確定しない」`outerPending` のまま警報が鳴らないため、精度不良と同じ扱いにする
+     - OUTER 状態でない場合: `gpsBad` に遷移。ヒステリシスはリセットしない（使えない測位は「エリア内に戻った証拠」ではないため）
      - OUTER 状態の場合: 位置が内側に見えても警告を解除せず OUTER を維持し、距離情報を最善努力で提供。精度良好なfixだけが `inner`/`near` に復帰できる
   3. 精度良好の場合: エリア内/外を判定
      - エリア内: `inner`/`near`（距離に応じて）に遷移、ヒステリシスリセット
@@ -428,7 +429,7 @@ graph TD
 
 1. **GeoJSON チェック**: `_geoModel.hasGeometry == false` なら `waitGeoJson` を返す。
 2. **精度チェック**: `fix.accuracyMeters == null || fix.accuracyMeters! > _config.gpsAccuracyBadMeters`
-   - OUTER 状態でない場合: `gpsBad` に遷移、ヒステリシスリセット
+   - OUTER 状態でない場合: `gpsBad` に遷移。ヒステリシスは維持する
    - OUTER 状態の場合:
      - 内側に戻ったかどうかを判定（`AreaIndex.lookup` + `PointInPolygon.evaluatePoint`）
      - 内外にかかわらず OUTER を維持し、距離情報を最善努力で提供する
@@ -493,9 +494,9 @@ stateDiagram-v2
   - エリア内: `inner` または `near`（距離に応じて）
   - エリア外: `outerPending`（hysteresis未到達）または `outer`（hysteresis到達）
 - **精度不良時の遷移**:
-  - OUTER 以外の状態: `gpsBad` に遷移
+  - OUTER 以外の状態: `gpsBad` に遷移。ヒステリシスは維持する
   - OUTER 状態: 内側に見える場合も `outer` を維持し、精度良好なfixを待つ
-- **hysteresis**: エリア内に戻ると即座にリセットされ、`inner`/`near` に遷移
+- **hysteresis**: 精度良好なfixでエリア内に戻ると即座にリセットされ、`inner`/`near` に遷移。精度不良や座標不正のfixではリセットしない
 
 ### 4.4 ヒステリシスカウンタ
 

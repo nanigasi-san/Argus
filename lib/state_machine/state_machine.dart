@@ -87,18 +87,44 @@ class StateMachine {
     final observedAt = fix.monitoringElapsed ??
         Duration(microseconds: fix.timestamp.microsecondsSinceEpoch);
     final snapshot = _evaluateInternal(fix, observedAt);
-    final hasHealthyAccuracy = fix.accuracyMeters != null &&
-        fix.accuracyMeters! <= _config.gpsAccuracyBadMeters;
+    final hasHealthyAccuracy = _isUsableFix(fix);
     if (hasHealthyAccuracy && snapshot.status == LocationStateStatus.outer) {
-      _lastTrustedOuterDistanceM = snapshot.distanceToBoundaryM;
-      _lastTrustedOuterBoundaryPoint = snapshot.nearestBoundaryPoint;
-      _lastTrustedOuterBearingDeg = snapshot.bearingToBoundaryDeg;
+      // 値が取れなかったfixで上書きしない。上書きすると、直前まで表示できて
+      // いた最後の信頼できる案内が消えてしまう。
+      if (snapshot.distanceToBoundaryM != null) {
+        _lastTrustedOuterDistanceM = snapshot.distanceToBoundaryM;
+        _lastTrustedOuterBoundaryPoint = snapshot.nearestBoundaryPoint;
+        _lastTrustedOuterBearingDeg = snapshot.bearingToBoundaryDeg;
+      }
     } else if (hasHealthyAccuracy &&
         snapshot.status != LocationStateStatus.outerPending) {
       _clearTrustedOuterNavigation();
     }
     _current = snapshot.status;
     return snapshot;
+  }
+
+  /// 判定に使える測位か。
+  ///
+  /// 精度に加えて座標の有限性と範囲も見る。NaN や範囲外の座標が来ると、
+  /// バウンディングボックスの比較がすべて false になって候補ポリゴンが空になり、
+  /// 距離計算も NaN になる。結果として「エリア外だがOUTERに確定しない」
+  /// outerPending のまま警報が鳴らない状態が続く。
+  bool _isUsableFix(LocationFix fix) {
+    final accuracy = fix.accuracyMeters;
+    if (accuracy == null ||
+        !accuracy.isFinite ||
+        accuracy > _config.gpsAccuracyBadMeters) {
+      return false;
+    }
+    final latitude = fix.latitude;
+    final longitude = fix.longitude;
+    return latitude.isFinite &&
+        longitude.isFinite &&
+        latitude >= -90 &&
+        latitude <= 90 &&
+        longitude >= -180 &&
+        longitude <= 180;
   }
 
   StateSnapshot _evaluateInternal(LocationFix fix, Duration observedAt) {
@@ -112,8 +138,7 @@ class StateMachine {
       );
     }
 
-    if (fix.accuracyMeters == null ||
-        fix.accuracyMeters! > _config.gpsAccuracyBadMeters) {
+    if (!_isUsableFix(fix)) {
       // 確定済みOUTERは、精度不良の測位では解除しない。
       // 誤差の大きい1点が偶然エリア内を指して警報を止める方が危険なため、
       // 警報は維持し、案内には最後の信頼できるfixだけを使用する。
@@ -130,8 +155,12 @@ class StateMachine {
               'Low accuracy ${fix.accuracyMeters?.toStringAsFixed(1) ?? '-'}m; maintaining OUTER with last reliable guidance',
         );
       }
-      // OUTER状態でない場合のみ、GPS_BADに遷移
-      _hysteresis.reset();
+      // OUTER状態でない場合のみ、GPS_BADに遷移。
+      // ヒステリシスはリセットしない。使えない測位は「エリア内に戻った証拠」
+      // ではないので、これまでに数えた良好なエリア外サンプルを捨てる理由がない。
+      // リセットしていると、木の下などで精度が一定周期で悪化する環境では
+      // leaveConfirmSeconds に到達できず、実際にエリア外なのに警報が
+      // 永久に鳴らない。エリア内へ戻ったことは精度良好なfixだけが証明する。
       return StateSnapshot(
         status: LocationStateStatus.gpsBad,
         timestamp: fix.timestamp,
@@ -149,7 +178,9 @@ class StateMachine {
         fix.longitude,
       );
       final distance = boundsEval?.distanceToBoundaryM;
-      final reached = _hysteresis.addSample(observedAt) && distance != null;
+      // 確定条件はヒステリシスだけで決める。distance は案内表示用の値であり、
+      // これを条件に混ぜると、距離を計算できなかっただけで警報が出なくなる。
+      final reached = _hysteresis.addSample(observedAt);
 
       return StateSnapshot(
         status: reached
