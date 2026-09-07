@@ -38,7 +38,7 @@
    ロード成功後の状態は `waitStart`、`navigationEnabled` は false にリセット、アラーム停止。
 4) 監視開始: `startMonitoring()` で Geolocator ストリーム購読開始。`starting → acquiring → active` の監視ライフサイクルを持つ。`sampleIntervalS['fast']`（デフォルト 3 秒）間隔・距離フィルタ 0m・`LocationAccuracy.best`。
 5) 評価ループ: 各 `LocationFix` を `StateMachine.evaluate()` に通し、UI/ログ/通知に反映。OUTER 確定時に通知＋アラーム。再入時に停止通知。
-6) GPS監視: 最終fixから `max(15秒, 取得間隔×3)` が経過、または位置ストリームがエラー/終了した場合は警告通知と短い振動を出し、1/2/4/8/16/30秒のバックオフで再接続する。fix復帰時に警告を解除する。
+6) GPS監視: 最終fixから `max(15秒, 取得間隔×3)` が経過、または位置ストリームがエラー/終了した場合は警告通知と短い振動を出し、1/2/4/8/16/30秒のバックオフで再接続する。fix復帰時に警告を解除する。経過時間は監視セッションが持つ単調増加クロックで測り、位置サービスの再接続をまたいでも巻き戻らない。再開前に監視権限を再確認し、権限失効時または再開が連続5回失敗した場合は自動再接続を打ち切って原因を表示する（アプリのレジュームで再試行）。
 7) 停止/終了: `stopMonitoring()` で購読解除・Geolocator 停止。アプリ detach 時に QR 由来の一時 GeoJSON を削除。強制終了後の自動復元は行わない。
 
 ## 5. 中核ドメイン仕様
@@ -86,7 +86,7 @@
 - 音設定: MethodChannel `argus/alarm` の `openSoundSettings` を呼ぶ。Android 側は `ACTION_SOUND_SETTINGS` を開き、失敗時は `ACTION_SETTINGS` にフォールバックする。
 
 ### 5.8 UI
-- Home (`home_page.dart`): 大型ステータス円で状態表示（INNER/NEAR/OUTERに加え、開始中/GPS取得中/GPS停止/再接続中/停止中/失敗）。監視中は強制終了で監視が止まる注意を表示する。
+- Home (`home_page.dart`): 大型ステータス円で状態表示（INNER/NEAR/OUTERに加え、開始中/GPS取得中/GPS停止/再接続中/停止中/失敗）。OUTER・OUTER_PENDING の警告中は監視状態でラベルと色を塗り替えず、ジオフェンス状態を主表示にしたまま監視状態を円内の副バッジで併記する。監視中は強制終了で監視が止まる注意を表示する。
 - Settings (`settings_page.dart`): 設定フォーム（Inner buffer, GPS 精度閾値, Leave confirm サンプル/秒, Alarm 音量）。監視中は全設定をロックする。iOSでは警告音の開始・停止テストを表示する。
 - QR Scanner (`qr_scanner_page.dart`): `mobile_scanner` で `agz1` / `gjz1` スキーム QR を読み取り、`AppController.reloadGeoJsonFromQr` へ連携。処理中オーバーレイとエラーバナーを表示。
 - テーマ: Material3、Seed color Blue。文言は日本語中心で一部英語残り。
@@ -121,7 +121,7 @@
 ## 10. 弱み / リスク（現状コード由来）
 - ストリーム前提: OS ネイティブ geofence を使わず Geolocator の高頻度ストリームに依存する。電池負荷と端末設定（省電力）に左右される。
 - 外部依存: QR エンコード/デコードに外部CLIは不要。
-- GeoJSON サポートの限定: 穴付きPolygonは安全のため読み込みを拒否する。1MB・Polygon数・頂点数の上限を超える大規模データも読み込めない。
+- GeoJSON サポートの限定: 穴付きPolygonは安全のため読み込みを拒否する。1MB・Polygon数・頂点数の上限を超える大規模データも読み込めない。`geometry` 欠落・非対応geometry type・空の `features`/`MultiPolygon`・連続重複頂点も黙って読み飛ばさずエラーにし、エラーには該当Feature・Polygon・頂点の位置と実際の値を含める。
 - 設定項目の遊休: `sample_distance_m` と `screen_wake_on_leave` は UI/ロジックで未使用。設定と実挙動が乖離する恐れ。
 - ログ永続化なし: UI ログはメモリ 200 件のみ、EventLogger もメモリのみ。`FileManager.openLogFile()` は未使用で実ファイルに残らない。
 - バックグラウンド挙動の限定: アプリ終了後の自動再開なし。起動後も GeoJSON を手動ロードしないと監視が始まらない（サンプル GeoJSON も自動読み込みしない）。

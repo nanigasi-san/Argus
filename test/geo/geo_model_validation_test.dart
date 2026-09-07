@@ -241,6 +241,114 @@ void main() {
 
       expect(model.polygons.single.version, isNull);
     });
+
+    test('rejects consecutive duplicate vertices with a dedicated message', () {
+      // GISの書き出しで普通に混ざる。自己交差と同じメッセージで弾くと
+      // 「辺が交差しない外周に修正してください」と言われて原因に辿り着けない。
+      final raw = _featureCollection([
+        _polygon([
+          [
+            [139.0, 35.0],
+            [139.01, 35.0],
+            [139.01, 35.0],
+            [139.01, 35.01],
+            [139.0, 35.0],
+          ],
+        ]),
+      ]);
+
+      expect(
+        () => GeoModel.fromGeoJson(raw),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('頂点[1]'),
+              contains('頂点[2]'),
+              contains('連続する重複頂点を削除してください'),
+            ),
+          ),
+        ),
+      );
+    });
+
+    test('rejects a feature without geometry instead of skipping it', () {
+      const raw = '''
+{"type":"FeatureCollection","features":[{"type":"Feature","properties":{}}]}
+''';
+
+      expect(
+        () => GeoModel.fromGeoJson(raw),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('Feature[0]'), contains('geometryがありません')),
+          ),
+        ),
+      );
+    });
+
+    test('names the feature, polygon and vertex in coordinate errors', () {
+      final raw = _featureCollection([
+        _polygon([
+          [
+            [139.0, 35.0],
+            [139.01, 35.0],
+            [139.01, 95.0],
+            [139.0, 35.0],
+          ],
+        ]),
+      ]);
+
+      expect(
+        () => GeoModel.fromGeoJson(raw),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('Feature[0]'),
+              contains('Polygon[0]'),
+              contains('頂点[2]'),
+              contains('緯度が範囲外です'),
+              contains('[経度, 緯度]'),
+            ),
+          ),
+        ),
+      );
+    });
+
+    test('reports how many holes an unsupported polygon has', () {
+      final raw = _featureCollection([
+        _polygon([
+          [
+            [139.0, 35.0],
+            [139.1, 35.0],
+            [139.1, 35.1],
+            [139.0, 35.0],
+          ],
+          [
+            [139.02, 35.02],
+            [139.03, 35.02],
+            [139.03, 35.03],
+            [139.02, 35.02],
+          ],
+        ]),
+      ]);
+
+      expect(
+        () => GeoModel.fromGeoJson(raw),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('穴（1個）'), contains('対応していません')),
+          ),
+        ),
+      );
+    });
   });
 }
 

@@ -145,16 +145,31 @@ class GeoModel {
     final polygons = <GeoPolygon>[];
     var totalVertices = 0;
 
-    for (final feature in features) {
+    if (features.isEmpty) {
+      throw const FormatException(
+        'FeatureCollection.featuresが空です。監視する競技エリアのPolygonを'
+        '1つ以上含めてください。',
+      );
+    }
+
+    for (var featureIndex = 0; featureIndex < features.length; featureIndex++) {
+      final feature = features[featureIndex];
+      final at = 'Feature[$featureIndex]';
       if (feature is! Map) {
-        throw const FormatException('Featureはオブジェクトである必要があります。');
+        throw FormatException('$at: Featureはオブジェクトである必要があります。');
       }
       final propertiesValue = feature['properties'];
       final properties =
           propertiesValue is Map ? propertiesValue : const <String, dynamic>{};
       final geometry = feature['geometry'];
+      // geometry や type が想定外のものを黙って読み飛ばすと、競技エリアが
+      // 1つ欠けたまま監視を開始してしまう。穴を拒否するのと同じ理由で
+      // ここもエラーにする。
       if (geometry is! Map) {
-        continue;
+        throw FormatException(
+          '$at: geometryがありません。'
+          'geometryを持つFeatureだけを含めてください。',
+        );
       }
       final type = geometry['type'];
       final coordinates = geometry['coordinates'];
@@ -164,40 +179,52 @@ class GeoModel {
         polygonCoordinates = [coordinates];
       } else if (type == 'MultiPolygon') {
         if (coordinates is! List) {
-          throw const FormatException('MultiPolygon.coordinatesは配列である必要があります。');
+          throw FormatException(
+            '$at: MultiPolygon.coordinatesは配列である必要があります。',
+          );
+        }
+        if (coordinates.isEmpty) {
+          throw FormatException('$at: MultiPolygonにPolygonがありません。');
         }
         polygonCoordinates = coordinates;
       } else {
-        continue;
+        throw FormatException(
+          '$at: 対応していないgeometry type（${_describeValue(type)}）です。'
+          'PolygonまたはMultiPolygonへ変換してください。',
+        );
       }
 
+      var polygonIndex = -1;
       for (final polygonValue in polygonCoordinates) {
+        polygonIndex += 1;
+        final ringAt = '$at のPolygon[$polygonIndex]';
         if (polygonValue is! List) {
-          throw const FormatException('Polygon.coordinatesは配列である必要があります。');
+          throw FormatException('$ringAt: coordinatesは配列である必要があります。');
         }
         if (polygonValue.isEmpty) {
-          throw const FormatException('Polygonの外周がありません。');
+          throw FormatException('$ringAt: 外周がありません。');
         }
         if (polygonValue.length > 1) {
-          throw const FormatException(
-            '穴を含むPolygonには対応していません。穴のないPolygonへ変換してください。',
+          throw FormatException(
+            '$ringAt: 穴（${polygonValue.length - 1}個）を含むPolygonには'
+            '対応していません。穴のないPolygonへ変換してください。',
           );
         }
 
         final ring = polygonValue.single;
         if (ring is! List) {
-          throw const FormatException('Polygonの外周は配列である必要があります。');
-        }
-        final points = _parseAndValidateRing(ring, limits);
-        totalVertices += points.length;
-        if (totalVertices > limits.maxTotalVertices) {
-          throw FormatException(
-            'GeoJSONの総頂点数が上限（${limits.maxTotalVertices}点）を超えています。',
-          );
+          throw FormatException('$ringAt: 外周は配列である必要があります。');
         }
         if (polygons.length >= limits.maxPolygons) {
           throw FormatException(
             'Polygon数が上限（${limits.maxPolygons}個）を超えています。',
+          );
+        }
+        final points = _parseAndValidateRing(ring, limits, ringAt);
+        totalVertices += points.length;
+        if (totalVertices > limits.maxTotalVertices) {
+          throw FormatException(
+            'GeoJSONの総頂点数が上限（${limits.maxTotalVertices}点）を超えています。',
           );
         }
         polygons.add(
@@ -224,41 +251,78 @@ class GeoModel {
   bool get hasGeometry => polygons.isNotEmpty;
 }
 
+/// 値の型と内容をエラーメッセージ用に短く表します。
+String _describeValue(Object? value) {
+  if (value == null) {
+    return 'null';
+  }
+  if (value is String) {
+    return '"$value"';
+  }
+  return '${value.runtimeType}';
+}
+
 List<LatLng> _parseAndValidateRing(
   List<dynamic> ring,
   GeoJsonLimits limits,
+  String at,
 ) {
   if (ring.length < 4) {
-    throw const FormatException(
-      'Polygonには始点と終点を含む4点以上が必要です。',
+    throw FormatException(
+      '$at: 外周には始点と終点を含む4点以上が必要です（${ring.length}点しかありません）。'
+      '始点と同じ座標を終点に追加してリングを閉じてください。',
     );
   }
   if (ring.length > limits.maxVerticesPerPolygon) {
     throw FormatException(
-      '1つのPolygonの頂点数が上限（${limits.maxVerticesPerPolygon}点）を超えています。',
+      '$at: 頂点数が上限（${limits.maxVerticesPerPolygon}点）を超えています'
+      '（${ring.length}点）。',
     );
   }
 
   final points = <LatLng>[];
-  for (final coordinate in ring) {
-    if (coordinate is! List || coordinate.length < 2) {
-      throw const FormatException('座標は[経度, 緯度]の配列である必要があります。');
+  for (var index = 0; index < ring.length; index++) {
+    final coordinate = ring[index];
+    final vertexAt = '$at の頂点[$index]';
+    if (coordinate is! List) {
+      throw FormatException(
+        '$vertexAt: 座標は[経度, 緯度]の配列である必要があります'
+        '（${_describeValue(coordinate)}）。',
+      );
+    }
+    if (coordinate.length < 2) {
+      throw FormatException(
+        '$vertexAt: 座標には経度と緯度が必要です（${coordinate.length}要素）。',
+      );
     }
     final longitudeValue = coordinate[0];
     final latitudeValue = coordinate[1];
     if (longitudeValue is! num || latitudeValue is! num) {
-      throw const FormatException('緯度・経度は数値である必要があります。');
+      throw FormatException(
+        '$vertexAt: 緯度・経度は数値である必要があります'
+        '（経度=${_describeValue(longitudeValue)}, '
+        '緯度=${_describeValue(latitudeValue)}）。',
+      );
     }
     final longitude = longitudeValue.toDouble();
     final latitude = latitudeValue.toDouble();
     if (!longitude.isFinite || !latitude.isFinite) {
-      throw const FormatException('緯度・経度は有限の数値である必要があります。');
+      throw FormatException(
+        '$vertexAt: 緯度・経度は有限の数値である必要があります'
+        '（経度=$longitude, 緯度=$latitude）。',
+      );
     }
     if (longitude < -180 || longitude > 180) {
-      throw FormatException('経度が範囲外です: $longitude');
+      throw FormatException(
+        '$vertexAt: 経度が範囲外です（$longitude）。'
+        'GeoJSONの座標順は[経度, 緯度]です。緯度と入れ替わっていないか確認してください。',
+      );
     }
     if (latitude < -90 || latitude > 90) {
-      throw FormatException('緯度が範囲外です: $latitude');
+      throw FormatException(
+        '$vertexAt: 緯度が範囲外です（$latitude）。'
+        'GeoJSONの座標順は[経度, 緯度]です。経度と入れ替わっていないか確認してください。',
+      );
     }
     points.add(LatLng(latitude, longitude));
   }
@@ -266,7 +330,27 @@ List<LatLng> _parseAndValidateRing(
   final first = points.first;
   final last = points.last;
   if (first.latitude != last.latitude || first.longitude != last.longitude) {
-    throw const FormatException('Polygonの始点と終点が一致していません。');
+    throw FormatException(
+      '$at: 外周の始点と終点が一致していません'
+      '（始点=${first.latitude}, ${first.longitude} / '
+      '終点=${last.latitude}, ${last.longitude}）。'
+      '始点と同じ座標を終点に追加してリングを閉じてください。',
+    );
+  }
+
+  // 連続する重複頂点はGISの書き出しで普通に混ざる。自己交差と同じ
+  // メッセージで弾くと原因に辿り着けないため、専用のエラーにする。
+  for (var index = 0; index < points.length - 1; index++) {
+    final current = points[index];
+    final next = points[index + 1];
+    if (current.latitude == next.latitude &&
+        current.longitude == next.longitude) {
+      throw FormatException(
+        '$at: 頂点[$index]と頂点[${index + 1}]が同じ座標です'
+        '（${current.latitude}, ${current.longitude}）。'
+        '連続する重複頂点を削除してください。',
+      );
+    }
   }
 
   final distinct = <(double, double)>{
@@ -274,32 +358,46 @@ List<LatLng> _parseAndValidateRing(
       (point.latitude, point.longitude),
   };
   if (distinct.length < 3) {
-    throw const FormatException('Polygonには3つ以上の異なる頂点が必要です。');
+    throw FormatException(
+      '$at: 外周には3つ以上の異なる頂点が必要です'
+      '（${distinct.length}点しかありません）。',
+    );
   }
 
   final longitudes = points.map((point) => point.longitude);
   final longitudeSpan = longitudes.max - longitudes.min;
   if (longitudeSpan > 180) {
-    throw const FormatException(
-      '日付変更線をまたぐPolygonには対応していません。'
+    throw FormatException(
+      '$at: 日付変更線をまたぐPolygonには対応していません'
+      '（経度の幅が${longitudeSpan.toStringAsFixed(1)}度）。'
       '日付変更線をまたがない座標系へ変換してください。',
     );
   }
 
+  // シューレース公式は原点を始点へ寄せてから計算する。生の緯度経度のままだと
+  // 1項が最大1.6e4程度になり、5000頂点の合計では丸め誤差が1e-8前後まで
+  // 膨らむため、閾値1e-12が浮動小数点ノイズに埋もれて機能しない。
   var twiceArea = 0.0;
   for (var index = 0; index < points.length - 1; index++) {
     final current = points[index];
     final next = points[index + 1];
-    twiceArea += current.longitude * next.latitude;
-    twiceArea -= next.longitude * current.latitude;
+    final currentLon = current.longitude - first.longitude;
+    final currentLat = current.latitude - first.latitude;
+    final nextLon = next.longitude - first.longitude;
+    final nextLat = next.latitude - first.latitude;
+    twiceArea += currentLon * nextLat;
+    twiceArea -= nextLon * currentLat;
   }
   if (twiceArea.abs() <= 1e-12) {
-    throw const FormatException('面積が0に近いPolygonは使用できません。');
+    throw FormatException(
+      '$at: 面積が0に近いPolygonは使用できません。'
+      '頂点が一直線に並んでいないか確認してください。',
+    );
   }
 
   if (_hasSelfIntersection(points)) {
-    throw const FormatException(
-      '自己交差するPolygonは使用できません。'
+    throw FormatException(
+      '$at: 自己交差するPolygonは使用できません。'
       '辺が交差しない外周に修正してください。',
     );
   }
@@ -307,15 +405,10 @@ List<LatLng> _parseAndValidateRing(
   return List<LatLng>.unmodifiable(points);
 }
 
+// 呼び出し前に連続する重複頂点は専用のエラーで弾いてあるため、
+// ここでは長さ0の辺を考慮しない。
 bool _hasSelfIntersection(List<LatLng> points) {
   final segmentCount = points.length - 1;
-  for (var index = 0; index < segmentCount; index++) {
-    final start = points[index];
-    final end = points[index + 1];
-    if (start.latitude == end.latitude && start.longitude == end.longitude) {
-      return true;
-    }
-  }
 
   // 隣り合う辺は共通頂点で交わるのが正常だが、同じ直線上を
   // 折り返す辺は重なりを持つため自己交差として扱う。

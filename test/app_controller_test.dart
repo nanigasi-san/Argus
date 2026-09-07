@@ -2416,8 +2416,8 @@ void main() {
       await controller.reloadGeoJsonFromPicker();
 
       expect(controller.geoJsonLoaded, isFalse);
-      expect(controller.lastErrorMessage,
-          contains('監視可能なPolygon/MultiPolygonがありません'));
+      // パーサ側でより具体的な原因を返すようになった。
+      expect(controller.lastErrorMessage, contains('featuresが空です'));
     });
 
     test('reloadGeoJsonFromQr rejects GeoJSON without polygons', () async {
@@ -2443,8 +2443,8 @@ void main() {
 
       expect(loaded, isFalse);
       expect(controller.geoJsonLoaded, isFalse);
-      expect(controller.lastErrorMessage,
-          contains('監視可能なPolygon/MultiPolygonがありません'));
+      // パーサ側でより具体的な原因を返すようになった。
+      expect(controller.lastErrorMessage, contains('featuresが空です'));
     });
 
     test('reloadGeoJsonFromPicker ignores user cancellation', () async {
