@@ -508,14 +508,20 @@ void main() {
       );
 
       await controller.updateConfig(updated);
-      controller.setDeveloperMode(true);
 
       expect(fileManager.savedConfig, isNull);
       expect(locationService.startCount, 1);
       expect(locationService.stopCount, 0);
       expect(controller.config!.alarmVolume, config.alarmVolume);
-      expect(controller.developerMode, isFalse);
       expect(controller.lastErrorMessage, contains('監視中'));
+
+      // 開発者モードは表示の切り替えだけなのでロック対象にしない。
+      // GPSが不調なときこそログと詳細を見たい。
+      controller.clearError();
+      controller.setDeveloperMode(true);
+      expect(controller.developerMode, isTrue);
+      expect(controller.lastErrorMessage, isNull);
+
       await controller.stopMonitoring();
     });
 

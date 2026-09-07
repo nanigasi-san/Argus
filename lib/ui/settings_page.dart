@@ -585,7 +585,9 @@ class _SettingsPageState extends State<SettingsPage> {
                           'エリア内でも距離や方角などの詳細情報を表示します。',
                         ),
                         value: controller.developerMode,
-                        onChanged: canEdit ? controller.setDeveloperMode : null,
+                        // 監視中も切り替えられる。表示だけの設定であり、
+                        // GPSが不調なときこそ詳細を見たいため。
+                        onChanged: controller.setDeveloperMode,
                       ),
                       const SizedBox(height: 16),
                       ElevatedButton(

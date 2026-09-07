@@ -551,11 +551,10 @@ class AppController extends ChangeNotifier {
   /// 開発者モードの有効/無効を切り替えます。
   ///
   /// 開発者モードが有効な場合、UIに詳細な状態情報が表示されます。
+  /// 監視中も変更できる。表示の切り替えだけで監視の挙動には影響しないため、
+  /// 設定ロックの対象にしない。GPSが不調なときこそログと詳細を見たいので、
+  /// ロックすると原因調査のために監視を止めさせることになる。
   void setDeveloperMode(bool enabled) {
-    if (!canModifyConfiguration) {
-      _rejectConfigurationChange();
-      return;
-    }
     if (_developerMode == enabled) {
       return;
     }

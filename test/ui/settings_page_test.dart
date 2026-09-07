@@ -148,6 +148,8 @@ void main() {
           .onPressed,
       isNull,
     );
+    // 開発者モードは表示の切り替えだけなのでロックしない。GPSが不調なときに
+    // ログと詳細を見るために監視を止めさせることになるため。
     await _scrollUntilVisible(
       tester,
       find.byKey(const Key('developerModeSwitch')),
@@ -158,7 +160,7 @@ void main() {
             find.byKey(const Key('developerModeSwitch')),
           )
           .onChanged,
-      isNull,
+      isNotNull,
     );
   });
 
