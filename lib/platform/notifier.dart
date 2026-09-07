@@ -6,6 +6,20 @@ import 'package:flutter/services.dart';
 
 import '../state_machine/state.dart';
 
+/// GPS途絶の経過時間を通知本文向けに整形します。
+String formatOutageDuration(Duration outage) {
+  if (outage.inHours >= 1) {
+    final minutes = outage.inMinutes % 60;
+    return minutes == 0
+        ? '${outage.inHours}時間'
+        : '${outage.inHours}時間$minutes分';
+  }
+  if (outage.inMinutes >= 1) {
+    return '${outage.inMinutes}分';
+  }
+  return '${outage.inSeconds}秒';
+}
+
 class AlertDeliveryReport {
   const AlertDeliveryReport({
     this.notificationError,
@@ -19,6 +33,21 @@ class AlertDeliveryReport {
 
   bool get hasFailures =>
       notificationError != null || alarmError != null || vibrationError != null;
+
+  /// 失敗した経路を利用者向けの日本語で列挙します。
+  String get failedChannelsLabel {
+    final failures = <String>[];
+    if (notificationError != null) {
+      failures.add('通知');
+    }
+    if (alarmError != null) {
+      failures.add('警報音');
+    }
+    if (vibrationError != null) {
+      failures.add('バイブ');
+    }
+    return failures.join('・');
+  }
 
   String get failureSummary {
     final failures = <String>[];
@@ -221,7 +250,11 @@ class Notifier {
     );
   }
 
-  Future<void> notifyMonitoringStale() async {
+  /// GPS途絶の警告を出します。
+  ///
+  /// [outage] を渡すと経過時間を本文に含める。同じIDで再表示することで
+  /// 反復通知になり、内容が変わるので端末側でも更新として扱われる。
+  Future<void> notifyMonitoringStale({Duration? outage}) async {
     const details = NotificationDetails(
       android: AndroidNotificationDetails(
         _healthChannelId,
@@ -229,14 +262,24 @@ class Notifier {
         channelDescription: 'GPS監視の停止や再接続を通知します。',
         importance: Importance.high,
         priority: Priority.high,
+        // 音とバイブはネイティブ実装に一本化する（Androidは前景サービスで
+        // 動いているため pulse が確実に鳴る）。
         playSound: false,
         enableVibration: false,
       ),
       iOS: DarwinNotificationDetails(
         presentAlert: true,
-        presentSound: false,
+        // iOSではアプリが停止していると Timer も AudioServices も動かないため、
+        // 通知音がバックグラウンドで唯一届く経路になる。警報音（alarm.caf）とは
+        // 区別したいので既定音を使う。
+        presentSound: true,
+        interruptionLevel: InterruptionLevel.timeSensitive,
       ),
     );
+    final body = outage == null || outage < const Duration(seconds: 1)
+        ? 'GPSを受信できません。位置情報へ再接続しています。'
+        : 'GPSを受信できません（${formatOutageDuration(outage)}経過）。'
+            '位置情報へ再接続しています。';
     final errors = await Future.wait<Object?>([
       _captureError(
         () => _enqueueMonitoringHealthNotification(() async {
@@ -244,7 +287,7 @@ class Notifier {
           await _notifications.show(
             _monitoringStaleNotificationId,
             'ARGUS監視警告',
-            'GPSを受信できません。位置情報へ再接続しています。',
+            body,
             details,
           );
         }),

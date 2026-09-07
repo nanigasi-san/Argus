@@ -36,9 +36,9 @@
    - ファイル: `FileManager.pickGeoJsonFile()` で `.geojson/.json/.bin` を選択しパース→`GeoModel`→`AreaIndex` 構築。ファイル名を `.geojson` 拡張子に正規化して保持。
    - QR: `agz1:` / `gjz1:` テキストを復元→gzip 伸長→構造バリデーション→一時ファイル保存（次回起動で消去）。`agz1` は元ファイル名も復元する。
    ロード成功後の状態は `waitStart`、`navigationEnabled` は false にリセット、アラーム停止。
-4) 監視開始: `startMonitoring()` で Geolocator ストリーム購読開始。`starting → acquiring → active` の監視ライフサイクルを持つ。`sampleIntervalS['fast']`（デフォルト 3 秒）間隔・距離フィルタ 0m・`LocationAccuracy.best`。
+4) 監視開始: `startMonitoring()` で Geolocator ストリーム購読開始。開始条件（GeoJSON・設定・権限・Androidのアラーム音量）はすべて `startMonitoring()` 内で判定し、`MonitoringStartOutcome` を返す。呼び出し元に判定を任せないため、別の入口から安全条件を迂回できず、確認から開始までの間に音量を下げられても検出できる。`starting → acquiring → active` の監視ライフサイクルを持つ。`sampleIntervalS['fast']`（デフォルト 3 秒）間隔・距離フィルタ 0m・`LocationAccuracy.best`。
 5) 評価ループ: 各 `LocationFix` を `StateMachine.evaluate()` に通し、UI/ログ/通知に反映。OUTER 確定時に通知＋アラーム。再入時に停止通知。
-6) GPS監視: 最終fixから `max(15秒, 取得間隔×3)` が経過、または位置ストリームがエラー/終了した場合は警告通知と短い振動を出し、1/2/4/8/16/30秒のバックオフで再接続する。fix復帰時に警告を解除する。経過時間は監視セッションが持つ単調増加クロックで測り、位置サービスの再接続をまたいでも巻き戻らない。再開前に監視権限を再確認し、権限失効時または再開が連続5回失敗した場合は自動再接続を打ち切って原因を表示する（アプリのレジュームで再試行）。
+6) GPS監視: 最終fixから `max(15秒, 取得間隔×3)` が経過、または位置ストリームがエラー/終了した場合は警告通知と短い振動を出し、1/2/4/8/16/30秒のバックオフで再接続する。途絶が続くあいだ既定60秒間隔で警告を出し直し、経過時間を本文に含める（iOSは通知音とtimeSensitiveでバックグラウンドでも届かせる）。fix復帰時に警告と反復を解除する。経過時間は監視セッションが持つ単調増加クロックで測り、位置サービスの再接続をまたいでも巻き戻らない。再開前に監視権限を再確認し、権限失効時または再開が連続5回失敗した場合は自動再接続を打ち切って原因を表示する（アプリのレジュームで再試行）。
 7) 停止/終了: `stopMonitoring()` で購読解除・Geolocator 停止。アプリ detach 時に QR 由来の一時 GeoJSON を削除。強制終了後の自動復元は行わない。
 
 ## 5. 中核ドメイン仕様

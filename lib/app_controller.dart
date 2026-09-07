@@ -37,6 +37,20 @@ Duration _processElapsed() => _processStopwatch.elapsed;
 
 const double minRequiredAlarmVolumePercent = 0.5;
 
+/// [AppController.startMonitoring] の結果。
+enum MonitoringStartOutcome {
+  /// 監視を開始した。
+  started,
+
+  /// 端末のアラーム音量が低すぎるため開始しなかった。
+  ///
+  /// 呼び出し元は音量を上げる案内を出したうえで再試行できる。
+  alarmVolumeTooLow,
+
+  /// 上記以外の理由で開始しなかった。理由は [AppController.lastErrorMessage]。
+  notStarted,
+}
+
 enum MonitoringLifecycle {
   idle,
   starting,
@@ -68,6 +82,7 @@ class AppController extends ChangeNotifier {
     Duration? staleTimeoutOverride,
     Duration watchdogInterval = const Duration(seconds: 1),
     int maxReconnectFailures = 5,
+    Duration staleReminderInterval = const Duration(seconds: 60),
     List<Duration> reconnectDelays = const <Duration>[
       Duration(seconds: 1),
       Duration(seconds: 2),
@@ -87,9 +102,11 @@ class AppController extends ChangeNotifier {
         _staleTimeoutOverride = staleTimeoutOverride,
         _watchdogInterval = watchdogInterval,
         _maxReconnectFailures = maxReconnectFailures,
+        _staleReminderInterval = staleReminderInterval,
         _reconnectDelays = List<Duration>.unmodifiable(reconnectDelays) {
     assert(watchdogInterval > Duration.zero);
     assert(maxReconnectFailures > 0);
+    assert(staleReminderInterval > Duration.zero);
     assert(reconnectDelays.isNotEmpty);
     assert(reconnectDelays.every((delay) => delay > Duration.zero));
   }
@@ -103,6 +120,7 @@ class AppController extends ChangeNotifier {
   final Duration? _staleTimeoutOverride;
   final Duration _watchdogInterval;
   final int _maxReconnectFailures;
+  final Duration _staleReminderInterval;
   final List<Duration> _reconnectDelays;
 
   final StateMachine stateMachine;
@@ -128,6 +146,15 @@ class AppController extends ChangeNotifier {
   Timer? _alarmSnoozeTimer;
   Timer? _locationWatchdogTimer;
   Timer? _reconnectTimer;
+
+  /// GPS途絶警告を反復するタイマー。
+  ///
+  /// 1回だけ通知して終わりだと、無音通知＋350msの振動1回を見逃した時点で
+  /// 監視が死んでいることに気づけなくなる。途絶が続くあいだは伝え続ける。
+  Timer? _staleEscalationTimer;
+
+  /// GPS途絶が始まった時点の監視セッション経過時間。
+  Duration? _staleSinceElapsed;
 
   /// 監視セッション開始時点の単調クロック値。
   ///
@@ -241,11 +268,16 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  Future<void> startMonitoring() async {
+  /// 位置情報の監視を開始します。
+  ///
+  /// 開始条件（GeoJSON・設定・権限・Androidのアラーム音量）はすべてここで
+  /// 判定する。呼び出し元に判定を任せると、別の入口から安全条件を迂回して
+  /// 監視を始められてしまい、確認から開始までの間に音量を下げられる隙も残る。
+  Future<MonitoringStartOutcome> startMonitoring() async {
     if (!geoJsonLoaded ||
         (_monitoringLifecycle != MonitoringLifecycle.idle &&
             _monitoringLifecycle != MonitoringLifecycle.failed)) {
-      return;
+      return MonitoringStartOutcome.notStarted;
     }
     final startAttemptId = ++_monitoringRunId;
     _monitoringLifecycle = MonitoringLifecycle.starting;
@@ -262,17 +294,17 @@ class AppController extends ChangeNotifier {
           _logError('ALERT', 'Failed to stop alarm preview: $error');
           notifyListeners();
         }
-        return;
+        return MonitoringStartOutcome.notStarted;
       }
     }
     if (!_isCurrentStartAttempt(startAttemptId)) {
-      return;
+      return MonitoringStartOutcome.notStarted;
     }
     if (_config == null || !geoJsonLoaded) {
       _monitoringLifecycle = MonitoringLifecycle.failed;
       _lastErrorMessage = 'GeoJSONと設定を確認してください。';
       notifyListeners();
-      return;
+      return MonitoringStartOutcome.notStarted;
     }
     try {
       _monitoringPermissionState =
@@ -284,17 +316,38 @@ class AppController extends ChangeNotifier {
         _logError('APP', 'Failed to refresh monitoring permissions: $error');
         notifyListeners();
       }
-      return;
+      return MonitoringStartOutcome.notStarted;
     }
     if (!_isCurrentStartAttempt(startAttemptId)) {
-      return;
+      return MonitoringStartOutcome.notStarted;
     }
     if (!_monitoringPermissionState.canStartMonitoring) {
       _monitoringLifecycle = MonitoringLifecycle.failed;
       _lastErrorMessage = _monitoringPermissionState.monitoringBlockedMessage;
       _logWarning('APP', _lastErrorMessage!);
       notifyListeners();
-      return;
+      return MonitoringStartOutcome.notStarted;
+    }
+
+    // 音量確認は開始直前に行う。呼び出し元で確認してから開始を頼む形だと、
+    // その間に音量を下げられても検出できない。
+    if (!await canStartWithCurrentAlarmVolume()) {
+      if (_isCurrentStartAttempt(startAttemptId)) {
+        _monitoringLifecycle = MonitoringLifecycle.failed;
+        // lastErrorMessage は立てない。この理由だけは呼び出し元が
+        // 音量を上げる手段を含む専用ダイアログを出すため、文字列で重ねると
+        // その案内を上書きしてしまう。戻り値が利用者向けの伝達経路になる。
+        _logWarning(
+          'APP',
+          'Monitoring start refused: alarm volume below '
+              '${(minRequiredAlarmVolumePercent * 100).round()}%.',
+        );
+        notifyListeners();
+      }
+      return MonitoringStartOutcome.alarmVolumeTooLow;
+    }
+    if (!_isCurrentStartAttempt(startAttemptId)) {
+      return MonitoringStartOutcome.notStarted;
     }
 
     stateMachine.resetMonitoring();
@@ -306,7 +359,7 @@ class AppController extends ChangeNotifier {
       _subscription = null;
     }
     if (!_isCurrentStartAttempt(startAttemptId)) {
-      return;
+      return MonitoringStartOutcome.notStarted;
     }
     final runId = startAttemptId;
     _subscription = locationService.stream.listen(
@@ -337,7 +390,7 @@ class AppController extends ChangeNotifier {
       );
     }
     if (!_isCurrentMonitoringRun(runId)) {
-      return;
+      return MonitoringStartOutcome.notStarted;
     }
     if (result.status != LocationServiceStartStatus.started) {
       _monitoringRunId += 1;
@@ -358,7 +411,7 @@ class AppController extends ChangeNotifier {
       _lastErrorMessage = result.message ?? '位置情報の監視を開始できませんでした。';
       _logError('APP', _lastErrorMessage!);
       notifyListeners();
-      return;
+      return MonitoringStartOutcome.notStarted;
     }
 
     if (_monitoringLifecycle != MonitoringLifecycle.active) {
@@ -369,6 +422,7 @@ class AppController extends ChangeNotifier {
     _lastErrorMessage = null;
     _logInfo('APP', 'Monitoring started.');
     notifyListeners();
+    return MonitoringStartOutcome.started;
   }
 
   Future<bool> canStartWithCurrentAlarmVolume() async {
@@ -888,6 +942,7 @@ class AppController extends ChangeNotifier {
     _monitoringLifecycle = MonitoringLifecycle.active;
     if (shouldClearStaleWarning) {
       _monitoringStaleWarningActive = false;
+      _cancelStaleEscalation();
       final healthGeneration = ++_monitoringHealthGeneration;
       unawaited(
         _clearMonitoringStaleWarning(runId, healthGeneration),
@@ -943,6 +998,7 @@ class AppController extends ChangeNotifier {
     if (!alreadyRecovering) {
       _monitoringLifecycle = MonitoringLifecycle.stale;
       _monitoringStaleWarningActive = true;
+      _staleSinceElapsed = _monitoringElapsed();
       final healthGeneration = ++_monitoringHealthGeneration;
       _logWarning('GPS', 'Location updates stopped: $reason.');
       notifyListeners();
@@ -950,6 +1006,7 @@ class AppController extends ChangeNotifier {
       unawaited(
         _showMonitoringStaleWarning(runId, healthGeneration),
       );
+      _startStaleEscalation(runId);
     }
     if (_isCurrentMonitoringRun(runId) &&
         _reconnectTimer == null &&
@@ -958,12 +1015,45 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  /// 途絶が続くあいだ、一定間隔で警告を出し直します。
+  void _startStaleEscalation(int runId) {
+    _staleEscalationTimer?.cancel();
+    _staleEscalationTimer = Timer.periodic(_staleReminderInterval, (_) {
+      if (!_isCurrentMonitoringRun(runId) || !_monitoringStaleWarningActive) {
+        return;
+      }
+      final healthGeneration = ++_monitoringHealthGeneration;
+      _logWarning(
+        'GPS',
+        'Location updates still stopped after '
+            '${formatOutageDuration(_currentOutage() ?? Duration.zero)}.',
+      );
+      unawaited(_showMonitoringStaleWarning(runId, healthGeneration));
+    });
+  }
+
+  void _cancelStaleEscalation() {
+    _staleEscalationTimer?.cancel();
+    _staleEscalationTimer = null;
+    _staleSinceElapsed = null;
+  }
+
+  /// GPS途絶が続いている時間。途絶していなければ null。
+  Duration? _currentOutage() {
+    final since = _staleSinceElapsed;
+    if (since == null) {
+      return null;
+    }
+    final outage = _monitoringElapsed() - since;
+    return outage.isNegative ? Duration.zero : outage;
+  }
+
   Future<void> _showMonitoringStaleWarning(
     int runId,
     int healthGeneration,
   ) async {
     try {
-      await notifier.notifyMonitoringStale();
+      await notifier.notifyMonitoringStale(outage: _currentOutage());
     } catch (error) {
       if (_isCurrentMonitoringRun(runId) &&
           healthGeneration == _monitoringHealthGeneration &&
@@ -1120,6 +1210,7 @@ class AppController extends ChangeNotifier {
 
   void _cancelLocationRecovery() {
     _monitoringStartedElapsed = null;
+    _cancelStaleEscalation();
     _locationWatchdogTimer?.cancel();
     _locationWatchdogTimer = null;
     _reconnectTimer?.cancel();
@@ -1219,6 +1310,11 @@ class AppController extends ChangeNotifier {
           'One or more alert channels failed: ${delivery.failureSummary}',
           timestamp: _snapshot.timestamp,
         );
+        // 発報経路が欠けたことをログだけに残すと、警報音が鳴っていないのに
+        // 通常のOUTER画面が出て「警報は動いている」と誤解される。
+        _lastErrorMessage = '${delivery.failedChannelsLabel}を発報できませんでした。'
+            'エリア外の警告に気づけない可能性があります。'
+            '端末の音量・サイレントモード・通知設定を確認してください。';
       }
       _logWarning(
         'ALERT',

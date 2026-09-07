@@ -1799,6 +1799,190 @@ void main() {
       await controller.stopMonitoring();
     });
 
+    test('startMonitoring itself refuses a low alarm volume', () async {
+      // 回帰テスト: 音量確認が呼び出し元にしかないと、別の入口から
+      // 安全条件を迂回して監視を始められる。
+      final config = _testConfig();
+      final locationService = FakeLocationService();
+      final alarmVolumeClient = support.RecordingAlarmVolumeClient(
+        states: const [AlarmVolumeState(current: 1, max: 10, percent: 0.1)],
+      );
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: locationService,
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+        alarmVolumeClient: alarmVolumeClient,
+        isAndroid: true,
+      );
+      controller.debugSeed(
+        config: config,
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+
+      final outcome = await controller.startMonitoring();
+
+      expect(outcome, MonitoringStartOutcome.alarmVolumeTooLow);
+      expect(locationService.started, isFalse);
+      expect(controller.monitoringLifecycle, MonitoringLifecycle.failed);
+      // 呼び出し元が専用ダイアログを出すため、文字列では重ねない。
+      expect(controller.lastErrorMessage, isNull);
+      expect(
+        controller.logs.map((entry) => entry.message),
+        contains(startsWith('Monitoring start refused: alarm volume')),
+      );
+    });
+
+    test('startMonitoring reports started when the volume is sufficient',
+        () async {
+      final config = _testConfig();
+      final locationService = FakeLocationService();
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: locationService,
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+        alarmVolumeClient: support.RecordingAlarmVolumeClient(),
+        isAndroid: true,
+      );
+      controller.debugSeed(
+        config: config,
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+
+      expect(
+        await controller.startMonitoring(),
+        MonitoringStartOutcome.started,
+      );
+      await controller.stopMonitoring();
+    });
+
+    test('outer alert channel failure is surfaced to the user', () async {
+      // 回帰テスト: ログだけに残すと、警報音が鳴っていないのに通常の
+      // OUTER画面が出て「警報は動いている」と誤解される。
+      final config = _testConfig();
+      final locationService = FakeLocationService();
+      var elapsed = Duration.zero;
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: locationService,
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: _AlwaysFailAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+        elapsedProvider: () => elapsed,
+      );
+      controller.debugSeed(
+        config: config,
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+      await controller.startMonitoring();
+
+      locationService.add(
+        LocationFix(
+          latitude: 2,
+          longitude: 2,
+          accuracyMeters: 5,
+          timestamp: DateTime.utc(2024, 1, 1),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      elapsed += const Duration(seconds: 2);
+      locationService.add(
+        LocationFix(
+          latitude: 2,
+          longitude: 2,
+          accuracyMeters: 5,
+          timestamp: DateTime.utc(2024, 1, 1, 0, 0, 2),
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(controller.snapshot.status, LocationStateStatus.outer);
+      expect(controller.lastErrorMessage, contains('警報音'));
+      expect(controller.lastErrorMessage, contains('発報できませんでした'));
+      await controller.stopMonitoring();
+    });
+
+    test('GPS outage warning repeats while the outage continues', () async {
+      // 回帰テスト: 1回だけ通知して終わりだと、無音通知と350msの振動1回を
+      // 見逃した時点で監視が死んでいることに気づけなくなる。
+      final config = _testConfig();
+      final locationService = FakeLocationService();
+      final notifications = FakeLocalNotificationsClient();
+      final vibration = FakeVibrationPlayer();
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: locationService,
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: notifications,
+          alarmPlayer: FakeAlarmPlayer(),
+          vibrationPlayer: vibration,
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+        reconnectDelays: const [Duration(seconds: 30)],
+        staleReminderInterval: const Duration(milliseconds: 10),
+      );
+      controller.debugSeed(
+        config: config,
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+      await controller.startMonitoring();
+
+      locationService.addError(const LocationStreamEndedException());
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      final firstPulses = vibration.pulseCount;
+      expect(firstPulses, greaterThan(0));
+
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+
+      // 反復して通知と振動が出る。
+      expect(vibration.pulseCount, greaterThan(firstPulses));
+      expect(
+        controller.logs.map((entry) => entry.message),
+        contains(startsWith('Location updates still stopped after')),
+      );
+
+      // fixが戻れば反復は止まる。
+      locationService.add(
+        LocationFix(
+          latitude: 0.5,
+          longitude: 0.5,
+          accuracyMeters: 5,
+          timestamp: DateTime.utc(2024, 1, 1),
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      final pulsesAfterRecovery = vibration.pulseCount;
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(vibration.pulseCount, pulsesAfterRecovery);
+
+      await controller.stopMonitoring();
+      expect(notifications.shownIds, contains(1002));
+    });
+
     test('reconnect does not delay OUTER confirmation', () async {
       // 回帰テスト: 再接続は locationService.stop()/start() を呼ぶ。監視の経過時間を
       // 位置サービス側で計測していると、この stop/start でクロックが 0 に戻り、

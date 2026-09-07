@@ -278,12 +278,10 @@ Future<void> _startMonitoringAfterAlarmCheck(
   BuildContext context,
   AppController controller,
 ) async {
-  final canStart = await controller.canStartWithCurrentAlarmVolume();
-  if (!context.mounted) {
-    return;
-  }
-  if (canStart) {
-    await controller.startMonitoring();
+  // 音量確認は startMonitoring() が開始直前に行う。ここでは結果に応じて
+  // 案内ダイアログを出すだけ。
+  final outcome = await controller.startMonitoring();
+  if (!context.mounted || outcome != MonitoringStartOutcome.alarmVolumeTooLow) {
     return;
   }
 
