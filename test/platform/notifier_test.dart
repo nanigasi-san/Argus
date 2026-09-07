@@ -976,6 +976,64 @@ void main() {
       expect(client, isA<MethodChannelAlertDiagnosticsClient>());
     });
   });
+
+  test('concurrent initialize calls only initialize once', () async {
+    // 回帰テスト: _initialized を最後に立てるだけだと、OUTER発報と
+    // GPS途絶警告が同時に走ったとき両方が初期化を通過し、プラグイン初期化と
+    // チャネル作成が二重に走る。
+    final notifications = FakeLocalNotificationsClient();
+    final notifier = Notifier(
+      notificationsClient: notifications,
+      alarmPlayer: FakeAlarmPlayer(),
+      vibrationPlayer: FakeVibrationPlayer(),
+    );
+
+    await Future.wait<void>([
+      notifier.initialize(),
+      notifier.initialize(),
+      notifier.initialize(),
+    ]);
+
+    expect(notifications.initializeCount, 1);
+  });
+
+  test('a failed initialize can be retried', () async {
+    final notifications = _FailFirstInitializeClient();
+    final notifier = Notifier(
+      notificationsClient: notifications,
+      alarmPlayer: FakeAlarmPlayer(),
+      vibrationPlayer: FakeVibrationPlayer(),
+    );
+
+    await expectLater(notifier.initialize(), throwsA(isA<StateError>()));
+    await notifier.initialize();
+
+    expect(notifications.initializeCount, 2);
+  });
+
+  test('a failed stop forces the next alert to restart playback', () async {
+    // 回帰テスト: 停止に失敗した経路は再生中フラグを倒さないため、次のOUTERで
+    // 「すでに鳴っている」と判断して開始をスキップし、サイレンが鳴らないまま
+    // 成功を返してしまう。
+    final alarm = _FailStopOnceAlarmPlayer();
+    final notifier = Notifier(
+      notificationsClient: FakeLocalNotificationsClient(),
+      alarmPlayer: alarm,
+      vibrationPlayer: FakeVibrationPlayer(),
+    );
+
+    await notifier.notifyOuter();
+    expect(alarm.playCount, 1);
+
+    // 停止に失敗する。再生中フラグは倒れない。
+    await expectLater(notifier.dismissOuterAlert(), throwsA(isA<StateError>()));
+    expect(notifier.hasActiveAlertPlayback, isTrue);
+
+    // 次のOUTERは近道を使わず開始し直す。
+    final report = await notifier.notifyOuter();
+    expect(alarm.playCount, 2);
+    expect(report.alarmError, isNull);
+  });
 }
 
 class _BlockingAlarmPlayer extends FakeAlarmPlayer {
@@ -1138,5 +1196,25 @@ class _RecordingVibrationPlatformClient implements VibrationPlatformClient {
   @override
   Future<void> stop() async {
     stopCount += 1;
+  }
+}
+
+class _FailFirstInitializeClient extends FakeLocalNotificationsClient {
+  @override
+  Future<void> initialize(InitializationSettings settings) async {
+    await super.initialize(settings);
+    if (initializeCount == 1) {
+      throw StateError('initialize failed');
+    }
+  }
+}
+
+class _FailStopOnceAlarmPlayer extends FakeAlarmPlayer {
+  @override
+  Future<void> stop() async {
+    stopCount += 1;
+    if (stopCount == 1) {
+      throw StateError('alarm stop failed');
+    }
   }
 }

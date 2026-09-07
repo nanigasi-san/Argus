@@ -100,10 +100,17 @@ class Notifier {
   static const int _outerNotificationId = 1001;
   static const int _monitoringStaleNotificationId = 1002;
 
-  bool _initialized = false;
+  Future<void>? _initialization;
   bool _isAlarmChannelActive = false;
   bool _isVibrationChannelActive = false;
   bool _isAlarmPreviewPlaying = false;
+
+  /// 直近の停止に失敗し、実際に鳴っているかどうか分からない状態か。
+  ///
+  /// 停止に失敗しても再生中フラグは倒さない（鳴り続けている可能性があるため）。
+  /// その結果 `_resumeAlarm` の「すでに鳴っているので開始不要」という近道が
+  /// 成立しなくなる。近道を通すとサイレンを開始しないまま成功を返してしまう。
+  bool _alertStopFailed = false;
   int _generation = 0;
   Future<void> _monitoringHealthNotificationQueue = Future<void>.value();
 
@@ -155,11 +162,26 @@ class Notifier {
     }
   }
 
-  Future<void> initialize() async {
-    if (_initialized) {
-      return;
-    }
+  /// 通知プラグインを初期化します。
+  ///
+  /// 実行中のFutureを覚えて共有する。`_initialized` を最後に立てるだけだと、
+  /// OUTER発報とGPS途絶警告が同時に走ったときに両方が初期化を通過し、
+  /// プラグインの初期化とチャネル作成が二重に実行される。
+  /// 失敗した場合は記憶を捨て、次回やり直せるようにする。
+  Future<void> initialize() {
+    return _initialization ??= _runInitialize();
+  }
 
+  Future<void> _runInitialize() async {
+    try {
+      await _initializeOnce();
+    } catch (error) {
+      _initialization = null;
+      rethrow;
+    }
+  }
+
+  Future<void> _initializeOnce() async {
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosInit = DarwinInitializationSettings(
       requestAlertPermission: false,
@@ -191,8 +213,6 @@ class Notifier {
         enableVibration: false,
       ),
     );
-
-    _initialized = true;
   }
 
   Future<AlertDeliveryReport> notifyOuter() async {
@@ -351,13 +371,15 @@ class Notifier {
     if (activeGeneration != _generation) {
       return const _PlaybackStartResult();
     }
+    // 停止に失敗して状態が不明なときは近道を使わず必ず開始し直す。
+    final stateIsUnknown = _alertStopFailed;
     final results = await Future.wait<Object?>([
-      _isAlarmChannelActive
+      _isAlarmChannelActive && !stateIsUnknown
           ? Future<Object?>.value()
-          : _startAlarmChannel(activeGeneration),
-      _isVibrationChannelActive
+          : _startAlarmChannel(activeGeneration, restart: stateIsUnknown),
+      _isVibrationChannelActive && !stateIsUnknown
           ? Future<Object?>.value()
-          : _startVibrationChannel(activeGeneration),
+          : _startVibrationChannel(activeGeneration, restart: stateIsUnknown),
     ]);
     final alarmError = results[0];
     final vibrationError = results[1];
@@ -384,6 +406,7 @@ class Notifier {
         _isAlarmChannelActive = false;
       } else {
         _isAlarmChannelActive = true;
+        _alertStopFailed = false;
       }
       return null;
     } catch (error) {
@@ -410,6 +433,7 @@ class Notifier {
         _isVibrationChannelActive = false;
       } else {
         _isVibrationChannelActive = true;
+        _alertStopFailed = false;
       }
       return null;
     } catch (error) {
@@ -451,6 +475,8 @@ class Notifier {
     final error = await _captureError(_alarmPlayer.stop);
     if (error == null) {
       _isAlarmChannelActive = false;
+    } else {
+      _alertStopFailed = true;
     }
     return error;
   }
@@ -460,6 +486,8 @@ class Notifier {
     final error = await _captureError(_vibrationPlayer.stop);
     if (error == null) {
       _isVibrationChannelActive = false;
+    } else {
+      _alertStopFailed = true;
     }
     return error;
   }
