@@ -1705,6 +1705,94 @@ void main() {
       await controller.stopMonitoring();
     });
 
+    test('reconnect stops and reports when the permission is revoked',
+        () async {
+      // 回帰テスト: 権限を再確認しないと、直せない状態のまま30秒間隔で
+      // 無音の再試行を続け、利用者には原因が伝わらない。
+      final config = _testConfig();
+      final locationService = FakeLocationService();
+      final coordinator = _RevokingPermissionCoordinator();
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: locationService,
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: coordinator,
+        reconnectDelays: const [Duration(milliseconds: 1)],
+      );
+      controller.debugSeed(
+        config: config,
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+      await controller.startMonitoring();
+
+      locationService.addError(const LocationStreamEndedException());
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      expect(controller.lastErrorMessage, isNotNull);
+      expect(
+        controller.logs.map((entry) => entry.message),
+        contains(startsWith('Location recovery abandoned')),
+      );
+      // 打ち切っても監視セッションは維持する（警報と設定ロックを守るため）。
+      expect(controller.isMonitoringSession, isTrue);
+
+      final restartsAfterAbandon = locationService.startCount;
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      expect(locationService.startCount, restartsAfterAbandon);
+
+      await controller.stopMonitoring();
+    });
+
+    test('reconnect gives up after repeated restart failures', () async {
+      final config = _testConfig();
+      final locationService = _AlwaysFailRestartLocationService();
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: locationService,
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+        reconnectDelays: const [Duration(milliseconds: 1)],
+        maxReconnectFailures: 3,
+      );
+      controller.debugSeed(
+        config: config,
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+      await controller.startMonitoring();
+
+      locationService.addError(const LocationStreamEndedException());
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+
+      expect(locationService.restartCount, 3);
+      expect(controller.lastErrorMessage, contains('位置情報の監視を再開できません'));
+
+      // 打ち切ったので以降は試さない。
+      final restarts = locationService.restartCount;
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      expect(locationService.restartCount, restarts);
+
+      // アプリ復帰は再試行の契機になる。
+      await controller.handleAppResumed();
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      expect(locationService.restartCount, greaterThan(restarts));
+
+      await controller.stopMonitoring();
+    });
+
     test('reconnect does not delay OUTER confirmation', () async {
       // 回帰テスト: 再接続は locationService.stop()/start() を呼ぶ。監視の経過時間を
       // 位置サービス側で計測していると、この stop/start でクロックが 0 に戻り、
@@ -2754,6 +2842,42 @@ class _GrantedPermissionCoordinator extends PermissionCoordinator {
   @override
   Future<MonitoringPermissionState> refreshMonitoringPermissionState() async {
     return _grantedMonitoringPermissionState();
+  }
+}
+
+class _RevokingPermissionCoordinator extends PermissionCoordinator {
+  int refreshCount = 0;
+
+  @override
+  Future<MonitoringPermissionState> refreshMonitoringPermissionState() async {
+    refreshCount += 1;
+    if (refreshCount <= 1) {
+      return _grantedMonitoringPermissionState();
+    }
+    return const MonitoringPermissionState(
+      notificationStatus: PermissionStatus.granted,
+      locationWhenInUseStatus: PermissionStatus.granted,
+      locationAlwaysStatus: PermissionStatus.denied,
+      locationServicesEnabled: true,
+    );
+  }
+}
+
+class _AlwaysFailRestartLocationService extends FakeLocationService {
+  int restartCount = 0;
+
+  @override
+  Future<LocationServiceStartResult> start(AppConfig config) async {
+    startCount += 1;
+    started = true;
+    if (startCount == 1) {
+      return const LocationServiceStartResult.started();
+    }
+    restartCount += 1;
+    return const LocationServiceStartResult(
+      status: LocationServiceStartStatus.error,
+      message: 'restart failed',
+    );
   }
 }
 

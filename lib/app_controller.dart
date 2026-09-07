@@ -67,6 +67,7 @@ class AppController extends ChangeNotifier {
     AppElapsedProvider? elapsedProvider,
     Duration? staleTimeoutOverride,
     Duration watchdogInterval = const Duration(seconds: 1),
+    int maxReconnectFailures = 5,
     List<Duration> reconnectDelays = const <Duration>[
       Duration(seconds: 1),
       Duration(seconds: 2),
@@ -85,8 +86,10 @@ class AppController extends ChangeNotifier {
         _elapsed = elapsedProvider ?? _processElapsed,
         _staleTimeoutOverride = staleTimeoutOverride,
         _watchdogInterval = watchdogInterval,
+        _maxReconnectFailures = maxReconnectFailures,
         _reconnectDelays = List<Duration>.unmodifiable(reconnectDelays) {
     assert(watchdogInterval > Duration.zero);
+    assert(maxReconnectFailures > 0);
     assert(reconnectDelays.isNotEmpty);
     assert(reconnectDelays.every((delay) => delay > Duration.zero));
   }
@@ -99,6 +102,7 @@ class AppController extends ChangeNotifier {
   final AppElapsedProvider _elapsed;
   final Duration? _staleTimeoutOverride;
   final Duration _watchdogInterval;
+  final int _maxReconnectFailures;
   final List<Duration> _reconnectDelays;
 
   final StateMachine stateMachine;
@@ -137,6 +141,15 @@ class AppController extends ChangeNotifier {
   MonitoringLifecycle _monitoringLifecycle = MonitoringLifecycle.idle;
   int _reconnectAttempt = 0;
   bool _reconnectInProgress = false;
+
+  /// 連続して位置サービスの再開に失敗した回数。fix受信・再開成功でリセットする。
+  ///
+  /// 「再開できない」（権限失効・サービス無効）と「再開できたがfixが来ない」
+  /// （トンネル・森林）は別物。後者は待ち続けるべきなので、失敗のみ数える。
+  int _reconnectFailureCount = 0;
+
+  /// 自動再接続を打ち切ったか。打ち切り後はアプリ復帰時にのみ再試行する。
+  bool _locationRecoveryAbandoned = false;
   bool _monitoringStaleWarningActive = false;
   int _monitoringHealthGeneration = 0;
   int _locationFixSequence = 0;
@@ -307,6 +320,8 @@ class AppController extends ChangeNotifier {
     _lastFixElapsed = Duration.zero;
     _reconnectAttempt = 0;
     _reconnectInProgress = false;
+    _reconnectFailureCount = 0;
+    _locationRecoveryAbandoned = false;
     _monitoringLifecycle = MonitoringLifecycle.acquiring;
     notifyListeners();
 
@@ -516,6 +531,10 @@ class AppController extends ChangeNotifier {
             _monitoringLifecycle == MonitoringLifecycle.reconnecting) &&
         _reconnectTimer == null &&
         !_reconnectInProgress) {
+      // 打ち切り後の復帰契機。利用者が設定で権限を直して戻ってきた可能性が
+      // あるので、レジューム時だけは打ち切りを解除して再試行する。
+      _locationRecoveryAbandoned = false;
+      _reconnectFailureCount = 0;
       _scheduleLocationReconnect(_monitoringRunId);
     }
     if (_snapshot.status != LocationStateStatus.outer || _isAlarmSnoozed) {
@@ -865,6 +884,8 @@ class AppController extends ChangeNotifier {
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     _reconnectAttempt = 0;
+    _reconnectFailureCount = 0;
+    _locationRecoveryAbandoned = false;
     _monitoringLifecycle = MonitoringLifecycle.active;
     if (shouldClearStaleWarning) {
       _monitoringStaleWarningActive = false;
@@ -955,6 +976,7 @@ class AppController extends ChangeNotifier {
 
   void _scheduleLocationReconnect(int runId) {
     if (!_isCurrentMonitoringRun(runId) ||
+        _locationRecoveryAbandoned ||
         _reconnectTimer != null ||
         _reconnectInProgress) {
       return;
@@ -977,6 +999,25 @@ class AppController extends ChangeNotifier {
     });
   }
 
+  /// 自動再接続を打ち切り、原因を利用者に伝えます。
+  ///
+  /// 監視セッションは維持する（`stale` のまま）。`failed` にすると
+  /// `isMonitoringSession` が false になり、警報が鳴っている最中に設定ロックと
+  /// 強制終了警告が外れてしまう。復帰はアプリのレジュームを契機にする。
+  void _abandonLocationRecovery(
+    int runId, {
+    required String reason,
+    required String userMessage,
+  }) {
+    _locationRecoveryAbandoned = true;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _monitoringLifecycle = MonitoringLifecycle.stale;
+    _lastErrorMessage = userMessage;
+    _logError('GPS', 'Location recovery abandoned: $reason');
+    notifyListeners();
+  }
+
   Future<void> _reconnectLocation(int runId) async {
     if (!_isCurrentMonitoringRun(runId) || _reconnectInProgress) {
       return;
@@ -988,6 +1029,33 @@ class AppController extends ChangeNotifier {
       final config = _config;
       if (config == null) {
         throw StateError('Configuration is unavailable.');
+      }
+      // 位置情報が来なくなる最も多い原因は権限の失効。再確認しないと、
+      // 直せない状態のまま30秒間隔で無音の再試行を続けることになる。
+      try {
+        final permissionState =
+            await permissionCoordinator.refreshMonitoringPermissionState();
+        if (!_isCurrentMonitoringRun(runId)) {
+          return;
+        }
+        _monitoringPermissionState = permissionState;
+        if (!permissionState.canStartMonitoring) {
+          _abandonLocationRecovery(
+            runId,
+            reason: 'monitoring permission is no longer granted',
+            userMessage: permissionState.monitoringBlockedMessage,
+          );
+          return;
+        }
+      } catch (error) {
+        // 権限を確認できないだけでは打ち切らない。再開を試す。
+        _logWarning(
+          'APP',
+          'Failed to refresh permissions during reconnect: $error',
+        );
+      }
+      if (!_isCurrentMonitoringRun(runId)) {
+        return;
       }
       final fixSequenceBeforeStart = _locationFixSequence;
       final result = await _runLocationServiceOperation(() async {
@@ -1006,6 +1074,9 @@ class AppController extends ChangeNotifier {
       if (result.status != LocationServiceStartStatus.started) {
         throw StateError(result.message ?? 'Location service restart failed.');
       }
+      // 再開できた。以降fixが来ないのはGPSの受信環境の問題なので、
+      // 失敗としては数えず待ち続ける。
+      _reconnectFailureCount = 0;
       final fixArrivedDuringStart =
           _locationFixSequence != fixSequenceBeforeStart;
       if (fixArrivedDuringStart ||
@@ -1020,9 +1091,24 @@ class AppController extends ChangeNotifier {
       notifyListeners();
     } catch (error) {
       if (_isCurrentMonitoringRun(runId)) {
+        _reconnectFailureCount += 1;
         _monitoringLifecycle = MonitoringLifecycle.stale;
-        _logWarning('GPS', 'Location reconnect failed: $error');
-        notifyListeners();
+        _logWarning(
+          'GPS',
+          'Location reconnect failed '
+              '($_reconnectFailureCount/$_maxReconnectFailures): $error',
+        );
+        if (_reconnectFailureCount >= _maxReconnectFailures) {
+          _abandonLocationRecovery(
+            runId,
+            reason: 'location service restart failed '
+                '$_reconnectFailureCount times: $error',
+            userMessage: '位置情報の監視を再開できません。'
+                '端末の位置情報サービスと権限を確認してください。',
+          );
+        } else {
+          notifyListeners();
+        }
       }
     } finally {
       _reconnectInProgress = false;
@@ -1042,6 +1128,8 @@ class AppController extends ChangeNotifier {
     _lastFixElapsed = null;
     _reconnectAttempt = 0;
     _reconnectInProgress = false;
+    _reconnectFailureCount = 0;
+    _locationRecoveryAbandoned = false;
     _monitoringStaleWarningActive = false;
     _monitoringHealthGeneration += 1;
   }
