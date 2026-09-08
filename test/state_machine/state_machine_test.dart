@@ -616,6 +616,37 @@ void main() {
       LocationStateStatus.outerPending,
     );
   });
+
+  test('flags navigation that falls back to the last reliable fix', () {
+    // 回帰テスト: 表示側で精度としきい値から再計算していると、座標がNaNで
+    // 精度だけ良好なfixのときに食い違い、古い案内を現在位置として出す。
+    machine.resetMonitoring();
+
+    LocationFix outside(int second, {double accuracy = 5, double? lat}) =>
+        LocationFix(
+          latitude: lat ?? 35.05,
+          longitude: 139.05,
+          accuracyMeters: accuracy,
+          timestamp: DateTime.utc(2024, 1, 1).add(Duration(seconds: second)),
+          monitoringElapsed: Duration(seconds: second),
+        );
+
+    machine.evaluate(outside(0));
+    machine.evaluate(outside(4));
+    final confirmed = machine.evaluate(outside(11));
+    expect(confirmed.status, LocationStateStatus.outer);
+    expect(confirmed.navigationFromLastReliableFix, isFalse);
+
+    // 精度不良でOUTERを維持している間は、案内が過去の値であることを伝える。
+    final lowAccuracy = machine.evaluate(outside(14, accuracy: 999));
+    expect(lowAccuracy.status, LocationStateStatus.outer);
+    expect(lowAccuracy.navigationFromLastReliableFix, isTrue);
+
+    // 精度は良好だが座標が使えないfixでも同じ扱いになる。
+    final badCoordinates = machine.evaluate(outside(17, lat: double.nan));
+    expect(badCoordinates.status, LocationStateStatus.outer);
+    expect(badCoordinates.navigationFromLastReliableFix, isTrue);
+  });
 }
 
 class _CountingPointInPolygon extends PointInPolygon {

@@ -116,6 +116,8 @@ void main() {
         distanceToBoundaryM: 5,
         bearingToBoundaryDeg: 180,
         geoJsonLoaded: true,
+        // 判定は状態機械が行い、スナップショットが事実として運ぶ。
+        navigationFromLastReliableFix: true,
       ),
     );
 
@@ -127,6 +129,28 @@ void main() {
     );
     expect(find.textContaining('最後に精度が良かった位置'), findsOneWidget);
     expect(find.text('方角: 180度 (南)'), findsOneWidget);
+  });
+
+  testWidgets('does not label guidance that came from a usable fix',
+      (tester) async {
+    final controller = buildTestController(
+      hasGeoJson: true,
+      snapshot: StateSnapshot(
+        status: LocationStateStatus.outer,
+        timestamp: DateTime.utc(2024, 1, 1),
+        horizontalAccuracyM: 5,
+        distanceToBoundaryM: 5,
+        bearingToBoundaryDeg: 180,
+        geoJsonLoaded: true,
+      ),
+    );
+
+    await _pumpHome(tester, controller);
+
+    expect(
+      find.byKey(const Key('low-accuracy-navigation-warning')),
+      findsNothing,
+    );
   });
 
   testWidgets('shows reconnecting lifecycle and force-close warning',

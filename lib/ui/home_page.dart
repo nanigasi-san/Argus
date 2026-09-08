@@ -123,12 +123,10 @@ class _HomeScrollableContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDeveloperMode = controller.developerMode;
     final isMonitoring = controller.isMonitoringSession;
-    final accuracyThreshold = controller.config?.gpsAccuracyBadMeters;
-    final usesLastReliableNavigation =
-        snapshot.status == LocationStateStatus.outer &&
-            (snapshot.horizontalAccuracyM == null ||
-                (accuracyThreshold != null &&
-                    snapshot.horizontalAccuracyM! > accuracyThreshold));
+    // 判定は状態機械が事実として持つ。ここで精度としきい値から再計算すると、
+    // 「使えない測位」の条件が増えたときに食い違い、古い案内を現在位置として
+    // 表示してしまう（座標がNaNで精度だけ良好なfixなど）。
+    final usesLastReliableNavigation = snapshot.navigationFromLastReliableFix;
     return LayoutBuilder(
       builder: (context, constraints) {
         return SingleChildScrollView(

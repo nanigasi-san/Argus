@@ -151,6 +151,7 @@ class StateMachine {
           geoJsonLoaded: true,
           nearestBoundaryPoint: _lastTrustedOuterBoundaryPoint,
           bearingToBoundaryDeg: _lastTrustedOuterBearingDeg,
+          navigationFromLastReliableFix: true,
           notes:
               'Low accuracy ${fix.accuracyMeters?.toStringAsFixed(1) ?? '-'}m; maintaining OUTER with last reliable guidance',
         );
