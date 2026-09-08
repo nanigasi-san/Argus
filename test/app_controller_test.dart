@@ -2890,14 +2890,13 @@ void main() {
       expect(controller.lastErrorMessage, contains('featuresが空です'));
     });
 
-    test('reloadGeoJsonFromPicker ignores user cancellation', () async {
+    test('reloadGeoJsonFromPicker treats a null pick as cancellation',
+        () async {
+      // キャンセルはピッカーが null を返すことで表現される。
       final controller = AppController(
         stateMachine: StateMachine(config: _testConfig()),
         locationService: FakeLocationService(),
-        fileManager: _ThrowingGeoJsonFileManager(
-          config: _testConfig(),
-          error: Exception('user cancel'),
-        ),
+        fileManager: _CancellingGeoJsonFileManager(config: _testConfig()),
         logger: FakeEventLogger(),
         notifier: Notifier(
           notificationsClient: FakeLocalNotificationsClient(),
@@ -2908,6 +2907,38 @@ void main() {
       await controller.reloadGeoJsonFromPicker();
 
       expect(controller.lastErrorMessage, isNull);
+      expect(controller.geoJsonLoaded, isFalse);
+    });
+
+    test('reloadGeoJsonFromPicker reports errors whose text mentions a user',
+        () async {
+      // 回帰テスト: 例外メッセージに 'user' が含まれるかでキャンセルを
+      // 判定していると、Androidのアプリ専用パス /data/user/0/... で起きた
+      // FileSystemException が無言で消える。読み込めなかったことは伝える。
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: FakeLocationService(),
+        fileManager: _ThrowingGeoJsonFileManager(
+          config: _testConfig(),
+          error: const FileSystemException(
+            'Cannot open file',
+            '/data/user/0/com.argus.orienteering/cache/area.geojson',
+          ),
+        ),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+      );
+
+      await controller.reloadGeoJsonFromPicker();
+
+      expect(controller.lastErrorMessage, contains('Unable to open file'));
+      expect(
+        controller.logs.map((entry) => entry.message),
+        contains(startsWith('Unable to open file')),
+      );
     });
 
     test('reloadGeoJsonFromPicker reports unexpected file errors', () async {
@@ -3634,6 +3665,14 @@ class _LargeGeoJsonFileManager extends FakeFileManager {
       mimeType: 'application/geo+json',
     );
   }
+}
+
+/// ファイル選択がキャンセルされたことを null で表すファイルマネージャ。
+class _CancellingGeoJsonFileManager extends FakeFileManager {
+  _CancellingGeoJsonFileManager({required super.config});
+
+  @override
+  Future<XFile?> pickGeoJsonFile() async => null;
 }
 
 class _ThrowingGeoJsonFileManager extends FakeFileManager {

@@ -759,40 +759,23 @@ class AppController extends ChangeNotifier {
       final model = GeoModel.fromGeoJson(raw);
       _requireMonitorableGeometry(model);
 
-      _geoModel = model;
       // ファイル名をpathから抽出し、拡張子を.geojsonに統一
       final extractedName = _extractFileName(file.path) ?? file.name;
-      _geoJsonFileName = _normalizeToGeoJson(extractedName);
-      _areaIndex = AreaIndex.build(model.polygons);
-      stateMachine.updateGeometry(_geoModel, _areaIndex);
-
-      // waitStart状態に戻し、距離・方位角などの情報をクリア
-      _snapshot = StateSnapshot(
-        status: LocationStateStatus.waitStart,
-        timestamp: DateTime.now(),
-        geoJsonLoaded: true,
-        distanceToBoundaryM: null,
-        bearingToBoundaryDeg: null,
-        nearestBoundaryPoint: null,
+      _applyLoadedGeoJson(
+        model,
+        _normalizeToGeoJson(extractedName),
         notes: 'GeoJSON loaded',
       );
-      // 新しいファイルをセットしたらナビゲーション表示を一旦オフ
-      _navigationEnabled = false;
-      _lastErrorMessage = null;
-      _logInfo('APP', 'GeoJSON loaded.', timestamp: _snapshot.timestamp);
-      notifyListeners();
     } on FormatException catch (e) {
       _lastErrorMessage = 'Failed to parse GeoJSON: ${e.message}';
       _logError('APP', _lastErrorMessage!);
       notifyListeners();
     } catch (e) {
-      // ファイルピッカーをキャンセルした場合などはエラーログを出さない
-      final errorMessage = e.toString().toLowerCase();
-      if (errorMessage.contains('cancel') ||
-          errorMessage.contains('user') ||
-          errorMessage.contains('abort')) {
-        return;
-      }
+      // キャンセルは pickGeoJsonFile() が null を返すことで表現される。
+      // 例外メッセージに 'cancel' / 'user' / 'abort' が含まれるかで
+      // 判定してはいけない。Androidのアプリ専用パスは /data/user/0/... で
+      // あり、そこで起きた FileSystemException が「利用者のキャンセル」と
+      // 誤判定されて無言で消える。読み込めなかったことは必ず伝える。
       _lastErrorMessage = 'Unable to open file: ${e.toString()}';
       _logError('APP', _lastErrorMessage!);
       notifyListeners();
@@ -856,27 +839,11 @@ class AppController extends ChangeNotifier {
         await _deleteTempGeoJsonFile(previousTempPath);
       }
 
-      _geoModel = model;
-      _geoJsonFileName = decoded.fileName ?? 'temp_geojson_$timestamp.geojson';
-      _areaIndex = AreaIndex.build(model.polygons);
-      stateMachine.updateGeometry(_geoModel, _areaIndex);
-
-      // waitStart状態に戻し、距離・方位角などの情報をクリア
-      _snapshot = StateSnapshot(
-        status: LocationStateStatus.waitStart,
-        timestamp: DateTime.now(),
-        geoJsonLoaded: true,
-        distanceToBoundaryM: null,
-        bearingToBoundaryDeg: null,
-        nearestBoundaryPoint: null,
+      _applyLoadedGeoJson(
+        model,
+        decoded.fileName ?? 'temp_geojson_$timestamp.geojson',
         notes: 'GeoJSON loaded from QR code',
       );
-      // 新しいファイルをセットしたらナビゲーション表示を一旦オフ
-      _navigationEnabled = false;
-      _lastErrorMessage = null;
-      _logInfo('APP', 'GeoJSON loaded from QR code.',
-          timestamp: _snapshot.timestamp);
-      notifyListeners();
       return true;
     } on GeoJsonQrException catch (e) {
       _lastErrorMessage = 'Failed to decode QR code: ${e.message}';
@@ -959,6 +926,37 @@ class AppController extends ChangeNotifier {
       _logError('APP', 'Failed to delete temporary GeoJSON file: $e');
       // coverage:ignore-end
     }
+  }
+
+  /// 読み込んだGeoJSONを適用し、監視開始待ちの状態へ戻します。
+  ///
+  /// ファイル・QR・QR画像の3経路で共通の後処理をここへ集約する。
+  /// 別々に書くと、片方だけ状態のクリアが漏れる（距離や方位が前の
+  /// エリアのまま残るなど）事故が起きやすい。
+  void _applyLoadedGeoJson(
+    GeoModel model,
+    String fileName, {
+    required String notes,
+  }) {
+    _geoModel = model;
+    _geoJsonFileName = fileName;
+    _areaIndex = AreaIndex.build(model.polygons);
+    stateMachine.updateGeometry(_geoModel, _areaIndex);
+
+    _snapshot = StateSnapshot(
+      status: LocationStateStatus.waitStart,
+      timestamp: _now(),
+      geoJsonLoaded: true,
+      distanceToBoundaryM: null,
+      bearingToBoundaryDeg: null,
+      nearestBoundaryPoint: null,
+      notes: notes,
+    );
+    // 新しいエリアを読み込んだらナビゲーション表示を一旦オフにする。
+    _navigationEnabled = false;
+    _lastErrorMessage = null;
+    _logInfo('APP', notes, timestamp: _snapshot.timestamp);
+    notifyListeners();
   }
 
   /// パスからファイル名を抽出します。
