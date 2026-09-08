@@ -269,7 +269,7 @@ class AppController extends ChangeNotifier {
       status: geoJsonLoaded
           ? LocationStateStatus.waitStart
           : LocationStateStatus.waitGeoJson,
-      timestamp: DateTime.now(),
+      timestamp: _now(),
       geoJsonLoaded: geoJsonLoaded,
       notes: geoJsonLoaded
           ? 'Ready to monitor'
@@ -597,7 +597,7 @@ class AppController extends ChangeNotifier {
       status: geoJsonLoaded
           ? LocationStateStatus.waitStart
           : LocationStateStatus.waitGeoJson,
-      timestamp: DateTime.now(),
+      timestamp: _now(),
       geoJsonLoaded: geoJsonLoaded,
       notes: geoJsonLoaded
           ? 'Monitoring stopped. Ready to restart.'

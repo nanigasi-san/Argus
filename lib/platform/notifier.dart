@@ -417,18 +417,19 @@ class Notifier {
       }
       await _alarmPlayer.start();
       if (generation != _generation) {
-        await _alarmPlayer.stop();
-        _isAlarmChannelActive = false;
+        // 世代が進んでいる＝止める指示が入っている。停止に失敗したら
+        // 「鳴っていない」とは言えないので _stopAlarmChannel に任せる。
+        await _stopAlarmChannel();
       } else {
         _isAlarmChannelActive = true;
         _alertStopFailed = false;
       }
       return null;
     } catch (error) {
-      _isAlarmChannelActive = false;
-      try {
-        await _alarmPlayer.stop();
-      } catch (_) {}
+      // 開始が途中まで進んで音が出ている可能性がある。フラグを先に倒すと、
+      // 後始末の停止も失敗したときに「鳴っていない」と嘘をつくことになる。
+      // 停止に成功した場合だけ倒す。
+      await _stopAlarmChannel();
       return error;
     }
   }
@@ -444,18 +445,14 @@ class Notifier {
       }
       await _vibrationPlayer.start();
       if (generation != _generation) {
-        await _vibrationPlayer.stop();
-        _isVibrationChannelActive = false;
+        await _stopVibrationChannel();
       } else {
         _isVibrationChannelActive = true;
         _alertStopFailed = false;
       }
       return null;
     } catch (error) {
-      _isVibrationChannelActive = false;
-      try {
-        await _vibrationPlayer.stop();
-      } catch (_) {}
+      await _stopVibrationChannel();
       return error;
     }
   }

@@ -1105,6 +1105,26 @@ void main() {
 
     expect(notifier.hasActiveAlertPlayback, isTrue);
   });
+
+  test('a start failure whose cleanup also fails keeps the unknown state',
+      () async {
+    // 回帰テスト: 開始が途中まで進んで音が出ている可能性があるのに
+    // フラグを先に倒すと、後始末の停止も失敗したときに「鳴っていない」と
+    // 嘘をつくことになる。
+    final alarm = _StartThenStuckAlarmPlayer();
+    final notifier = Notifier(
+      notificationsClient: FakeLocalNotificationsClient(),
+      alarmPlayer: alarm,
+      vibrationPlayer: FakeVibrationPlayer(),
+    );
+
+    final report = await notifier.notifyOuter();
+
+    expect(report.alarmError, isNotNull);
+    expect(alarm.stopCount, greaterThan(0));
+    // 停止も失敗したので「鳴っていない」とは言えない。
+    expect(notifier.hasActiveAlertPlayback, isTrue);
+  });
 }
 
 class _BlockingAlarmPlayer extends FakeAlarmPlayer {
@@ -1287,6 +1307,22 @@ class _FailStopOnceAlarmPlayer extends FakeAlarmPlayer {
     if (stopCount == 1) {
       throw StateError('alarm stop failed');
     }
+  }
+}
+
+/// 鳴り始めたあとに開始が失敗し、停止もできなくなるプレイヤー。
+class _StartThenStuckAlarmPlayer extends FakeAlarmPlayer {
+  @override
+  Future<void> start() async {
+    playCount += 1;
+    // 音は出たが、その後の処理で失敗したことを模す。
+    throw StateError('alarm start failed after sound started');
+  }
+
+  @override
+  Future<void> stop() async {
+    stopCount += 1;
+    throw StateError('alarm stop failed');
   }
 }
 
