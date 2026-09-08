@@ -320,30 +320,34 @@ class AppController extends ChangeNotifier {
     _lastErrorMessage = null;
     notifyListeners();
 
-    // 前回のセッションで停止に失敗した警報が残っていることがある。放置すると
-    // 鳴り続けたまま新しいセッションが始まり、_isAlarmChannelActive が true の
-    // ままなので次のOUTERで警報の開始自体がスキップされる。
+    // 鳴っている音（試聴音、前回停止に失敗した警報）は監視開始前に必ず止める。
+    // 止められないまま始めると、常時鳴っている音と本物のOUTER警報を
+    // 区別できず、警報が意味を持たなくなる。
+    //
+    // 判定は「停止呼び出しが失敗したか」ではなく「実際に鳴っていないか」で行う。
+    // 一過性の失敗のあと停止できたのなら、開始を妨げる理由はない。
+    if (isAlarmPreviewPlaying) {
+      try {
+        await stopAlarmPreview();
+      } catch (error) {
+        _logError('ALERT', 'Failed to stop alarm preview: $error');
+      }
+    }
     if (notifier.hasActiveAlertPlayback) {
       try {
         await notifier.stopAlarm();
       } catch (error) {
         _logWarning('ALERT', 'Failed to stop leftover alert on start: $error');
       }
-      _reportUnstoppedAlert();
     }
-
-    if (isAlarmPreviewPlaying) {
-      try {
-        await stopAlarmPreview();
-      } catch (error) {
-        if (_isCurrentStartAttempt(startAttemptId)) {
-          _monitoringLifecycle = MonitoringLifecycle.failed;
-          _lastErrorMessage = '警告音テストを停止できないため、監視を開始できませんでした。';
-          _logError('ALERT', 'Failed to stop alarm preview: $error');
-          notifyListeners();
-        }
-        return MonitoringStartOutcome.notStarted;
+    if (notifier.hasActiveAlertPlayback) {
+      _reportUnstoppedAlert();
+      if (_isCurrentStartAttempt(startAttemptId)) {
+        _monitoringLifecycle = MonitoringLifecycle.failed;
+        _lastErrorMessage = '鳴っている警報を停止できないため、監視を開始できませんでした。';
+        notifyListeners();
       }
+      return MonitoringStartOutcome.notStarted;
     }
     if (!_isCurrentStartAttempt(startAttemptId)) {
       return MonitoringStartOutcome.notStarted;
@@ -530,6 +534,25 @@ class AppController extends ChangeNotifier {
       _logInfo('ALERT', 'Alarm preview stopped.');
     }
     notifyListeners();
+  }
+
+  /// 結果を待てない場所（画面のdisposeなど）から警告音テストを止めます。
+  ///
+  /// 例外を投げない。dispose は同期メソッドで待てないため、投げても未処理の
+  /// 非同期エラーになるだけで誰にも伝わらず、鳴りっぱなしの試聴音に気づけない。
+  /// 代わりに停止できなかったことを警告として残す。
+  void stopAlarmPreviewInBackground() {
+    if (!isAlarmPreviewPlaying) {
+      return;
+    }
+    unawaited(() async {
+      try {
+        await stopAlarmPreview();
+      } catch (error) {
+        _logWarning('ALERT', 'Failed to stop alarm preview on dispose: $error');
+      }
+      _reportUnstoppedAlert();
+    }());
   }
 
   /// 位置情報の監視を停止します。

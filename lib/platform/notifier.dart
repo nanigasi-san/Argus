@@ -142,13 +142,19 @@ class Notifier {
     try {
       await _alarmPlayer.start();
       if (generation != _generation) {
-        await _alarmPlayer.stop();
+        await _stopAlarmChannel();
         return;
       }
       _isAlarmPreviewPlaying = true;
-    } catch (_) {
+      // 試聴中も警報チャネルは実際に鳴っている。停止に失敗したときに
+      // 「鳴りっぱなし」を検知できるよう、本番の発報と同じ状態を持つ。
+      _isAlarmChannelActive = true;
+      _alertStopFailed = false;
+    } catch (error) {
       _isAlarmPreviewPlaying = false;
-      await _alarmPlayer.stop();
+      // 後始末の失敗で元のエラーを覆い隠さない。ここで stop() が投げると
+      // 呼び出し元には開始失敗ではなく停止失敗が見え、原因を誤る。
+      await _stopAlarmChannel();
       rethrow;
     }
   }

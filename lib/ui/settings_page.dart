@@ -142,10 +142,10 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   void dispose() {
-    final controller = _controller;
-    if (controller != null && controller.isAlarmPreviewPlaying) {
-      unawaited(controller.stopAlarmPreview());
-    }
+    // 失敗を握りつぶさずコントローラ側で警告に残すため、専用の入口を使う。
+    // ここで unawaited(stopAlarmPreview()) を直接呼ぶと、停止に失敗しても
+    // 未処理の非同期エラーになるだけで、鳴りっぱなしの試聴音に気づけない。
+    _controller?.stopAlarmPreviewInBackground();
     _innerBufferController.dispose();
     _pollingIntervalController.dispose();
     _gpsAccuracyThresholdController.dispose();

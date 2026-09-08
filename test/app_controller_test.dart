@@ -157,7 +157,9 @@ void main() {
 
     test('alarm preview stop failure leaves monitoring in a retryable failure',
         () async {
-      final alarm = _FailSecondStopAlarmPlayer();
+      // 「停止呼び出しが1回失敗した」ではなく「止められない」ことが
+      // 監視開始を妨げる条件。鳴り始めたら止まらないプレイヤーで検証する。
+      final alarm = _StuckOnceStartedAlarmPlayer();
       final locationService = FakeLocationService();
       final controller = AppController(
         stateMachine: StateMachine(config: _testConfig()),
@@ -183,6 +185,10 @@ void main() {
       expect(controller.monitoringLifecycle, MonitoringLifecycle.failed);
       expect(controller.lastErrorMessage, contains('監視を開始できません'));
       expect(locationService.started, isFalse);
+      expect(
+        controller.alertReliabilityWarning,
+        contains('警報を停止できませんでした'),
+      );
     });
 
     test('alarm preview stops when application terminates', () async {
@@ -3413,6 +3419,25 @@ class _AlwaysFailAlarmPlayer extends FakeAlarmPlayer {
   Future<void> start() async {
     playCount += 1;
     throw StateError('preview failed');
+  }
+}
+
+/// 再生開始後は停止できなくなるプレイヤー。
+class _StuckOnceStartedAlarmPlayer extends FakeAlarmPlayer {
+  bool _started = false;
+
+  @override
+  Future<void> start() async {
+    playCount += 1;
+    _started = true;
+  }
+
+  @override
+  Future<void> stop() async {
+    stopCount += 1;
+    if (_started) {
+      throw StateError('alarm stop failed');
+    }
   }
 }
 
