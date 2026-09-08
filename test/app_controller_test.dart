@@ -2334,6 +2334,55 @@ void main() {
       controller.dispose();
     });
 
+    test('QR image picker reports errors whose text mentions a user', () async {
+      // 回帰テスト: ファイルピッカーと同じ文字列判定がQR画像の経路にも
+      // 残っていた。/data/user/0/... の例外が無言で消える。
+      final config = _testConfig();
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: FakeLocationService(),
+        fileManager: _ThrowingQrImageFileManager(
+          config: config,
+          error: const FileSystemException(
+            'Cannot open file',
+            '/data/user/0/com.argus.orienteering/cache/qr.png',
+          ),
+        ),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+      );
+
+      expect(await controller.reloadGeoJsonFromQrImagePicker(), isFalse);
+      expect(
+        controller.lastErrorMessage,
+        contains('Unable to load GeoJSON from QR image'),
+      );
+    });
+
+    test('QR image picker treats a null pick as cancellation', () async {
+      final config = _testConfig();
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: FakeLocationService(),
+        fileManager: _CancellingGeoJsonFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+      );
+
+      expect(await controller.reloadGeoJsonFromQrImagePicker(), isFalse);
+      expect(controller.lastErrorMessage, isNull);
+    });
+
     test('reconnect does not delay OUTER confirmation', () async {
       // 回帰テスト: 再接続は locationService.stop()/start() を呼ぶ。監視の経過時間を
       // 位置サービス側で計測していると、この stop/start でクロックが 0 に戻り、
@@ -3213,8 +3262,10 @@ void main() {
       expect(controller.lastErrorMessage, isNull);
     });
 
-    test('reloadGeoJsonFromQrImagePicker ignores analyzer cancellation',
+    test('reloadGeoJsonFromQrImagePicker reports analyzer exceptions',
         () async {
+      // 解析器にキャンセルという概念はなく、例外は本物の失敗。
+      // 「QRが見つからない」は null で表現され、別経路で扱う。
       final controller = AppController(
         stateMachine: StateMachine(config: _testConfig()),
         locationService: FakeLocationService(),
@@ -3230,7 +3281,30 @@ void main() {
       final loaded = await controller.reloadGeoJsonFromQrImagePicker();
 
       expect(loaded, isFalse);
-      expect(controller.lastErrorMessage, isNull);
+      expect(
+        controller.lastErrorMessage,
+        contains('Unable to load GeoJSON from QR image'),
+      );
+    });
+
+    test('reloadGeoJsonFromQrImagePicker reports when no QR code is found',
+        () async {
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: FakeLocationService(),
+        fileManager: _QrImageFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+        qrImageAnalyzer: (_) async => null,
+      );
+
+      final loaded = await controller.reloadGeoJsonFromQrImagePicker();
+
+      expect(loaded, isFalse);
+      expect(controller.lastErrorMessage, contains('読み取れませんでした'));
     });
 
     test('reloadGeoJsonFromQrImagePicker reports analyzer errors', () async {
@@ -3803,6 +3877,21 @@ class _CancellingGeoJsonFileManager extends FakeFileManager {
 
   @override
   Future<XFile?> pickGeoJsonFile() async => null;
+
+  @override
+  Future<XFile?> pickQrImageFile() async => null;
+}
+
+/// QR画像の選択が失敗するファイルマネージャ。
+class _ThrowingQrImageFileManager extends FakeFileManager {
+  _ThrowingQrImageFileManager({required super.config, required this.error});
+
+  final Object error;
+
+  @override
+  Future<XFile?> pickQrImageFile() async {
+    throw error;
+  }
 }
 
 class _ThrowingGeoJsonFileManager extends FakeFileManager {

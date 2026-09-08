@@ -894,12 +894,9 @@ class AppController extends ChangeNotifier {
 
       return await reloadGeoJsonFromQr(qrText);
     } catch (e) {
-      final errorMessage = e.toString().toLowerCase();
-      if (errorMessage.contains('cancel') ||
-          errorMessage.contains('user') ||
-          errorMessage.contains('abort')) {
-        return false;
-      }
+      // キャンセルは pickQrImageFile() が null を返すことで表現される。
+      // 例外メッセージの文字列で判定してはいけない（Androidのアプリ専用パス
+      // /data/user/0/... で起きた例外を「利用者のキャンセル」と誤判定する）。
       _lastErrorMessage =
           'Unable to load GeoJSON from QR image: ${e.toString()}';
       _logError('APP', _lastErrorMessage!);

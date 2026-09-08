@@ -87,8 +87,10 @@ class StateMachine {
     final observedAt = fix.monitoringElapsed ??
         Duration(microseconds: fix.timestamp.microsecondsSinceEpoch);
     final snapshot = _evaluateInternal(fix, observedAt);
-    final hasHealthyAccuracy = _isUsableFix(fix);
-    if (hasHealthyAccuracy && snapshot.status == LocationStateStatus.outer) {
+    // 精度だけでなく座標の妥当性も含む。名前が精度だけを指していると、
+    // 条件が増えたときに読み違える。
+    final isUsable = _isUsableFix(fix);
+    if (isUsable && snapshot.status == LocationStateStatus.outer) {
       // 値が取れなかったfixで上書きしない。上書きすると、直前まで表示できて
       // いた最後の信頼できる案内が消えてしまう。
       if (snapshot.distanceToBoundaryM != null) {
@@ -96,7 +98,7 @@ class StateMachine {
         _lastTrustedOuterBoundaryPoint = snapshot.nearestBoundaryPoint;
         _lastTrustedOuterBearingDeg = snapshot.bearingToBoundaryDeg;
       }
-    } else if (hasHealthyAccuracy &&
+    } else if (isUsable &&
         snapshot.status != LocationStateStatus.outerPending) {
       _clearTrustedOuterNavigation();
     }
