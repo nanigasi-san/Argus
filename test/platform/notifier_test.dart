@@ -1058,6 +1058,28 @@ void main() {
 
     await notifier.notifyMonitoringStale(outage: const Duration(minutes: 3));
     expect(notifications.showCalls.last.body, contains('3分経過'));
+    expect(notifications.showCalls.last.body, contains('再接続しています'));
+  });
+
+  test('the stale warning stops claiming to reconnect once given up', () async {
+    // 回帰テスト: 再試行をやめたあとも「再接続しています」と出ると、
+    // 来ない復旧を待たせることになる。
+    final notifications = FakeLocalNotificationsClient();
+    final notifier = Notifier(
+      notificationsClient: notifications,
+      alarmPlayer: FakeAlarmPlayer(),
+      vibrationPlayer: FakeVibrationPlayer(),
+    );
+
+    await notifier.notifyMonitoringStale(
+      outage: const Duration(minutes: 12),
+      recoveryAbandoned: true,
+    );
+
+    final body = notifications.showCalls.last.body;
+    expect(body, contains('12分経過'));
+    expect(body, contains('自動再接続を停止しました'));
+    expect(body, isNot(contains('再接続しています')));
   });
 
   test('names every failed alert channel in Japanese', () {

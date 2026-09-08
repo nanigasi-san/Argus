@@ -349,6 +349,10 @@ class AppController extends ChangeNotifier {
       }
       return MonitoringStartOutcome.notStarted;
     }
+    // ここまで来たら「何も鳴っていない」ことを確認できている。前セッションの
+    // 発報・停止失敗の警告は現状を表していないので消す。残すと、直った警報を
+    // 信用しなくなるか、常に出ている警告として無視する癖がつく。
+    _alertReliabilityWarning = null;
     if (!_isCurrentStartAttempt(startAttemptId)) {
       return MonitoringStartOutcome.notStarted;
     }
@@ -720,7 +724,11 @@ class AppController extends ChangeNotifier {
     // 保存を待つ間に監視が始まっていたら適用しない。監視中に閾値や
     // ヒステリシス条件が入れ替わると、状態機械の前提が途中で変わる。
     if (!canModifyConfiguration) {
-      _rejectConfigurationChange();
+      // 保存は済んでいるので「何も保存されていない」と読める文言にしない。
+      _lastErrorMessage = '監視中は設定を反映できません。'
+          '保存した内容は次回起動時に反映されます。';
+      _logWarning('APP', _lastErrorMessage!);
+      notifyListeners();
       return;
     }
 
@@ -1197,7 +1205,10 @@ class AppController extends ChangeNotifier {
     int healthGeneration,
   ) async {
     try {
-      await notifier.notifyMonitoringStale(outage: _currentOutage());
+      await notifier.notifyMonitoringStale(
+        outage: _currentOutage(),
+        recoveryAbandoned: _locationRecoveryAbandoned,
+      );
     } catch (error) {
       if (_isCurrentMonitoringRun(runId) &&
           healthGeneration == _monitoringHealthGeneration &&

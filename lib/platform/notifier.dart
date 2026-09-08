@@ -280,7 +280,13 @@ class Notifier {
   ///
   /// [outage] を渡すと経過時間を本文に含める。同じIDで再表示することで
   /// 反復通知になり、内容が変わるので端末側でも更新として扱われる。
-  Future<void> notifyMonitoringStale({Duration? outage}) async {
+  ///
+  /// [recoveryAbandoned] が true のときは「再接続しています」と書かない。
+  /// 実際には再試行をやめているので、書くと来ない復旧を待たせることになる。
+  Future<void> notifyMonitoringStale({
+    Duration? outage,
+    bool recoveryAbandoned = false,
+  }) async {
     const details = NotificationDetails(
       android: AndroidNotificationDetails(
         _healthChannelId,
@@ -302,10 +308,13 @@ class Notifier {
         interruptionLevel: InterruptionLevel.timeSensitive,
       ),
     );
-    final body = outage == null || outage < const Duration(seconds: 1)
-        ? 'GPSを受信できません。位置情報へ再接続しています。'
-        : 'GPSを受信できません（${formatOutageDuration(outage)}経過）。'
-            '位置情報へ再接続しています。';
+    final elapsedLabel = outage == null || outage < const Duration(seconds: 1)
+        ? ''
+        : '（${formatOutageDuration(outage)}経過）';
+    final action = recoveryAbandoned
+        ? '自動再接続を停止しました。アプリを開いて状態を確認してください。'
+        : '位置情報へ再接続しています。';
+    final body = 'GPSを受信できません$elapsedLabel。$action';
     final errors = await Future.wait<Object?>([
       _captureError(
         () => _enqueueMonitoringHealthNotification(() async {

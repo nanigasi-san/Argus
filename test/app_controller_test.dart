@@ -2468,7 +2468,8 @@ void main() {
       );
 
       expect(controller.config!.innerBufferM, config.innerBufferM);
-      expect(controller.lastErrorMessage, contains('監視中'));
+      // 保存は済んでいるので「何も保存されていない」と読める文言にしない。
+      expect(controller.lastErrorMessage, contains('次回起動時に反映されます'));
       await controller.stopMonitoring();
     });
 
@@ -2665,6 +2666,40 @@ void main() {
       );
       expect(controller.lastErrorMessage, isNotNull);
       expect(Directory('${tempDir.path}/missing').existsSync(), isFalse);
+    });
+
+    test('a new monitoring session clears a stale alert warning', () async {
+      // 回帰テスト: 前セッションの発報失敗の警告が残ると、直った警報を
+      // 信用しなくなるか、常に出ている警告として無視する癖がつく。
+      final config = _testConfig();
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: FakeLocationService(),
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+      );
+      controller.debugSeed(
+        config: config,
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+        alertReliabilityWarning: '警報音を発報できませんでした。',
+      );
+      expect(controller.alertReliabilityWarning, isNotNull);
+
+      // 開始時の消音確認を通過したので、警告は現状を表していない。
+      expect(
+        await controller.startMonitoring(),
+        MonitoringStartOutcome.started,
+      );
+
+      expect(controller.alertReliabilityWarning, isNull);
+      await controller.stopMonitoring();
     });
 
     test('reconnect does not delay OUTER confirmation', () async {
