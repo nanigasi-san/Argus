@@ -110,6 +110,20 @@ void main() {
     expect(decoded['alarm_volume'], 0.9);
   });
 
+  test('readConfig reports when the config location cannot be resolved',
+      () async {
+    final manager = FileManager(
+      documentsDirectoryProvider: () async =>
+          throw const FileSystemException('no documents directory'),
+      defaultConfigLoader: () async => defaultConfig,
+    );
+
+    final result = await manager.readConfig();
+
+    expect(result.config.innerBufferM, defaultConfig.innerBufferM);
+    expect(result.fallbackReason, contains('設定ファイルの場所を特定できません'));
+  });
+
   test('readConfig reports nothing when the saved config is valid', () async {
     final file = File('${tempDir.path}/config.json');
     await file.writeAsString(

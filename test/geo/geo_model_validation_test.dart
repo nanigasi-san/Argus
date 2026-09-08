@@ -242,6 +242,91 @@ void main() {
       expect(model.polygons.single.version, isNull);
     });
 
+    test('rejects malformed structures with a located message', () {
+      const cases = <String, String>{
+        '{"type":"FeatureCollection","features":["nope"]}':
+            'Featureはオブジェクトである必要があります',
+        '{"type":"FeatureCollection","features":[{"type":"Feature",'
+                '"geometry":{"type":"MultiPolygon","coordinates":"nope"}}]}':
+            'MultiPolygon.coordinatesは配列である必要があります',
+        '{"type":"FeatureCollection","features":[{"type":"Feature",'
+                '"geometry":{"type":"Polygon","coordinates":"nope"}}]}':
+            'coordinatesは配列である必要があります',
+        '{"type":"FeatureCollection","features":[{"type":"Feature",'
+                '"geometry":{"type":"Polygon","coordinates":["nope"]}}]}':
+            '外周は配列である必要があります',
+        '{"type":"FeatureCollection","features":[{"type":"Feature",'
+                '"geometry":{"type":"MultiPolygon","coordinates":[[]]}}]}':
+            '外周がありません',
+        '{"type":"FeatureCollection","features":[{"type":"Feature",'
+                '"geometry":{"type":42,"coordinates":[]}}]}':
+            '対応していないgeometry type（int）',
+        '{"type":"FeatureCollection","features":[{"type":"Feature",'
+            '"geometry":{"type":"Polygon","coordinates":'
+            '[["nope",[1,1],[1,2],[2,2]]]}}]}': '座標は[経度, 緯度]の配列である必要があります',
+        '{"type":"FeatureCollection","features":[{"type":"Feature",'
+            '"geometry":{"type":"Polygon","coordinates":'
+            '[[[1],[1,1],[1,2],[2,2]]]}}]}': '座標には経度と緯度が必要です',
+        '{"type":"FeatureCollection","features":[{"type":"Feature",'
+            '"geometry":{"type":"Polygon","coordinates":'
+            '[[["a","b"],[1,1],[1,2],[2,2]]]}}]}': '緯度・経度は数値である必要があります',
+      };
+
+      cases.forEach((raw, expected) {
+        expect(
+          () => GeoModel.fromGeoJson(raw),
+          throwsA(
+            isA<FormatException>()
+                .having((e) => e.message, 'message', contains(expected)),
+          ),
+          reason: raw,
+        );
+      });
+    });
+
+    test('rejects non-finite coordinates', () {
+      // JSONにInfinityは書けないので、極端な指数で無限大にする。
+      final raw = '{"type":"FeatureCollection","features":[{"type":"Feature",'
+          '"geometry":{"type":"Polygon","coordinates":'
+          '[[[1e400,1],[1,1],[1,2],[1,1]]]}}]}';
+
+      expect(
+        () => GeoModel.fromGeoJson(raw),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            contains('有限の数値である必要があります'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects a ring with fewer than three distinct vertices', () {
+      final raw = _featureCollection([
+        _polygon([
+          [
+            [139.0, 35.0],
+            [139.01, 35.0],
+            [139.0, 35.0],
+            [139.01, 35.0],
+            [139.0, 35.0],
+          ],
+        ]),
+      ]);
+
+      expect(
+        () => GeoModel.fromGeoJson(raw),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            contains('3つ以上の異なる頂点が必要です'),
+          ),
+        ),
+      );
+    });
+
     test('rejects consecutive duplicate vertices with a dedicated message', () {
       // GISの書き出しで普通に混ざる。自己交差と同じメッセージで弾くと
       // 「辺が交差しない外周に修正してください」と言われて原因に辿り着けない。

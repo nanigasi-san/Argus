@@ -110,12 +110,9 @@ class FileManager {
       );
     }
 
-    if (!await file.exists()) {
-      return ConfigLoadResult(
-        config: (await _loadDefaultConfig()).normalized(),
-      );
-    }
-
+    // getConfigFile() は存在しなければ初期設定を書き出して返すため、
+    // ここでは必ず存在する。初回起動は「初期設定が正しく読めた」として扱われ、
+    // fallbackReason は付かない。
     try {
       final raw = await file.readAsString();
       final decoded = jsonDecode(raw) as Map<String, dynamic>;

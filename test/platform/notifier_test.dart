@@ -1034,6 +1034,55 @@ void main() {
     expect(alarm.playCount, 2);
     expect(report.alarmError, isNull);
   });
+
+  test('formats the outage duration for the warning body', () {
+    expect(formatOutageDuration(const Duration(seconds: 45)), '45秒');
+    expect(formatOutageDuration(const Duration(minutes: 3)), '3分');
+    expect(formatOutageDuration(const Duration(hours: 1)), '1時間');
+    expect(
+      formatOutageDuration(const Duration(hours: 1, minutes: 30)),
+      '1時間30分',
+    );
+  });
+
+  test('includes the outage duration in the stale warning body', () async {
+    final notifications = FakeLocalNotificationsClient();
+    final notifier = Notifier(
+      notificationsClient: notifications,
+      alarmPlayer: FakeAlarmPlayer(),
+      vibrationPlayer: FakeVibrationPlayer(),
+    );
+
+    await notifier.notifyMonitoringStale();
+    expect(notifications.showCalls.last.body, isNot(contains('経過')));
+
+    await notifier.notifyMonitoringStale(outage: const Duration(minutes: 3));
+    expect(notifications.showCalls.last.body, contains('3分経過'));
+  });
+
+  test('names every failed alert channel in Japanese', () {
+    const report = AlertDeliveryReport(
+      notificationError: 'a',
+      alarmError: 'b',
+      vibrationError: 'c',
+    );
+
+    expect(report.failedChannelsLabel, '通知・警報音・バイブ');
+  });
+
+  test('a failed vibration stop keeps the channel marked as playing', () async {
+    final vibration = _FailStopVibrationPlayer();
+    final notifier = Notifier(
+      notificationsClient: FakeLocalNotificationsClient(),
+      alarmPlayer: FakeAlarmPlayer(),
+      vibrationPlayer: vibration,
+    );
+
+    await notifier.notifyOuter();
+    await expectLater(notifier.stopAlarm(), throwsA(isA<StateError>()));
+
+    expect(notifier.hasActiveAlertPlayback, isTrue);
+  });
 }
 
 class _BlockingAlarmPlayer extends FakeAlarmPlayer {
@@ -1216,5 +1265,13 @@ class _FailStopOnceAlarmPlayer extends FakeAlarmPlayer {
     if (stopCount == 1) {
       throw StateError('alarm stop failed');
     }
+  }
+}
+
+class _FailStopVibrationPlayer extends FakeVibrationPlayer {
+  @override
+  Future<void> stop() async {
+    stopCount += 1;
+    throw StateError('vibration stop failed');
   }
 }

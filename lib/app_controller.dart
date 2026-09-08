@@ -833,7 +833,11 @@ class AppController extends ChangeNotifier {
         // 端末に溜まり続ける。
         try {
           if (await tempFile.exists()) {
+            // coverage:ignore-start
+            // 書き込みが途中まで成功してファイルが残る状況は、ホストの
+            // ファイルシステム依存でテストから再現できない。
             await tempFile.delete();
+            // coverage:ignore-end
           }
         } catch (_) {
           // 削除できなくても読み込み失敗として扱えばよい。
@@ -1151,6 +1155,9 @@ class AppController extends ChangeNotifier {
     _staleEscalationTimer = Timer.periodic(_staleReminderInterval, (timer) {
       // 条件を判定して return するだけだと、フラグを倒す経路が増えたときに
       // 永久に発火し続けるタイマーが残る。自分で止める。
+      // coverage:ignore-start
+      // 現状フラグを倒す経路はすべて _cancelStaleEscalation() を通るため
+      // ここへは到達しない。将来の経路追加に対する保険として残す。
       if (!_isCurrentMonitoringRun(runId) || !_monitoringStaleWarningActive) {
         timer.cancel();
         if (identical(timer, _staleEscalationTimer)) {
@@ -1158,6 +1165,7 @@ class AppController extends ChangeNotifier {
         }
         return;
       }
+      // coverage:ignore-end
       final healthGeneration = ++_monitoringHealthGeneration;
       _logWarning(
         'GPS',

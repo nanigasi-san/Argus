@@ -2383,6 +2383,290 @@ void main() {
       expect(controller.lastErrorMessage, isNull);
     });
 
+    test('a permission lookup failure does not abandon the reconnect',
+        () async {
+      // 権限を確認できないだけでは打ち切らない。プラットフォームチャネルの
+      // 一時的な失敗で監視を諦めるべきではない。
+      final config = _testConfig();
+      final locationService = FakeLocationService();
+      final coordinator = _ThrowingRefreshOnceCoordinator();
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: locationService,
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: coordinator,
+        reconnectDelays: const [Duration(milliseconds: 1)],
+      );
+      controller.debugSeed(
+        config: config,
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+      await controller.startMonitoring();
+
+      locationService.addError(const LocationStreamEndedException());
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      expect(locationService.startCount, greaterThan(1));
+      expect(
+        controller.logs.map((entry) => entry.message),
+        contains(startsWith('Failed to refresh permissions during reconnect')),
+      );
+      expect(
+        controller.logs.map((entry) => entry.message),
+        isNot(contains(startsWith('Location recovery abandoned'))),
+      );
+      await controller.stopMonitoring();
+    });
+
+    test('updateConfig is rejected when monitoring starts during the save',
+        () async {
+      // 保存を待つ間に監視が始まったら適用しない。監視中に閾値が
+      // 入れ替わると状態機械の前提が途中で変わる。
+      final config = _testConfig();
+      final locationService = FakeLocationService();
+      late final AppController controller;
+      final fileManager = _HookedSaveFileManager(
+        config: config,
+        onSave: () async {
+          await controller.startMonitoring();
+        },
+      );
+      controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: locationService,
+        fileManager: fileManager,
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+      );
+      controller.debugSeed(
+        config: config,
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+
+      await controller.updateConfig(
+        AppConfig(
+          innerBufferM: 12,
+          leaveConfirmSamples: 2,
+          leaveConfirmSeconds: 5,
+          gpsAccuracyBadMeters: 20,
+          sampleIntervalS: const {'fast': 2},
+          alarmVolume: 0.8,
+        ),
+      );
+
+      expect(controller.config!.innerBufferM, config.innerBufferM);
+      expect(controller.lastErrorMessage, contains('監視中'));
+      await controller.stopMonitoring();
+    });
+
+    test('a stuck alarm preview is reported when the settings page closes',
+        () async {
+      final config = _testConfig();
+      final alarm = _StuckOnceStartedAlarmPlayer();
+      final notifier = Notifier(
+        notificationsClient: FakeLocalNotificationsClient(),
+        alarmPlayer: alarm,
+        vibrationPlayer: FakeVibrationPlayer(),
+      );
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: FakeLocationService(),
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: notifier,
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+      );
+      controller.debugSeed(
+        config: config,
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+      expect(await controller.startAlarmPreview(0.4), isTrue);
+
+      controller.stopAlarmPreviewInBackground();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(
+        controller.alertReliabilityWarning,
+        contains('警報を停止できませんでした'),
+      );
+      expect(
+        controller.logs.map((entry) => entry.message),
+        contains(startsWith('Failed to stop alarm preview on dispose')),
+      );
+    });
+
+    test('a failed dismiss on re-entry is logged and does not stop the fix',
+        () async {
+      final config = _testConfig();
+      final locationService = FakeLocationService();
+      var elapsed = Duration.zero;
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: locationService,
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: _FailingCancelNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+        elapsedProvider: () => elapsed,
+      );
+      controller.debugSeed(
+        config: config,
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+      await controller.startMonitoring();
+
+      locationService.add(
+        LocationFix(
+          latitude: 2,
+          longitude: 2,
+          accuracyMeters: 5,
+          timestamp: DateTime.utc(2024, 1, 1),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      elapsed += const Duration(seconds: 2);
+      locationService.add(
+        LocationFix(
+          latitude: 2,
+          longitude: 2,
+          accuracyMeters: 5,
+          timestamp: DateTime.utc(2024, 1, 1, 0, 0, 2),
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(controller.snapshot.status, LocationStateStatus.outer);
+
+      // エリア内へ戻る。通知の取り消しに失敗しても状態遷移は完了する。
+      elapsed += const Duration(seconds: 1);
+      locationService.add(
+        LocationFix(
+          latitude: 0.5,
+          longitude: 0.5,
+          accuracyMeters: 5,
+          timestamp: DateTime.utc(2024, 1, 1, 0, 0, 3),
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(controller.snapshot.status, isNot(LocationStateStatus.outer));
+      expect(
+        controller.logs.map((entry) => entry.message),
+        contains(startsWith('Failed to dismiss alert on re-entry')),
+      );
+      await controller.stopMonitoring();
+    });
+
+    test('QR reload deletes the previous temp file when the name differs',
+        () async {
+      final tempDir =
+          await Directory.systemTemp.createTemp('argus_qr_rotate_test_');
+      addTearDown(() async {
+        if (await tempDir.exists()) {
+          await tempDir.delete(recursive: true);
+        }
+      });
+      PathProviderPlatform.instance = _FakePathProviderPlatform(tempDir.path);
+
+      final config = _testConfig();
+      var now = DateTime.utc(2024, 1, 1);
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: FakeLocationService(),
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+        nowProvider: () => now,
+      );
+      final bundle = await encodeGeoJson(
+        const GeoJsonQrEncodeInput(
+          geoJson: _squareGeoJson,
+          scheme: GeoJsonQrScheme.gjz1,
+          generatePng: false,
+        ),
+      );
+
+      expect(
+          await controller.reloadGeoJsonFromQr(bundle.qrTexts.first), isTrue);
+      now = now.add(const Duration(seconds: 1));
+      expect(
+          await controller.reloadGeoJsonFromQr(bundle.qrTexts.first), isTrue);
+
+      // 名前が変わっても残るのは1つだけ。
+      expect(
+        tempDir
+            .listSync()
+            .whereType<File>()
+            .where((file) => file.path.endsWith('.geojson')),
+        hasLength(1),
+      );
+      await controller.cleanupTempGeoJsonFile();
+    });
+
+    test('a failed temp file write leaves no fragment behind', () async {
+      final tempDir =
+          await Directory.systemTemp.createTemp('argus_qr_write_fail_test_');
+      addTearDown(() async {
+        if (await tempDir.exists()) {
+          await tempDir.delete(recursive: true);
+        }
+      });
+      // 存在しないディレクトリを指すと writeAsString が失敗する。
+      PathProviderPlatform.instance =
+          _FakePathProviderPlatform('${tempDir.path}/missing');
+
+      final config = _testConfig();
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: FakeLocationService(),
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+      );
+      final bundle = await encodeGeoJson(
+        const GeoJsonQrEncodeInput(
+          geoJson: _squareGeoJson,
+          scheme: GeoJsonQrScheme.gjz1,
+          generatePng: false,
+        ),
+      );
+
+      expect(
+        await controller.reloadGeoJsonFromQr(bundle.qrTexts.first),
+        isFalse,
+      );
+      expect(controller.lastErrorMessage, isNotNull);
+      expect(Directory('${tempDir.path}/missing').existsSync(), isFalse);
+    });
+
     test('reconnect does not delay OUTER confirmation', () async {
       // 回帰テスト: 再接続は locationService.stop()/start() を呼ぶ。監視の経過時間を
       // 位置サービス側で計測していると、この stop/start でクロックが 0 に戻り、
@@ -3823,6 +4107,27 @@ class _CorruptConfigFileManager extends FakeFileManager {
       );
 }
 
+/// 保存中に任意の処理を差し込めるファイルマネージャ。
+/// 通知の取り消しが失敗する通知クライアント。
+class _FailingCancelNotificationsClient extends FakeLocalNotificationsClient {
+  @override
+  Future<void> cancel(int id) async {
+    cancelledIds.add(id);
+    throw StateError('notification cancel failed');
+  }
+}
+
+class _HookedSaveFileManager extends FakeFileManager {
+  _HookedSaveFileManager({required super.config, required this.onSave});
+
+  final Future<void> Function() onSave;
+
+  @override
+  Future<void> saveConfig(AppConfig config) async {
+    await onSave();
+  }
+}
+
 class _FailingSaveFileManager extends FakeFileManager {
   _FailingSaveFileManager({required super.config});
 
@@ -3883,6 +4188,20 @@ class _CancellingGeoJsonFileManager extends FakeFileManager {
 }
 
 /// QR画像の選択が失敗するファイルマネージャ。
+/// 権限の再確認が失敗するコーディネータ。
+class _ThrowingRefreshOnceCoordinator extends PermissionCoordinator {
+  int refreshCount = 0;
+
+  @override
+  Future<MonitoringPermissionState> refreshMonitoringPermissionState() async {
+    refreshCount += 1;
+    if (refreshCount > 1) {
+      throw StateError('permission lookup failed');
+    }
+    return _grantedMonitoringPermissionState();
+  }
+}
+
 class _ThrowingQrImageFileManager extends FakeFileManager {
   _ThrowingQrImageFileManager({required super.config, required this.error});
 
