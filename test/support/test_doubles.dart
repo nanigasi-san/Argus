@@ -41,7 +41,8 @@ class FakeFileManager extends FileManager {
   GeoModel get _model => createSquareModel();
 
   @override
-  Future<AppConfig> readConfig() async => config;
+  Future<ConfigLoadResult> readConfig() async =>
+      ConfigLoadResult(config: config);
 
   Future<GeoModel?> pickAndLoadGeoJson() async => _model;
 
@@ -155,6 +156,8 @@ AppController buildTestController({
   QrImageAnalyzer? qrImageAnalyzer,
   AlarmVolumeClient? alarmVolumeClient,
   bool? isAndroid,
+  MonitoringLifecycle? monitoringLifecycle,
+  String? alertReliabilityWarning,
 }) {
   final config = createTestConfig();
   final stateMachine = StateMachine(config: config);
@@ -188,6 +191,8 @@ AppController buildTestController({
     areaIndex: areaIndex,
     snapshot: snapshot,
     developerMode: developerMode,
+    monitoringLifecycle: monitoringLifecycle,
+    alertReliabilityWarning: alertReliabilityWarning,
     permissionState: permissionState ??
         const MonitoringPermissionState(
           notificationStatus: PermissionStatus.granted,

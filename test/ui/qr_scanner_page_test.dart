@@ -881,7 +881,8 @@ class _FakeFileManager extends FileManager {
   final AppConfig config;
 
   @override
-  Future<AppConfig> readConfig() async => config;
+  Future<ConfigLoadResult> readConfig() async =>
+      ConfigLoadResult(config: config);
 }
 
 class _FakeEventLogger extends EventLogger {

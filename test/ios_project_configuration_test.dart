@@ -111,16 +111,19 @@ void main() {
       expect(appDelegate, contains('guard isAlarming else'));
       expect(appDelegate, contains('AudioServicesPlaySystemSound'));
       expect(appDelegate, contains('kSystemSoundID_Vibrate'));
+      expect(appDelegate, contains('case "stopAlarm"'));
       expect(appDelegate, contains('case "startVibration"'));
+      expect(appDelegate, contains('case "pulseVibration"'));
       expect(appDelegate, contains('case "stopVibration"'));
+      expect(appDelegate, contains('case "getAlertPlaybackState"'));
+      expect(appDelegate, contains('"vibrationPatternActive"'));
       expect(appDelegate, contains('case "getAlarmVolumeState"'));
       expect(appDelegate, contains('"supported": false'));
       expect(appDelegate, contains('case "openSoundSettings"'));
       expect(appDelegate, contains('UIApplication.openSettingsURLString'));
       expect(
-        RegExp(
-          r'case "stop":\s+alarmPlayer\.stop\(\)\s+vibrationPlayer\.stop\(\)',
-        ).hasMatch(appDelegate),
+        RegExp(r'case "stopAlarm":\s+alarmPlayer\.stop\(\)\s+result\(nil\)')
+            .hasMatch(appDelegate),
         isTrue,
       );
       expect(
@@ -172,6 +175,24 @@ void main() {
 
       expect(gitignore, contains('!/ios/Podfile.lock'));
       expect(workflow, contains('xcodebuild test \\'));
+      expect(workflow, contains('simctl list devices available'));
+      expect(workflow, contains('simctl bootstatus'));
+      expect(workflow, contains('simctl privacy'));
+      expect(workflow, contains('location-always'));
+      expect(workflow, contains('simctl location'));
+      expect(
+        workflow,
+        contains(
+          '--target=integration_test/monitoring_review_geojson_test.dart',
+        ),
+      );
+      expect(workflow, contains('flutter drive --no-pub'));
+      expect(
+        workflow,
+        contains(
+          '--use-application-binary=build/ios/iphonesimulator/Runner.app',
+        ),
+      );
     });
 
     test('does not depend on flutter_ringtone_player fallback', () {

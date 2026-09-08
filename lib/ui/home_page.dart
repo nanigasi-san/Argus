@@ -122,7 +122,11 @@ class _HomeScrollableContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDeveloperMode = controller.developerMode;
-    final isMonitoring = _isMonitoringStatus(snapshot.status);
+    final isMonitoring = controller.isMonitoringSession;
+    // 判定は状態機械が事実として持つ。ここで精度としきい値から再計算すると、
+    // 「使えない測位」の条件が増えたときに食い違い、古い案内を現在位置として
+    // 表示してしまう（座標がNaNで精度だけ良好なfixなど）。
+    final usesLastReliableNavigation = snapshot.navigationFromLastReliableFix;
     return LayoutBuilder(
       builder: (context, constraints) {
         return SingleChildScrollView(
@@ -151,8 +155,10 @@ class _HomeScrollableContent extends StatelessWidget {
                         const SizedBox(height: 20),
                         _LargeStatusDisplay(
                           status: snapshot.status,
+                          lifecycle: controller.monitoringLifecycle,
                           onTap: snapshot.status ==
-                                  LocationStateStatus.waitStart
+                                      LocationStateStatus.waitStart &&
+                                  !isMonitoring
                               ? () {
                                   if (controller.canStartMonitoring) {
                                     unawaited(_startMonitoringAfterAlarmCheck(
@@ -166,6 +172,20 @@ class _HomeScrollableContent extends StatelessWidget {
                               : null,
                         ),
                         const SizedBox(height: 12),
+                        // 警報の発報・停止に失敗したことは、閉じるまで消えない
+                        // バナーで出す。Snackbarだと4秒で消えるため、走行中に
+                        // 数十秒後へ画面を見た利用者にはまず届かない。
+                        if (controller.alertReliabilityWarning != null) ...[
+                          _AlertReliabilityWarning(
+                            message: controller.alertReliabilityWarning!,
+                            onDismiss: controller.clearAlertReliabilityWarning,
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+                        if (isMonitoring) ...[
+                          const _ForceCloseWarning(),
+                          const SizedBox(height: 12),
+                        ],
                         if (isMonitoring)
                           _HoldToFinishRaceButton(
                             duration: const Duration(seconds: 5),
@@ -187,6 +207,23 @@ class _HomeScrollableContent extends StatelessWidget {
                           ),
                         if (showNavigationDetails) ...[
                           const SizedBox(height: 24),
+                          if (usesLastReliableNavigation) ...[
+                            Container(
+                              key: const Key('low-accuracy-navigation-warning'),
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .errorContainer,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Text(
+                                'GPS精度が悪いため、最後に精度が良かった位置からの案内を表示しています。現在位置として過信しないでください。',
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                          ],
                           Text(
                             '境界までの距離: '
                             '${snapshot.distanceToBoundaryM?.toStringAsFixed(1) ?? '-'} m',
@@ -249,12 +286,10 @@ Future<void> _startMonitoringAfterAlarmCheck(
   BuildContext context,
   AppController controller,
 ) async {
-  final canStart = await controller.canStartWithCurrentAlarmVolume();
-  if (!context.mounted) {
-    return;
-  }
-  if (canStart) {
-    await controller.startMonitoring();
+  // 音量確認は startMonitoring() が開始直前に行う。ここでは結果に応じて
+  // 案内ダイアログを出すだけ。
+  final outcome = await controller.startMonitoring();
+  if (!context.mounted || outcome != MonitoringStartOutcome.alarmVolumeTooLow) {
     return;
   }
 
@@ -577,12 +612,87 @@ class _BottomActions extends StatelessWidget {
   }
 }
 
-bool _isMonitoringStatus(LocationStateStatus status) {
-  return status == LocationStateStatus.inner ||
-      status == LocationStateStatus.near ||
-      status == LocationStateStatus.outerPending ||
-      status == LocationStateStatus.outer ||
-      status == LocationStateStatus.gpsBad;
+/// 警報を発報・停止できなかったことを伝える常設バナー。
+///
+/// 利用者が明示的に閉じるまで残す。「サイレンが鳴っていない」「警報が
+/// 止まっていない」は、見逃したら取り返しがつかない種類の情報なので、
+/// 自動で消える通知経路には載せない。
+class _AlertReliabilityWarning extends StatelessWidget {
+  const _AlertReliabilityWarning({
+    required this.message,
+    required this.onDismiss,
+  });
+
+  final String message;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      key: const Key('alert-reliability-warning'),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 12, 4, 12),
+      decoration: BoxDecoration(
+        color: colors.errorContainer,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colors.error),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.notification_important, color: colors.error),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                color: colors.onErrorContainer,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          IconButton(
+            key: const Key('alert-reliability-warning-dismiss'),
+            icon: Icon(Icons.close, color: colors.error),
+            tooltip: '閉じる',
+            onPressed: onDismiss,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ForceCloseWarning extends StatelessWidget {
+  const _ForceCloseWarning();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      key: const Key('force-close-warning'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colors.tertiaryContainer,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, color: colors.onTertiaryContainer),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '監視中はアプリを強制終了しないでください。画面ロックやホーム画面では監視を続けますが、強制終了すると停止します。',
+              style: TextStyle(color: colors.onTertiaryContainer),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _HoldToFinishRaceButton extends StatefulWidget {
@@ -858,13 +968,60 @@ enum _QrGenerationNoticeAction {
 class _LargeStatusDisplay extends StatelessWidget {
   const _LargeStatusDisplay({
     required this.status,
+    required this.lifecycle,
     this.onTap,
   });
 
   final LocationStateStatus status;
+  final MonitoringLifecycle lifecycle;
   final VoidCallback? onTap;
 
+  /// ジオフェンスの警告状態。監視状態の表示で塗り替えてはいけない。
+  bool get _isGeofenceWarning =>
+      status == LocationStateStatus.outer ||
+      status == LocationStateStatus.outerPending;
+
+  Color? get _lifecycleColor => switch (lifecycle) {
+        MonitoringLifecycle.idle || MonitoringLifecycle.active => null,
+        MonitoringLifecycle.starting ||
+        MonitoringLifecycle.acquiring =>
+          Colors.blue,
+        MonitoringLifecycle.stale ||
+        MonitoringLifecycle.reconnecting =>
+          Colors.deepOrange,
+        MonitoringLifecycle.stopping => Colors.blueGrey,
+        MonitoringLifecycle.failed => Colors.red,
+      };
+
+  String? get _lifecycleLabel => switch (lifecycle) {
+        MonitoringLifecycle.idle || MonitoringLifecycle.active => null,
+        MonitoringLifecycle.starting => '開始中',
+        MonitoringLifecycle.acquiring => 'GPS取得中',
+        MonitoringLifecycle.stale => 'GPS停止',
+        MonitoringLifecycle.reconnecting => '再接続中',
+        MonitoringLifecycle.stopping => '停止中',
+        MonitoringLifecycle.failed => '開始失敗',
+      };
+
+  String? get _lifecycleCode => switch (lifecycle) {
+        MonitoringLifecycle.idle || MonitoringLifecycle.active => null,
+        MonitoringLifecycle.starting => 'STARTING',
+        MonitoringLifecycle.acquiring => 'ACQUIRING GPS',
+        MonitoringLifecycle.stale => 'GPS STALE',
+        MonitoringLifecycle.reconnecting => 'RECONNECTING',
+        MonitoringLifecycle.stopping => 'STOPPING',
+        MonitoringLifecycle.failed => 'FAILED',
+      };
+
+  // 監視状態（GPS途絶など）とジオフェンス警告は別の情報なので、どちらも隠さない。
+  // 色は深刻な側を採用する。OUTER を監視状態の色で塗り替えると
+  // 「エリア外なのに再接続中と表示される」ため警告が視覚的に消える。
+  // 逆にGPS途絶中の INNER を緑のままにすると、古い「安全」を信じてしまう。
   Color _color(LocationStateStatus status) {
+    final lifecycleColor = _lifecycleColor;
+    if (lifecycleColor != null && !_isGeofenceWarning) {
+      return lifecycleColor;
+    }
     switch (status) {
       case LocationStateStatus.inner:
         return Colors.green;
@@ -884,6 +1041,12 @@ class _LargeStatusDisplay extends StatelessWidget {
   }
 
   String _statusText(LocationStateStatus status) {
+    final lifecycleLabel = _lifecycleLabel;
+    // 警告中は必ずジオフェンス状態を主表示にする。それ以外は、まだ位置が
+    // 確定していない段階（waitStart等）なので監視状態のほうが情報量が多い。
+    if (lifecycleLabel != null && !_isGeofenceWarning) {
+      return lifecycleLabel;
+    }
     switch (status) {
       case LocationStateStatus.inner:
         return '内側';
@@ -903,6 +1066,10 @@ class _LargeStatusDisplay extends StatelessWidget {
   }
 
   String _statusCode(LocationStateStatus status) {
+    final lifecycleCode = _lifecycleCode;
+    if (lifecycleCode != null && !_isGeofenceWarning) {
+      return lifecycleCode;
+    }
     switch (status) {
       case LocationStateStatus.inner:
         return 'INNER';
@@ -981,6 +1148,62 @@ class _LargeStatusDisplay extends StatelessWidget {
                     status == LocationStateStatus.waitGeoJson ? 0.8 : 1.2,
               ),
             ),
+            // 警告中は監視状態が主表示から外れるため、副表示で必ず併記する。
+            // これがないと OUTER 中のGPS途絶に気づけない。
+            if (_isGeofenceWarning && _lifecycleLabel != null) ...[
+              SizedBox(height: circleSize * 0.03),
+              SizedBox(
+                width: circleSize * 0.78,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Container(
+                    key: const Key('monitoring-lifecycle-badge'),
+                    padding: EdgeInsets.symmetric(
+                      vertical: circleSize * 0.015,
+                      horizontal: circleSize * 0.04,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(circleSize * 0.06),
+                      border: Border.all(
+                        color:
+                            (_lifecycleColor ?? color).withValues(alpha: 0.7),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.gps_off_rounded,
+                          size: circleSize * 0.06,
+                          color: _lifecycleColor ?? color,
+                        ),
+                        SizedBox(width: circleSize * 0.015),
+                        Text(
+                          _lifecycleLabel!,
+                          style: TextStyle(
+                            fontSize: circleSize * 0.07,
+                            fontWeight: FontWeight.w800,
+                            color: _lifecycleColor ?? color,
+                          ),
+                        ),
+                        SizedBox(width: circleSize * 0.02),
+                        Text(
+                          _lifecycleCode!,
+                          style: TextStyle(
+                            fontSize: circleSize * 0.05,
+                            fontWeight: FontWeight.w700,
+                            color: (_lifecycleColor ?? color)
+                                .withValues(alpha: 0.75),
+                            letterSpacing: 0.8,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
             if (onTap != null && status == LocationStateStatus.waitStart) ...[
               SizedBox(height: circleSize * 0.04),
               Container(

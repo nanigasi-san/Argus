@@ -110,6 +110,38 @@ void main() {
     expect(decoded['alarm_volume'], 0.9);
   });
 
+  test('readConfig reports when the config location cannot be resolved',
+      () async {
+    final manager = FileManager(
+      documentsDirectoryProvider: () async =>
+          throw const FileSystemException('no documents directory'),
+      defaultConfigLoader: () async => defaultConfig,
+    );
+
+    final result = await manager.readConfig();
+
+    expect(result.config.innerBufferM, defaultConfig.innerBufferM);
+    expect(result.fallbackReason, contains('設定ファイルの場所を特定できません'));
+  });
+
+  test('readConfig reports nothing when the saved config is valid', () async {
+    final file = File('${tempDir.path}/config.json');
+    await file.writeAsString(
+      '{"inner_buffer_m": 12.0, "leave_confirm_samples": 2, '
+      '"leave_confirm_seconds": 7, "gps_accuracy_bad_m": 25.0, '
+      '"sample_interval_s": {"fast": 4}, "alarm_volume": 0.7}',
+    );
+    final manager = FileManager(
+      documentsDirectoryProvider: () async => tempDir,
+      defaultConfigLoader: () async => defaultConfig,
+    );
+
+    final result = await manager.readConfig();
+
+    expect(result.config.innerBufferM, 12.0);
+    expect(result.fallbackReason, isNull);
+  });
+
   test('readConfig returns parsed config when file is valid', () async {
     final file = File('${tempDir.path}/config.json');
     await file.writeAsString(jsonEncode(defaultConfig.toJson()));
@@ -125,10 +157,13 @@ void main() {
       ),
     );
 
-    final config = await manager.readConfig();
+    final result = await manager.readConfig();
 
-    expect(config.innerBufferM, defaultConfig.innerBufferM);
-    expect(config.leaveConfirmSamples, defaultConfig.leaveConfirmSamples);
+    expect(result.config.innerBufferM, defaultConfig.innerBufferM);
+    expect(
+        result.config.leaveConfirmSamples, defaultConfig.leaveConfirmSamples);
+    // ファイルが無いだけなので、失敗として扱わない。
+    expect(result.fallbackReason, isNull);
   });
 
   test('readConfig falls back to default config on invalid JSON', () async {
@@ -139,10 +174,12 @@ void main() {
       defaultConfigLoader: () async => defaultConfig,
     );
 
-    final config = await manager.readConfig();
+    final result = await manager.readConfig();
 
-    expect(config.innerBufferM, defaultConfig.innerBufferM);
-    expect(config.alarmVolume, defaultConfig.alarmVolume);
+    expect(result.config.innerBufferM, defaultConfig.innerBufferM);
+    expect(result.config.alarmVolume, defaultConfig.alarmVolume);
+    // 保存済みの設定が壊れて初期値へ戻ったことは伝える必要がある。
+    expect(result.fallbackReason, contains('設定ファイルを読み込めません'));
   });
 
   test('openLogFile creates log file when missing', () async {

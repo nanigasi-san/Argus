@@ -368,6 +368,97 @@ void main() {
     );
   });
 
+  test('agz1 rejects excessive vertices before expanding coordinates',
+      () async {
+    const name = 'aG9nZS5nZW9qc29u';
+    final excessiveDeltas = List.filled(5000, '0,0').join(';');
+
+    await expectLater(
+      decodeGeoJsonWithMetadata(
+        GeoJsonQrDecodeInput(
+          qrTexts: [
+            _agzQrText('a3:6:$name:0,0|$excessiveDeltas'),
+          ],
+        ),
+      ),
+      throwsA(isA<PayloadTooLargeException>()),
+    );
+  });
+
+  test('agz1 rejects decoded coordinates outside latitude/longitude bounds',
+      () async {
+    const name = 'aG9nZS5nZW9qc29u';
+
+    await expectLater(
+      decodeGeoJsonWithMetadata(
+        GeoJsonQrDecodeInput(
+          qrTexts: [
+            _agzQrText(
+              'a3:6:$name:181000000,0|0,1000000;-1000000,0;1000000,-1000000',
+            ),
+          ],
+        ),
+      ),
+      throwsA(isA<InvalidCoordinateException>()),
+    );
+    await expectLater(
+      decodeGeoJsonWithMetadata(
+        GeoJsonQrDecodeInput(
+          qrTexts: [
+            _agzQrText(
+              'a3:6:$name:0,91000000|1000000,0;0,-1000000;-1000000,1000000',
+            ),
+          ],
+        ),
+      ),
+      throwsA(isA<InvalidCoordinateException>()),
+    );
+    await expectLater(
+      decodeGeoJsonWithMetadata(
+        GeoJsonQrDecodeInput(
+          qrTexts: [
+            _agzQrText(
+              'a3:6:$name:12345678901234567,0|1,0;0,1;-1,-1',
+            ),
+          ],
+        ),
+      ),
+      throwsA(isA<InvalidCoordinateException>()),
+    );
+  });
+
+  test('agz1 encode rejects coordinates outside latitude/longitude bounds',
+      () async {
+    await expectLater(
+      encodeGeoJson(
+        const GeoJsonQrEncodeInput(
+          geoJson: '{"type":"FeatureCollection","features":['
+              '{"type":"Feature","properties":{},"geometry":{'
+              '"type":"Polygon","coordinates":['
+              '[[181,0],[181,1],[180,1],[181,0]]]}}]}',
+          sourceFileName: 'hoge.geojson',
+          scheme: GeoJsonQrScheme.agz1,
+          generatePng: false,
+        ),
+      ),
+      throwsA(isA<InvalidCoordinateException>()),
+    );
+    await expectLater(
+      encodeGeoJson(
+        const GeoJsonQrEncodeInput(
+          geoJson: '{"type":"FeatureCollection","features":['
+              '{"type":"Feature","properties":{},"geometry":{'
+              '"type":"Polygon","coordinates":['
+              '[[0,91],[1,0],[1,1],[0,91]]]}}]}',
+          sourceFileName: 'hoge.geojson',
+          scheme: GeoJsonQrScheme.agz1,
+          generatePng: false,
+        ),
+      ),
+      throwsA(isA<InvalidCoordinateException>()),
+    );
+  });
+
   test('encode rejects payloads that exceed max text length', () async {
     await expectLater(
       encodeGeoJson(
@@ -560,6 +651,17 @@ void main() {
     expect(png, isNotEmpty);
     expect(
       () => generateQrPng('x' * 5000, QrErrorCorrectionLevel.high),
+      throwsA(isA<PayloadTooLargeException>()),
+    );
+  });
+
+  test('gzip decompression rejects output above one megabyte', () {
+    final compressed = gzipCompress(
+      Uint8List(1024 * 1024 + 1),
+    );
+
+    expect(
+      () => gzipDecompress(compressed),
       throwsA(isA<PayloadTooLargeException>()),
     );
   });

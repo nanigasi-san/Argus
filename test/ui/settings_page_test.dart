@@ -122,6 +122,68 @@ void main() {
     expect(find.text('バージョン 0.4.1 (1005)'), findsOneWidget);
   });
 
+  testWidgets('disables configuration controls while monitoring',
+      (tester) async {
+    final controller = buildTestController(
+      hasGeoJson: true,
+      monitoringLifecycle: MonitoringLifecycle.active,
+    );
+
+    await _pumpSettings(tester, controller);
+
+    expect(find.byKey(const Key('settings-monitoring-lock')), findsOneWidget);
+    expect(
+      tester
+          .widget<TextFormField>(find.byKey(const Key('innerBufferField')))
+          .enabled,
+      isFalse,
+    );
+    await _scrollUntilVisible(
+      tester,
+      find.byKey(const Key('saveSettingsButton')),
+    );
+    expect(
+      tester
+          .widget<ElevatedButton>(find.byKey(const Key('saveSettingsButton')))
+          .onPressed,
+      isNull,
+    );
+    // 開発者モードは表示の切り替えだけなのでロックしない。GPSが不調なときに
+    // ログと詳細を見るために監視を止めさせることになるため。
+    await _scrollUntilVisible(
+      tester,
+      find.byKey(const Key('developerModeSwitch')),
+    );
+    expect(
+      tester
+          .widget<SwitchListTile>(
+            find.byKey(const Key('developerModeSwitch')),
+          )
+          .onChanged,
+      isNotNull,
+    );
+  });
+
+  testWidgets('save callback rejects a monitoring state change',
+      (tester) async {
+    final controller = buildTestController(hasGeoJson: true);
+
+    await _pumpSettings(tester, controller);
+    await _scrollUntilVisible(
+      tester,
+      find.byKey(const Key('saveSettingsButton')),
+    );
+    final saveCallback = tester
+        .widget<ElevatedButton>(find.byKey(const Key('saveSettingsButton')))
+        .onPressed!;
+    controller.debugSeed(monitoringLifecycle: MonitoringLifecycle.active);
+
+    saveCallback();
+    await tester.pump();
+
+    expect(find.text('監視を停止してから設定を変更してください。'), findsOneWidget);
+  });
+
   testWidgets('falls back when default config asset cannot load',
       (tester) async {
     await clearDefaultConfigAssetMock();

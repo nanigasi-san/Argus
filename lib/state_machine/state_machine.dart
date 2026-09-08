@@ -34,6 +34,9 @@ class StateMachine {
   final PointInPolygon _pip;
   HysteresisCounter _hysteresis;
   LocationStateStatus _current = LocationStateStatus.waitGeoJson;
+  double? _lastTrustedOuterDistanceM;
+  LatLng? _lastTrustedOuterBoundaryPoint;
+  double? _lastTrustedOuterBearingDeg;
 
   /// 現在の状態を取得します。
   LocationStateStatus get current => _current;
@@ -45,6 +48,7 @@ class StateMachine {
 
   void resetMonitoring() {
     _hysteresis.reset();
+    _clearTrustedOuterNavigation();
     _current = _geoModel.hasGeometry
         ? LocationStateStatus.waitStart
         : LocationStateStatus.waitGeoJson;
@@ -69,6 +73,7 @@ class StateMachine {
     _geoModel = geoModel;
     _areaIndex = index;
     _hysteresis.reset();
+    _clearTrustedOuterNavigation();
     _current = geoModel.hasGeometry
         ? LocationStateStatus.waitStart
         : LocationStateStatus.waitGeoJson;
@@ -82,8 +87,46 @@ class StateMachine {
     final observedAt = fix.monitoringElapsed ??
         Duration(microseconds: fix.timestamp.microsecondsSinceEpoch);
     final snapshot = _evaluateInternal(fix, observedAt);
+    // 精度だけでなく座標の妥当性も含む。名前が精度だけを指していると、
+    // 条件が増えたときに読み違える。
+    final isUsable = _isUsableFix(fix);
+    if (isUsable && snapshot.status == LocationStateStatus.outer) {
+      // 値が取れなかったfixで上書きしない。上書きすると、直前まで表示できて
+      // いた最後の信頼できる案内が消えてしまう。
+      if (snapshot.distanceToBoundaryM != null) {
+        _lastTrustedOuterDistanceM = snapshot.distanceToBoundaryM;
+        _lastTrustedOuterBoundaryPoint = snapshot.nearestBoundaryPoint;
+        _lastTrustedOuterBearingDeg = snapshot.bearingToBoundaryDeg;
+      }
+    } else if (isUsable &&
+        snapshot.status != LocationStateStatus.outerPending) {
+      _clearTrustedOuterNavigation();
+    }
     _current = snapshot.status;
     return snapshot;
+  }
+
+  /// 判定に使える測位か。
+  ///
+  /// 精度に加えて座標の有限性と範囲も見る。NaN や範囲外の座標が来ると、
+  /// バウンディングボックスの比較がすべて false になって候補ポリゴンが空になり、
+  /// 距離計算も NaN になる。結果として「エリア外だがOUTERに確定しない」
+  /// outerPending のまま警報が鳴らない状態が続く。
+  bool _isUsableFix(LocationFix fix) {
+    final accuracy = fix.accuracyMeters;
+    if (accuracy == null ||
+        !accuracy.isFinite ||
+        accuracy > _config.gpsAccuracyBadMeters) {
+      return false;
+    }
+    final latitude = fix.latitude;
+    final longitude = fix.longitude;
+    return latitude.isFinite &&
+        longitude.isFinite &&
+        latitude >= -90 &&
+        latitude <= 90 &&
+        longitude >= -180 &&
+        longitude <= 180;
   }
 
   StateSnapshot _evaluateInternal(LocationFix fix, Duration observedAt) {
@@ -97,82 +140,30 @@ class StateMachine {
       );
     }
 
-    if (fix.accuracyMeters == null ||
-        fix.accuracyMeters! > _config.gpsAccuracyBadMeters) {
-      // outer になった場合は GPS_BAD の精度チェックでは取り消さない。
-      // ただし、実際に内側に戻ったかどうかはチェックする必要がある
+    if (!_isUsableFix(fix)) {
+      // 確定済みOUTERは、精度不良の測位では解除しない。
+      // 誤差の大きい1点が偶然エリア内を指して警報を止める方が危険なため、
+      // 警報は維持し、案内には最後の信頼できるfixだけを使用する。
       if (_current == LocationStateStatus.outer) {
-        // OUTER状態の場合、精度が悪くても内側に戻ったかどうかをチェック
-        final searchPolys = _candidatePolygons(fix.latitude, fix.longitude);
-        if (searchPolys.isEmpty) {
-          final boundsEval = _nearestBoundsEvaluation(
-            fix.latitude,
-            fix.longitude,
-          );
-          return StateSnapshot(
-            status: LocationStateStatus.outer,
-            timestamp: fix.timestamp,
-            horizontalAccuracyM: fix.accuracyMeters,
-            distanceToBoundaryM: boundsEval?.distanceToBoundaryM,
-            geoJsonLoaded: true,
-            nearestBoundaryPoint: boundsEval?.nearestPoint,
-            bearingToBoundaryDeg: boundsEval?.bearingToBoundaryDeg,
-            notes:
-                'Low accuracy ${fix.accuracyMeters?.toStringAsFixed(1) ?? '-'}m, but maintaining OUTER state',
-          );
-        }
-
-        final polygonEval = _evaluatePolygons(
-          fix.latitude,
-          fix.longitude,
-          searchPolys,
-        );
-
-        // Check if the fix has re-entered the area
-        final insideEval = polygonEval.inside;
-
-        if (insideEval != null && insideEval.contains) {
-          // When accuracy is poor but we are inside, treat as INNER/NEAR
-          _hysteresis.reset();
-          final distance = insideEval.distanceToBoundaryM;
-          final isNear = distance < _config.innerBufferM;
-          return StateSnapshot(
-            status:
-                isNear ? LocationStateStatus.near : LocationStateStatus.inner,
-            timestamp: fix.timestamp,
-            horizontalAccuracyM: fix.accuracyMeters,
-            distanceToBoundaryM: distance,
-            geoJsonLoaded: true,
-            nearestBoundaryPoint: insideEval.nearestPoint,
-            bearingToBoundaryDeg: insideEval.bearingToBoundaryDeg,
-            notes:
-                'Low accuracy ${fix.accuracyMeters?.toStringAsFixed(1) ?? '-'}m, but inside area',
-          );
-        }
-
-        // Otherwise stay in OUTER with best-effort distance
-        final nearestEval = polygonEval.nearest;
-        // coverage:ignore-start
-        // nearestEval is defensive-nullable; valid geometry evaluations always
-        // produce a nearest boundary candidate.
-        final distance = nearestEval?.distanceToBoundaryM;
-        // coverage:ignore-end
         return StateSnapshot(
           status: LocationStateStatus.outer,
           timestamp: fix.timestamp,
           horizontalAccuracyM: fix.accuracyMeters,
-          distanceToBoundaryM: distance,
+          distanceToBoundaryM: _lastTrustedOuterDistanceM,
           geoJsonLoaded: true,
-          nearestBoundaryPoint:
-              nearestEval?.nearestPoint, // coverage:ignore-line
-          bearingToBoundaryDeg:
-              nearestEval?.bearingToBoundaryDeg, // coverage:ignore-line
+          nearestBoundaryPoint: _lastTrustedOuterBoundaryPoint,
+          bearingToBoundaryDeg: _lastTrustedOuterBearingDeg,
+          navigationFromLastReliableFix: true,
           notes:
-              'Low accuracy ${fix.accuracyMeters?.toStringAsFixed(1) ?? '-'}m, but maintaining OUTER state',
+              'Low accuracy ${fix.accuracyMeters?.toStringAsFixed(1) ?? '-'}m; maintaining OUTER with last reliable guidance',
         );
       }
-      // OUTER状態でない場合のみ、GPS_BADに遷移
-      _hysteresis.reset();
+      // OUTER状態でない場合のみ、GPS_BADに遷移。
+      // ヒステリシスはリセットしない。使えない測位は「エリア内に戻った証拠」
+      // ではないので、これまでに数えた良好なエリア外サンプルを捨てる理由がない。
+      // リセットしていると、木の下などで精度が一定周期で悪化する環境では
+      // leaveConfirmSeconds に到達できず、実際にエリア外なのに警報が
+      // 永久に鳴らない。エリア内へ戻ったことは精度良好なfixだけが証明する。
       return StateSnapshot(
         status: LocationStateStatus.gpsBad,
         timestamp: fix.timestamp,
@@ -190,7 +181,9 @@ class StateMachine {
         fix.longitude,
       );
       final distance = boundsEval?.distanceToBoundaryM;
-      final reached = _hysteresis.addSample(observedAt) && distance != null;
+      // 確定条件はヒステリシスだけで決める。distance は案内表示用の値であり、
+      // これを条件に混ぜると、距離を計算できなかっただけで警報が出なくなる。
+      final reached = _hysteresis.addSample(observedAt);
 
       return StateSnapshot(
         status: reached
@@ -352,6 +345,12 @@ class StateMachine {
     }
 
     return _PolygonEvaluationResult(inside: inside, nearest: nearest);
+  }
+
+  void _clearTrustedOuterNavigation() {
+    _lastTrustedOuterDistanceM = null;
+    _lastTrustedOuterBoundaryPoint = null;
+    _lastTrustedOuterBearingDeg = null;
   }
 
   double _haversine(

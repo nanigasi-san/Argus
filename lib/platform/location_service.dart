@@ -19,7 +19,24 @@ class LocationFix {
   final double longitude;
   final DateTime timestamp;
   final double? accuracyMeters;
+
+  /// 監視開始からの単調増加する経過時間。
+  ///
+  /// `AppController` が監視セッション単位で計測して付与する。位置サービスの
+  /// 再接続をまたいでも巻き戻らないため、ヒステリシス判定の基準に使える。
+  /// 壁時計やGPSタイムスタンプは補正・巻き戻りがあるため使用しない。
   final Duration? monitoringElapsed;
+
+  /// 監視セッションの経過時間を付与した複製を返します。
+  LocationFix withMonitoringElapsed(Duration? elapsed) {
+    return LocationFix(
+      latitude: latitude,
+      longitude: longitude,
+      timestamp: timestamp,
+      accuracyMeters: accuracyMeters,
+      monitoringElapsed: elapsed,
+    );
+  }
 }
 
 /// 位置情報サービスへの抽象インターフェース。
@@ -36,6 +53,13 @@ enum LocationServiceStartStatus {
   servicesDisabled,
   permissionMissing,
   error,
+}
+
+class LocationStreamEndedException implements Exception {
+  const LocationStreamEndedException();
+
+  @override
+  String toString() => '位置情報ストリームが予期せず終了しました。';
 }
 
 class LocationServiceStartResult {
@@ -106,7 +130,6 @@ class GeolocatorLocationService implements LocationService {
       StreamController<LocationFix>.broadcast();
   StreamSubscription<Position>? _subscription;
   DateTime? _startedAt;
-  Stopwatch? _monitoringStopwatch;
 
   @override
   Stream<LocationFix> get stream => _controller.stream;
@@ -139,10 +162,17 @@ class GeolocatorLocationService implements LocationService {
     try {
       await _subscription?.cancel();
       _startedAt = DateTime.now();
-      _monitoringStopwatch = Stopwatch()..start();
       _subscription = Geolocator.getPositionStream(
         locationSettings: settings,
-      ).listen(_emitPosition);
+      ).listen(
+        _emitPosition,
+        onError: (Object error, StackTrace stackTrace) {
+          _controller.addError(error, stackTrace);
+        },
+        onDone: () {
+          _controller.addError(const LocationStreamEndedException());
+        },
+      );
       return const LocationServiceStartResult.started();
     } catch (e) {
       return LocationServiceStartResult(
@@ -156,17 +186,26 @@ class GeolocatorLocationService implements LocationService {
   Future<void> stop() async {
     await _subscription?.cancel();
     _subscription = null;
-    _monitoringStopwatch?.stop();
-    _monitoringStopwatch = null;
     _startedAt = null;
   }
 
+  // monitoringElapsed はここでは付けない。位置サービスは再接続で stop/start を
+  // 繰り返すため、ここで計測すると再接続ごとに 0 へ戻り、ヒステリシスの基準時刻が
+  // 巻き戻る。監視セッションの経過時間は AppController が所有する。
   void _emitPosition(Position position) {
     final startedAt = _startedAt;
-    final stopwatch = _monitoringStopwatch;
-    if (startedAt == null ||
-        stopwatch == null ||
-        position.timestamp.isBefore(startedAt)) {
+    if (startedAt == null || position.timestamp.isBefore(startedAt)) {
+      return;
+    }
+    // 使えない座標はここで捨てる。下流へ流すと候補ポリゴンの探索も距離計算も
+    // 破綻するうえ、fixが届いた扱いになるのでGPS途絶の警告も出なくなる。
+    // 捨てればウォッチドッグが途絶として検知し、利用者に伝わる。
+    if (!position.latitude.isFinite ||
+        !position.longitude.isFinite ||
+        position.latitude < -90 ||
+        position.latitude > 90 ||
+        position.longitude < -180 ||
+        position.longitude > 180) {
       return;
     }
     _controller.add(
@@ -175,7 +214,6 @@ class GeolocatorLocationService implements LocationService {
         longitude: position.longitude,
         accuracyMeters: position.accuracy,
         timestamp: position.timestamp,
-        monitoringElapsed: stopwatch.elapsed,
       ),
     );
   }

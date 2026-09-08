@@ -53,7 +53,7 @@ Widget test はユーザーから見える文言と導線を守る。
 
 ### Integration Smoke
 
-`integration_test/ui_smoke_test.dart` は実機または Android emulator / iOS Simulator 向けの smoke に限定する。unit / widget で守れる詳細仕様とは重複させない。
+`integration_test/ui_smoke_test.dart` は実機または Android emulator / iOS Simulator 向けの画面 smoke に限定する。`integration_test/monitoring_review_geojson_test.dart` は審査用GeoJSONを実際に読み込み、監視開始から INNER / OUTER / 復帰までを端末上で確認する。
 
 対象:
 
@@ -62,8 +62,11 @@ Widget test はユーザーから見える文言と導線を守る。
 - Settings
 - QR camera permission error
 - Home から Settings への navigation
+- `docs/app_store/review_test_area.geojson` の読込
+- 監視ライフサイクル表示と監視中の設定ロック
+- INNER → OUTER → 低精度の内側fixでもOUTER維持 → 高精度fixでINNER復帰
 
-Android emulator を CI に追加する作業は現在の範囲外。ローカルまたは実機で必要時に実行する。
+Android emulator のシナリオは通常のunit CIとは分離し、`.github/workflows/android_emulator_ci.yml` で実行する。
 
 ## 実行コマンド
 
@@ -97,6 +100,7 @@ flutter test \
 
 ```sh
 flutter test integration_test/ui_smoke_test.dart -d <device-id>
+flutter test integration_test/monitoring_review_geojson_test.dart -d <device-id>
 ```
 
 PowerShell helper:

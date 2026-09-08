@@ -41,6 +41,12 @@ Future<void> _tapWaitStart(WidgetTester tester) async {
   await tester.tap(statusTapTarget.first);
 }
 
+Future<void> _pumpMonitoringStart(WidgetTester tester) async {
+  for (var index = 0; index < 5; index++) {
+    await tester.pump();
+  }
+}
+
 void main() {
   tearDown(() async {
     await clearUrlLauncherMock();
@@ -97,6 +103,191 @@ void main() {
 
     expect(find.textContaining('境界までの距離'), findsOneWidget);
     expect(find.text('方角: 180度 (南)'), findsOneWidget);
+  });
+
+  testWidgets('labels cached OUTER guidance when GPS accuracy is poor',
+      (tester) async {
+    final controller = buildTestController(
+      hasGeoJson: true,
+      snapshot: StateSnapshot(
+        status: LocationStateStatus.outer,
+        timestamp: DateTime.utc(2024, 1, 1),
+        horizontalAccuracyM: 100,
+        distanceToBoundaryM: 5,
+        bearingToBoundaryDeg: 180,
+        geoJsonLoaded: true,
+        // 判定は状態機械が行い、スナップショットが事実として運ぶ。
+        navigationFromLastReliableFix: true,
+      ),
+    );
+
+    await _pumpHome(tester, controller);
+
+    expect(
+      find.byKey(const Key('low-accuracy-navigation-warning')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('最後に精度が良かった位置'), findsOneWidget);
+    expect(find.text('方角: 180度 (南)'), findsOneWidget);
+  });
+
+  testWidgets('does not label guidance that came from a usable fix',
+      (tester) async {
+    final controller = buildTestController(
+      hasGeoJson: true,
+      snapshot: StateSnapshot(
+        status: LocationStateStatus.outer,
+        timestamp: DateTime.utc(2024, 1, 1),
+        horizontalAccuracyM: 5,
+        distanceToBoundaryM: 5,
+        bearingToBoundaryDeg: 180,
+        geoJsonLoaded: true,
+      ),
+    );
+
+    await _pumpHome(tester, controller);
+
+    expect(
+      find.byKey(const Key('low-accuracy-navigation-warning')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('shows reconnecting lifecycle and force-close warning',
+      (tester) async {
+    final controller = buildTestController(
+      hasGeoJson: true,
+      monitoringLifecycle: MonitoringLifecycle.reconnecting,
+      snapshot: StateSnapshot(
+        status: LocationStateStatus.waitStart,
+        timestamp: DateTime.utc(2024, 1, 1),
+        geoJsonLoaded: true,
+      ),
+    );
+
+    await _pumpHome(tester, controller);
+
+    expect(find.text('再接続中'), findsOneWidget);
+    expect(find.text('RECONNECTING'), findsOneWidget);
+    expect(find.byKey(const Key('force-close-warning')), findsOneWidget);
+    expect(find.byKey(const Key('finish-race-button')), findsOneWidget);
+    expect(find.text('ファイルを\n読み込む'), findsNothing);
+  });
+
+  testWidgets('keeps the OUTER warning visible while GPS is stale',
+      (tester) async {
+    // 回帰テスト: 監視状態のラベルでジオフェンス状態を塗り替えると、
+    // エリア外で警報が鳴っている最中にGPSが途絶したとき、円が
+    // 「再接続中」に変わって OUTER 警告が視覚的に消える。
+    for (final lifecycle in [
+      MonitoringLifecycle.stale,
+      MonitoringLifecycle.reconnecting,
+    ]) {
+      final controller = buildTestController(
+        hasGeoJson: true,
+        monitoringLifecycle: lifecycle,
+        snapshot: StateSnapshot(
+          status: LocationStateStatus.outer,
+          timestamp: DateTime.utc(2024, 1, 1),
+          geoJsonLoaded: true,
+          distanceToBoundaryM: 42,
+          horizontalAccuracyM: 5,
+        ),
+      );
+
+      await _pumpHome(tester, controller);
+
+      // 主表示はジオフェンス警告のまま。
+      expect(find.text('外側'), findsOneWidget);
+      expect(find.text('OUTER'), findsOneWidget);
+      // 監視状態は副表示で併記され、隠れない。
+      expect(
+        find.byKey(const Key('monitoring-lifecycle-badge')),
+        findsOneWidget,
+      );
+    }
+  });
+
+  testWidgets('shows the geofence warning colour while GPS is stale',
+      (tester) async {
+    final controller = buildTestController(
+      hasGeoJson: true,
+      monitoringLifecycle: MonitoringLifecycle.reconnecting,
+      snapshot: StateSnapshot(
+        status: LocationStateStatus.outer,
+        timestamp: DateTime.utc(2024, 1, 1),
+        geoJsonLoaded: true,
+        horizontalAccuracyM: 5,
+      ),
+    );
+
+    await _pumpHome(tester, controller);
+
+    final label = tester.widget<Text>(find.text('外側'));
+    expect(label.style?.color, Colors.red);
+  });
+
+  testWidgets('alert reliability warning stays until dismissed',
+      (tester) async {
+    // 回帰テスト: Snackbar だと4秒で消えるため、走行中に数十秒後へ画面を
+    // 見た利用者には「サイレンが鳴っていない」事実が届かない。
+    final controller = buildTestController(
+      hasGeoJson: true,
+      alertReliabilityWarning: '警報音を発報できませんでした。',
+      snapshot: StateSnapshot(
+        status: LocationStateStatus.outer,
+        timestamp: DateTime.utc(2024, 1, 1),
+        geoJsonLoaded: true,
+        horizontalAccuracyM: 5,
+      ),
+    );
+
+    await _pumpHome(tester, controller);
+
+    expect(
+      find.byKey(const Key('alert-reliability-warning')),
+      findsOneWidget,
+    );
+
+    // 時間が経っても消えない。
+    await tester.pump(const Duration(seconds: 30));
+    expect(
+      find.byKey(const Key('alert-reliability-warning')),
+      findsOneWidget,
+    );
+
+    final dismiss = find.byKey(
+      const Key('alert-reliability-warning-dismiss'),
+    );
+    await tester.ensureVisible(dismiss);
+    await tester.pumpAndSettle();
+    await tester.tap(dismiss);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('alert-reliability-warning')), findsNothing);
+    expect(controller.alertReliabilityWarning, isNull);
+  });
+
+  testWidgets('shows stopping and failed lifecycle states', (tester) async {
+    final stoppingController = buildTestController(
+      hasGeoJson: true,
+      monitoringLifecycle: MonitoringLifecycle.stopping,
+    );
+
+    await _pumpHome(tester, stoppingController);
+
+    expect(find.text('停止中'), findsOneWidget);
+    expect(find.text('STOPPING'), findsOneWidget);
+
+    final failedController = buildTestController(
+      hasGeoJson: true,
+      monitoringLifecycle: MonitoringLifecycle.failed,
+    );
+
+    await _pumpHome(tester, failedController);
+
+    expect(find.text('開始失敗'), findsOneWidget);
+    expect(find.text('FAILED'), findsOneWidget);
   });
 
   testWidgets('shows snooze button only while OUTER', (tester) async {
@@ -571,10 +762,11 @@ void main() {
       matching: find.byType(InkWell),
     );
     await tester.tap(statusTapTarget.first);
-    await tester.pumpAndSettle();
+    await _pumpMonitoringStart(tester);
 
     expect(locationService.hasStarted, isTrue);
     expect(alarmVolumeClient.checkCount, 1);
+    controller.dispose();
   });
 
   testWidgets('low Android alarm volume blocks monitoring and shows dialog',
@@ -637,10 +829,12 @@ void main() {
     await _tapWaitStart(tester);
     await tester.pumpAndSettle();
     await tester.tap(find.text('再確認'));
-    await tester.pumpAndSettle();
+    await _pumpMonitoringStart(tester);
+    await tester.pump(const Duration(milliseconds: 300));
 
     expect(locationService.hasStarted, isTrue);
     expect(find.text('アラーム音量が低すぎます'), findsNothing);
+    controller.dispose();
   });
 
   testWidgets('cancel keeps monitoring stopped after low alarm volume',
@@ -664,7 +858,7 @@ void main() {
 
     await _pumpHome(tester, controller);
     await _tapWaitStart(tester);
-    await tester.pumpAndSettle();
+    await _pumpMonitoringStart(tester);
     await tester.tap(find.text('キャンセル'));
     await tester.pumpAndSettle();
 
@@ -689,7 +883,7 @@ void main() {
 
     await _pumpHome(tester, controller);
     await _tapWaitStart(tester);
-    await tester.pumpAndSettle();
+    await _pumpMonitoringStart(tester);
 
     expect(locationService.hasStarted, isTrue);
     expect(
@@ -698,6 +892,7 @@ void main() {
       ),
       isTrue,
     );
+    controller.dispose();
   });
 
   testWidgets('non-Android start is not blocked by alarm volume check',
@@ -726,6 +921,7 @@ void main() {
 
     expect(locationService.hasStarted, isTrue);
     expect(alarmVolumeClient.checkCount, 0);
+    controller.dispose();
   });
 
   testWidgets('sound settings failure shows snackbar', (tester) async {

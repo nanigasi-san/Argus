@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -7,22 +6,86 @@ import 'package:flutter/services.dart';
 
 import '../state_machine/state.dart';
 
+/// GPS途絶の経過時間を通知本文向けに整形します。
+String formatOutageDuration(Duration outage) {
+  if (outage.inHours >= 1) {
+    final minutes = outage.inMinutes % 60;
+    return minutes == 0
+        ? '${outage.inHours}時間'
+        : '${outage.inHours}時間$minutes分';
+  }
+  if (outage.inMinutes >= 1) {
+    return '${outage.inMinutes}分';
+  }
+  return '${outage.inSeconds}秒';
+}
+
+class AlertDeliveryReport {
+  const AlertDeliveryReport({
+    this.notificationError,
+    this.alarmError,
+    this.vibrationError,
+  });
+
+  final Object? notificationError;
+  final Object? alarmError;
+  final Object? vibrationError;
+
+  bool get hasFailures =>
+      notificationError != null || alarmError != null || vibrationError != null;
+
+  /// 失敗した経路を利用者向けの日本語で列挙します。
+  String get failedChannelsLabel {
+    final failures = <String>[];
+    if (notificationError != null) {
+      failures.add('通知');
+    }
+    if (alarmError != null) {
+      failures.add('警報音');
+    }
+    if (vibrationError != null) {
+      failures.add('バイブ');
+    }
+    return failures.join('・');
+  }
+
+  String get failureSummary {
+    final failures = <String>[];
+    if (notificationError != null) {
+      failures.add('notification=$notificationError');
+    }
+    if (alarmError != null) {
+      failures.add('alarm=$alarmError');
+    }
+    if (vibrationError != null) {
+      failures.add('vibration=$vibrationError');
+    }
+    return failures.join(', ');
+  }
+}
+
 class Notifier {
   Notifier({
     FlutterLocalNotificationsPlugin? plugin,
     LocalNotificationsClient? notificationsClient,
     AlarmPlayer? alarmPlayer,
     VibrationPlayer? vibrationPlayer,
+    Duration monitoringStaleVibrationDuration =
+        const Duration(milliseconds: 350),
   })  : _notifications = notificationsClient ??
             FlutterLocalNotificationsClient(
               plugin ?? FlutterLocalNotificationsPlugin(),
             ),
         _alarmPlayer = alarmPlayer ?? const NativeAlarmPlayer(),
-        _vibrationPlayer = vibrationPlayer ?? const NativeVibrationPlayer();
+        _vibrationPlayer = vibrationPlayer ?? const NativeVibrationPlayer(),
+        _monitoringStaleVibrationDuration = monitoringStaleVibrationDuration {
+    assert(!monitoringStaleVibrationDuration.isNegative);
+  }
 
   final LocalNotificationsClient _notifications;
   AlarmPlayer _alarmPlayer;
   final VibrationPlayer _vibrationPlayer;
+  final Duration _monitoringStaleVibrationDuration;
 
   final ValueNotifier<LocationStateStatus> badgeState =
       ValueNotifier<LocationStateStatus>(
@@ -32,12 +95,24 @@ class Notifier {
   static const _channelId = 'argus_alerts_visual_v2';
   static const _channelName = 'ARGUS警告';
   static const _channelDescription = 'ジオフェンスの安全エリアから離れたときに通知します。';
+  static const _healthChannelId = 'argus_monitoring_health_v1';
+  static const _healthChannelName = 'ARGUS監視状態';
   static const int _outerNotificationId = 1001;
+  static const int _monitoringStaleNotificationId = 1002;
 
-  bool _initialized = false;
-  bool _isAlarming = false;
+  Future<void>? _initialization;
+  bool _isAlarmChannelActive = false;
+  bool _isVibrationChannelActive = false;
   bool _isAlarmPreviewPlaying = false;
+
+  /// 直近の停止に失敗し、実際に鳴っているかどうか分からない状態か。
+  ///
+  /// 停止に失敗しても再生中フラグは倒さない（鳴り続けている可能性があるため）。
+  /// その結果 `_resumeAlarm` の「すでに鳴っているので開始不要」という近道が
+  /// 成立しなくなる。近道を通すとサイレンを開始しないまま成功を返してしまう。
+  bool _alertStopFailed = false;
   int _generation = 0;
+  Future<void> _monitoringHealthNotificationQueue = Future<void>.value();
 
   bool get isAlarmPreviewPlaying => _isAlarmPreviewPlaying;
 
@@ -54,9 +129,12 @@ class Notifier {
   Future<void> startAlarmPreview() async {
     final generation = ++_generation;
     _isAlarmPreviewPlaying = false;
-    _isAlarming = false;
-    await _alarmPlayer.stop();
-    await _vibrationPlayer.stop();
+    _throwFirstError(
+      await Future.wait<Object?>([
+        _stopAlarmChannel(),
+        _stopVibrationChannel(),
+      ]),
+    );
     if (generation != _generation) {
       return;
     }
@@ -64,13 +142,19 @@ class Notifier {
     try {
       await _alarmPlayer.start();
       if (generation != _generation) {
-        await _alarmPlayer.stop();
+        await _stopAlarmChannel();
         return;
       }
       _isAlarmPreviewPlaying = true;
-    } catch (_) {
+      // 試聴中も警報チャネルは実際に鳴っている。停止に失敗したときに
+      // 「鳴りっぱなし」を検知できるよう、本番の発報と同じ状態を持つ。
+      _isAlarmChannelActive = true;
+      _alertStopFailed = false;
+    } catch (error) {
       _isAlarmPreviewPlaying = false;
-      await _alarmPlayer.stop();
+      // 後始末の失敗で元のエラーを覆い隠さない。ここで stop() が投げると
+      // 呼び出し元には開始失敗ではなく停止失敗が見え、原因を誤る。
+      await _stopAlarmChannel();
       rethrow;
     }
   }
@@ -78,14 +162,32 @@ class Notifier {
   Future<void> stopAlarmPreview() async {
     _generation += 1;
     _isAlarmPreviewPlaying = false;
-    await _alarmPlayer.stop();
+    final error = await _stopAlarmChannel();
+    if (error != null) {
+      throw error;
+    }
   }
 
-  Future<void> initialize() async {
-    if (_initialized) {
-      return;
-    }
+  /// 通知プラグインを初期化します。
+  ///
+  /// 実行中のFutureを覚えて共有する。`_initialized` を最後に立てるだけだと、
+  /// OUTER発報とGPS途絶警告が同時に走ったときに両方が初期化を通過し、
+  /// プラグインの初期化とチャネル作成が二重に実行される。
+  /// 失敗した場合は記憶を捨て、次回やり直せるようにする。
+  Future<void> initialize() {
+    return _initialization ??= _runInitialize();
+  }
 
+  Future<void> _runInitialize() async {
+    try {
+      await _initializeOnce();
+    } catch (error) {
+      _initialization = null;
+      rethrow;
+    }
+  }
+
+  Future<void> _initializeOnce() async {
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosInit = DarwinInitializationSettings(
       requestAlertPermission: false,
@@ -107,15 +209,22 @@ class Notifier {
         enableVibration: false,
       ),
     );
-
-    _initialized = true;
+    await _notifications.ensureAndroidChannel(
+      const AndroidNotificationChannel(
+        _healthChannelId,
+        _healthChannelName,
+        description: 'GPS監視の停止や再接続を通知します。',
+        importance: Importance.high,
+        playSound: false,
+        enableVibration: false,
+      ),
+    );
   }
 
-  Future<void> notifyOuter() async {
+  Future<AlertDeliveryReport> notifyOuter() async {
     if (_isAlarmPreviewPlaying) {
       await stopAlarmPreview();
     }
-    await initialize();
     final generation = _generation;
     const androidDetails = AndroidNotificationDetails(
       _channelId,
@@ -140,16 +249,94 @@ class Notifier {
       android: androidDetails,
       iOS: iosDetails,
     );
-    await _notifications.show(
-      _outerNotificationId,
-      'ARGUS警告',
-      '競技エリアから離れています。',
-      notificationDetails,
+    final notificationFuture = () async {
+      try {
+        await initialize();
+        await _notifications.show(
+          _outerNotificationId,
+          'ARGUS警告',
+          '競技エリアから離れています。',
+          notificationDetails,
+        );
+        if (generation != _generation) {
+          await _notifications.cancel(_outerNotificationId);
+        }
+        return null;
+      } catch (error) {
+        return error;
+      }
+    }();
+    final playbackFuture = _resumeAlarm(generation);
+    final playback = await playbackFuture;
+    final notificationError = await notificationFuture;
+    return AlertDeliveryReport(
+      notificationError: notificationError,
+      alarmError: playback.alarmError,
+      vibrationError: playback.vibrationError,
     );
-    if (generation != _generation) {
-      return;
-    }
-    await _resumeAlarm(generation);
+  }
+
+  /// GPS途絶の警告を出します。
+  ///
+  /// [outage] を渡すと経過時間を本文に含める。同じIDで再表示することで
+  /// 反復通知になり、内容が変わるので端末側でも更新として扱われる。
+  ///
+  /// [recoveryAbandoned] が true のときは「再接続しています」と書かない。
+  /// 実際には再試行をやめているので、書くと来ない復旧を待たせることになる。
+  Future<void> notifyMonitoringStale({
+    Duration? outage,
+    bool recoveryAbandoned = false,
+  }) async {
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        _healthChannelId,
+        _healthChannelName,
+        channelDescription: 'GPS監視の停止や再接続を通知します。',
+        importance: Importance.high,
+        priority: Priority.high,
+        // 音とバイブはネイティブ実装に一本化する（Androidは前景サービスで
+        // 動いているため pulse が確実に鳴る）。
+        playSound: false,
+        enableVibration: false,
+      ),
+      iOS: DarwinNotificationDetails(
+        presentAlert: true,
+        // iOSではアプリが停止していると Timer も AudioServices も動かないため、
+        // 通知音がバックグラウンドで唯一届く経路になる。警報音（alarm.caf）とは
+        // 区別したいので既定音を使う。
+        presentSound: true,
+        interruptionLevel: InterruptionLevel.timeSensitive,
+      ),
+    );
+    final elapsedLabel = outage == null || outage < const Duration(seconds: 1)
+        ? ''
+        : '（${formatOutageDuration(outage)}経過）';
+    final action = recoveryAbandoned
+        ? '自動再接続を停止しました。アプリを開いて状態を確認してください。'
+        : '位置情報へ再接続しています。';
+    final body = 'GPSを受信できません$elapsedLabel。$action';
+    final errors = await Future.wait<Object?>([
+      _captureError(
+        () => _enqueueMonitoringHealthNotification(() async {
+          await initialize();
+          await _notifications.show(
+            _monitoringStaleNotificationId,
+            'ARGUS監視警告',
+            body,
+            details,
+          );
+        }),
+      ),
+      _captureError(_startMonitoringStaleVibration),
+    ]);
+    _throwFirstError(errors);
+  }
+
+  Future<void> clearMonitoringStale() async {
+    await _enqueueMonitoringHealthNotification(() async {
+      await initialize();
+      await _notifications.cancel(_monitoringStaleNotificationId);
+    });
   }
 
   Future<void> notifyRecover() async {
@@ -163,80 +350,211 @@ class Notifier {
 
   Future<void> stopAlarm() async {
     _generation += 1;
-    _isAlarming = false;
     _isAlarmPreviewPlaying = false;
-    await _alarmPlayer.stop();
-    await _vibrationPlayer.stop();
+    final errors = await Future.wait<Object?>([
+      _stopAlarmChannel(),
+      _stopVibrationChannel(),
+    ]);
+    _throwFirstError(errors);
   }
 
   Future<void> resumeAlarm() async {
-    await _resumeAlarm(_generation);
+    final result = await _resumeAlarm(_generation);
+    result.throwIfFailed();
   }
 
   Future<void> reassertAlarm() async {
-    if (!_isAlarming) {
-      await _resumeAlarm(_generation);
-      return;
-    }
-
     final generation = _generation;
-    try {
-      await _alarmPlayer.start();
-      if (generation != _generation) {
-        await _alarmPlayer.stop();
-        return;
-      }
-      await _vibrationPlayer.stop();
-      await _vibrationPlayer.start();
-    } catch (_) {
-      _isAlarming = false;
-      rethrow;
-    }
+    final results = await Future.wait<Object?>([
+      _startAlarmChannel(generation, restart: true),
+      _startVibrationChannel(generation, restart: true),
+    ]);
+    final alarmError = results[0];
+    final vibrationError = results[1];
+    _PlaybackStartResult(
+      alarmError: alarmError,
+      vibrationError: vibrationError,
+    ).throwIfFailed();
   }
 
-  Future<void> _resumeAlarm(int generation) async {
+  Future<_PlaybackStartResult> _resumeAlarm(int generation) async {
     var activeGeneration = generation;
     if (_isAlarmPreviewPlaying) {
       await stopAlarmPreview();
       activeGeneration = _generation;
     }
-    if (_isAlarming || activeGeneration != _generation) {
-      return;
+    if (activeGeneration != _generation) {
+      return const _PlaybackStartResult();
     }
-    _isAlarming = true;
+    // 停止に失敗して状態が不明なときは近道を使わず必ず開始し直す。
+    final stateIsUnknown = _alertStopFailed;
+    final results = await Future.wait<Object?>([
+      _isAlarmChannelActive && !stateIsUnknown
+          ? Future<Object?>.value()
+          : _startAlarmChannel(activeGeneration, restart: stateIsUnknown),
+      _isVibrationChannelActive && !stateIsUnknown
+          ? Future<Object?>.value()
+          : _startVibrationChannel(activeGeneration, restart: stateIsUnknown),
+    ]);
+    final alarmError = results[0];
+    final vibrationError = results[1];
+    if (activeGeneration != _generation) {
+      return const _PlaybackStartResult();
+    }
+    return _PlaybackStartResult(
+      alarmError: alarmError,
+      vibrationError: vibrationError,
+    );
+  }
+
+  Future<Object?> _startAlarmChannel(
+    int generation, {
+    bool restart = false,
+  }) async {
     try {
+      if (restart) {
+        _isAlarmChannelActive = false;
+      }
       await _alarmPlayer.start();
-      if (activeGeneration != _generation) {
-        await _alarmPlayer.stop();
-        _isAlarming = false;
-        return;
+      if (generation != _generation) {
+        // 世代が進んでいる＝止める指示が入っている。停止に失敗したら
+        // 「鳴っていない」とは言えないので _stopAlarmChannel に任せる。
+        await _stopAlarmChannel();
+      } else {
+        _isAlarmChannelActive = true;
+        _alertStopFailed = false;
+      }
+      return null;
+    } catch (error) {
+      // 開始が途中まで進んで音が出ている可能性がある。フラグを先に倒すと、
+      // 後始末の停止も失敗したときに「鳴っていない」と嘘をつくことになる。
+      // 停止に成功した場合だけ倒す。
+      await _stopAlarmChannel();
+      return error;
+    }
+  }
+
+  Future<Object?> _startVibrationChannel(
+    int generation, {
+    bool restart = false,
+  }) async {
+    try {
+      if (restart) {
+        _isVibrationChannelActive = false;
+        await _vibrationPlayer.stop();
       }
       await _vibrationPlayer.start();
-      if (activeGeneration != _generation) {
-        await _alarmPlayer.stop();
-        await _vibrationPlayer.stop();
-        _isAlarming = false;
+      if (generation != _generation) {
+        await _stopVibrationChannel();
+      } else {
+        _isVibrationChannelActive = true;
+        _alertStopFailed = false;
       }
-    } catch (_) {
-      _isAlarming = false;
-      try {
-        await _alarmPlayer.stop();
-      } catch (_) {}
-      try {
-        await _vibrationPlayer.stop();
-      } catch (_) {}
-      rethrow;
+      return null;
+    } catch (error) {
+      await _stopVibrationChannel();
+      return error;
     }
   }
 
   Future<void> dismissOuterAlert() async {
     _generation += 1;
-    _isAlarming = false;
     _isAlarmPreviewPlaying = false;
-    await initialize();
-    await _notifications.cancel(_outerNotificationId);
-    await _alarmPlayer.stop();
-    await _vibrationPlayer.stop();
+    final errors = await Future.wait<Object?>([
+      _captureError(() async {
+        await initialize();
+        await _notifications.cancel(_outerNotificationId);
+      }),
+      _stopAlarmChannel(),
+      _stopVibrationChannel(),
+    ]);
+    _throwFirstError(errors);
+  }
+
+  /// 停止できずに鳴り続けている可能性のある発報経路があるか。
+  ///
+  /// 停止に失敗した経路のフラグは倒さないため、`stopAlarm()` や
+  /// `dismissOuterAlert()` のあとに true ならネイティブ側で警報が
+  /// 継続している可能性がある。
+  bool get hasActiveAlertPlayback =>
+      _isAlarmChannelActive || _isVibrationChannelActive;
+
+  /// 警報音を停止する。成功した場合だけ再生中フラグを倒す。
+  ///
+  /// フラグを先に倒すと、停止が失敗して実際には鳴り続けているのに
+  /// アプリ側は「停止済み」と認識してしまい、再試行も検知もできなくなる。
+  Future<Object?> _stopAlarmChannel() async {
+    final error = await _captureError(_alarmPlayer.stop);
+    if (error == null) {
+      _isAlarmChannelActive = false;
+    } else {
+      _alertStopFailed = true;
+    }
+    return error;
+  }
+
+  /// 連続バイブを停止する。成功した場合だけ再生中フラグを倒す。
+  Future<Object?> _stopVibrationChannel() async {
+    final error = await _captureError(_vibrationPlayer.stop);
+    if (error == null) {
+      _isVibrationChannelActive = false;
+    } else {
+      _alertStopFailed = true;
+    }
+    return error;
+  }
+
+  Future<void> _startMonitoringStaleVibration() async {
+    if (_isVibrationChannelActive) {
+      return;
+    }
+    await _vibrationPlayer.pulse(_monitoringStaleVibrationDuration);
+  }
+
+  Future<void> _enqueueMonitoringHealthNotification(
+    Future<void> Function() operation,
+  ) {
+    final result = _monitoringHealthNotificationQueue.then(
+      (_) => operation(),
+    );
+    _monitoringHealthNotificationQueue = result.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace __) {},
+    );
+    return result;
+  }
+
+  Future<Object?> _captureError(Future<void> Function() action) async {
+    try {
+      await action();
+      return null;
+    } catch (error) {
+      return error;
+    }
+  }
+
+  void _throwFirstError(List<Object?> errors) {
+    for (final error in errors) {
+      if (error != null) {
+        throw error;
+      }
+    }
+  }
+}
+
+class _PlaybackStartResult {
+  const _PlaybackStartResult({this.alarmError, this.vibrationError});
+
+  final Object? alarmError;
+  final Object? vibrationError;
+
+  void throwIfFailed() {
+    if (alarmError != null) {
+      throw alarmError!;
+    }
+    if (vibrationError != null) {
+      throw vibrationError!;
+    }
   }
 }
 
@@ -337,6 +655,28 @@ class AlarmVolumeState {
   final double percent;
 }
 
+class AlertPlaybackState {
+  const AlertPlaybackState({
+    required this.alarmActive,
+    required this.vibrationPatternActive,
+  });
+
+  factory AlertPlaybackState.fromMap(Map<Object?, Object?> map) {
+    final alarmActive = map['alarmActive'];
+    final vibrationPatternActive = map['vibrationPatternActive'];
+    if (alarmActive is! bool || vibrationPatternActive is! bool) {
+      throw const FormatException('Invalid alert playback state.');
+    }
+    return AlertPlaybackState(
+      alarmActive: alarmActive,
+      vibrationPatternActive: vibrationPatternActive,
+    );
+  }
+
+  final bool alarmActive;
+  final bool vibrationPatternActive;
+}
+
 abstract class AlarmVolumeClient {
   Future<AlarmVolumeState> getAlarmVolumeState();
   Future<bool> openSoundSettings();
@@ -362,7 +702,7 @@ class MethodChannelAlarmClient
 
   @override
   Future<void> stop() {
-    return _channel.invokeMethod<void>('stop');
+    return _channel.invokeMethod<void>('stopAlarm');
   }
 
   @override
@@ -379,6 +719,22 @@ class MethodChannelAlarmClient
   @override
   Future<bool> openSoundSettings() async {
     return await _channel.invokeMethod<bool>('openSoundSettings') ?? false;
+  }
+}
+
+class MethodChannelAlertDiagnosticsClient {
+  const MethodChannelAlertDiagnosticsClient();
+
+  static const MethodChannel _channel = MethodChannel('argus/alarm');
+
+  Future<AlertPlaybackState> getPlaybackState() async {
+    final result = await _channel.invokeMapMethod<Object?, Object?>(
+      'getAlertPlaybackState',
+    );
+    if (result == null) {
+      throw const FormatException('Missing alert playback state.');
+    }
+    return AlertPlaybackState.fromMap(result);
   }
 }
 
@@ -435,11 +791,13 @@ class NativeAlarmPlayer implements AlarmPlayer {
 
 abstract class VibrationPlayer {
   Future<void> start();
+  Future<void> pulse(Duration duration);
   Future<void> stop();
 }
 
 abstract class VibrationPlatformClient {
   Future<void> startPattern();
+  Future<void> pulse(Duration duration);
   Future<void> stop();
 }
 
@@ -451,6 +809,16 @@ class MethodChannelVibrationClient implements VibrationPlatformClient {
   @override
   Future<void> startPattern() {
     return _channel.invokeMethod<void>('startVibration');
+  }
+
+  @override
+  Future<void> pulse(Duration duration) {
+    return _channel.invokeMethod<void>(
+      'pulseVibration',
+      <String, Object?>{
+        'durationMs': duration.inMilliseconds,
+      },
+    );
   }
 
   @override
@@ -482,6 +850,13 @@ class NativeVibrationPlayer implements VibrationPlayer {
   Future<void> start() async {
     if (_usesNativePlatformClient) {
       await _client.startPattern();
+    }
+  }
+
+  @override
+  Future<void> pulse(Duration duration) async {
+    if (_usesNativePlatformClient) {
+      await _client.pulse(duration);
     }
   }
 

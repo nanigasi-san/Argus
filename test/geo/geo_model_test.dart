@@ -162,7 +162,7 @@ void main() {
       expect(model.hasGeometry, true);
     });
 
-    test('handles empty FeatureCollection', () {
+    test('rejects an empty FeatureCollection', () {
       const geoJson = '''
       {
         "type": "FeatureCollection",
@@ -170,12 +170,19 @@ void main() {
       }
       ''';
 
-      final model = GeoModel.fromGeoJson(geoJson);
-      expect(model.polygons, isEmpty);
-      expect(model.hasGeometry, false);
+      expect(
+        () => GeoModel.fromGeoJson(geoJson),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            contains('featuresが空です'),
+          ),
+        ),
+      );
     });
 
-    test('handles GeoJSON with unsupported geometry types', () {
+    test('rejects unsupported geometry types instead of skipping them', () {
       const geoJson = '''
       {
         "type": "FeatureCollection",
@@ -198,12 +205,24 @@ void main() {
       }
       ''';
 
-      final model = GeoModel.fromGeoJson(geoJson);
-      // Should only include Polygon, skip Point
-      expect(model.polygons.length, 1);
+      // 黙って読み飛ばすと競技エリアが欠けたまま監視を開始してしまう。
+      expect(
+        () => GeoModel.fromGeoJson(geoJson),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('Feature[0]'),
+              contains('対応していないgeometry type'),
+              contains('Point'),
+            ),
+          ),
+        ),
+      );
     });
 
-    test('handles polygons with insufficient points', () {
+    test('rejects polygons with insufficient points', () {
       const geoJson = '''
       {
         "type": "FeatureCollection",
@@ -219,9 +238,10 @@ void main() {
       }
       ''';
 
-      final model = GeoModel.fromGeoJson(geoJson);
-      // Should skip polygons with less than 3 points
-      expect(model.polygons, isEmpty);
+      expect(
+        () => GeoModel.fromGeoJson(geoJson),
+        throwsA(isA<FormatException>()),
+      );
     });
 
     test('handles missing properties', () {
@@ -246,7 +266,7 @@ void main() {
       expect(model.polygons.first.version, null);
     });
 
-    test('handles empty MultiPolygon', () {
+    test('rejects an empty MultiPolygon', () {
       const geoJson = '''
       {
         "type": "FeatureCollection",
@@ -262,8 +282,16 @@ void main() {
       }
       ''';
 
-      final model = GeoModel.fromGeoJson(geoJson);
-      expect(model.polygons, isEmpty);
+      expect(
+        () => GeoModel.fromGeoJson(geoJson),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            contains('MultiPolygonにPolygonがありません'),
+          ),
+        ),
+      );
     });
   });
 }

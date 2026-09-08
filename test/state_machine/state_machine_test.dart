@@ -290,7 +290,7 @@ void main() {
     expect(snapshot.status, LocationStateStatus.outerPending);
   });
 
-  test('transitions from OUTER to INNER even with bad GPS when inside', () {
+  test('keeps OUTER when an inside-looking fix has bad GPS accuracy', () {
     // First, transition to OUTER
     final outsideFix = LocationFix(
       latitude: 35.02,
@@ -311,6 +311,9 @@ void main() {
       );
     }
     expect(snapshot.status, LocationStateStatus.outer);
+    final trustedDistance = snapshot.distanceToBoundaryM;
+    final trustedBoundary = snapshot.nearestBoundaryPoint;
+    final trustedBearing = snapshot.bearingToBoundaryDeg;
 
     // Now move back inside with bad GPS accuracy
     final insideWithBadGPS = LocationFix(
@@ -321,9 +324,15 @@ void main() {
     );
 
     snapshot = machine.evaluate(insideWithBadGPS);
-    // Should transition to INNER even with bad GPS if actually inside
-    expect(snapshot.status, LocationStateStatus.inner);
+    // A low-quality fix must never silence an active OUTER alert.
+    expect(snapshot.status, LocationStateStatus.outer);
     expect(snapshot.horizontalAccuracyM, 50);
+    expect(snapshot.distanceToBoundaryM, trustedDistance);
+    expect(snapshot.nearestBoundaryPoint?.latitude, trustedBoundary?.latitude);
+    expect(
+        snapshot.nearestBoundaryPoint?.longitude, trustedBoundary?.longitude);
+    expect(snapshot.bearingToBoundaryDeg, trustedBearing);
+    expect(snapshot.notes, contains('last reliable guidance'));
   });
 
   test('maintains OUTER with bad GPS when still outside', () {
@@ -514,6 +523,129 @@ void main() {
     expect(snapshot.status, LocationStateStatus.outerPending);
     expect(snapshot.distanceToBoundaryM, greaterThan(0));
     expect(countingPip.evaluationCount, 0);
+  });
+
+  test('treats non-finite coordinates as an unusable fix', () {
+    // 回帰テスト: NaN座標はバウンディングボックス比較がすべてfalseになるため
+    // 候補ポリゴンが空になり、距離もNaNになる。素通しすると「エリア外だが
+    // OUTERに確定しない」outerPending のまま警報が鳴らない。
+    machine.resetMonitoring();
+
+    final snapshot = machine.evaluate(
+      LocationFix(
+        latitude: double.nan,
+        longitude: 139.005,
+        accuracyMeters: 5,
+        timestamp: DateTime.utc(2024, 1, 1),
+        monitoringElapsed: Duration.zero,
+      ),
+    );
+
+    expect(snapshot.status, LocationStateStatus.gpsBad);
+  });
+
+  test('treats out-of-range coordinates as an unusable fix', () {
+    machine.resetMonitoring();
+
+    final snapshot = machine.evaluate(
+      LocationFix(
+        latitude: 91,
+        longitude: 139.005,
+        accuracyMeters: 5,
+        timestamp: DateTime.utc(2024, 1, 1),
+        monitoringElapsed: Duration.zero,
+      ),
+    );
+
+    expect(snapshot.status, LocationStateStatus.gpsBad);
+  });
+
+  test('a bad-accuracy fix does not discard exit evidence', () {
+    // 回帰テスト: 精度不良でヒステリシスをリセットすると、木の下などで精度が
+    // 周期的に悪化する環境では leaveConfirmSeconds に到達できず、実際に
+    // エリア外なのに警報が永久に鳴らない。
+    machine.resetMonitoring();
+
+    LocationFix outside(int second, {double accuracy = 5}) => LocationFix(
+          latitude: 35.05,
+          longitude: 139.05,
+          accuracyMeters: accuracy,
+          timestamp: DateTime.utc(2024, 1, 1).add(Duration(seconds: second)),
+          monitoringElapsed: Duration(seconds: second),
+        );
+
+    expect(
+      machine.evaluate(outside(0)).status,
+      LocationStateStatus.outerPending,
+    );
+    expect(
+      machine.evaluate(outside(4)).status,
+      LocationStateStatus.outerPending,
+    );
+
+    // 精度不良の1点をはさむ。エリア内に戻った証拠ではないので、
+    // これまでのエリア外サンプルは捨てない。
+    expect(
+      machine.evaluate(outside(6, accuracy: 999)).status,
+      LocationStateStatus.gpsBad,
+    );
+
+    expect(machine.evaluate(outside(11)).status, LocationStateStatus.outer);
+  });
+
+  test('a good fix inside still clears exit evidence', () {
+    machine.resetMonitoring();
+
+    LocationFix at(double lat, double lon, int second) => LocationFix(
+          latitude: lat,
+          longitude: lon,
+          accuracyMeters: 5,
+          timestamp: DateTime.utc(2024, 1, 1).add(Duration(seconds: second)),
+          monitoringElapsed: Duration(seconds: second),
+        );
+
+    machine.evaluate(at(35.05, 139.05, 0));
+    machine.evaluate(at(35.05, 139.05, 4));
+    // 精度良好でエリア内 → 証拠はリセットされる。
+    expect(
+      machine.evaluate(at(35.005, 139.005, 5)).status,
+      anyOf(LocationStateStatus.inner, LocationStateStatus.near),
+    );
+    expect(
+      machine.evaluate(at(35.05, 139.05, 20)).status,
+      LocationStateStatus.outerPending,
+    );
+  });
+
+  test('flags navigation that falls back to the last reliable fix', () {
+    // 回帰テスト: 表示側で精度としきい値から再計算していると、座標がNaNで
+    // 精度だけ良好なfixのときに食い違い、古い案内を現在位置として出す。
+    machine.resetMonitoring();
+
+    LocationFix outside(int second, {double accuracy = 5, double? lat}) =>
+        LocationFix(
+          latitude: lat ?? 35.05,
+          longitude: 139.05,
+          accuracyMeters: accuracy,
+          timestamp: DateTime.utc(2024, 1, 1).add(Duration(seconds: second)),
+          monitoringElapsed: Duration(seconds: second),
+        );
+
+    machine.evaluate(outside(0));
+    machine.evaluate(outside(4));
+    final confirmed = machine.evaluate(outside(11));
+    expect(confirmed.status, LocationStateStatus.outer);
+    expect(confirmed.navigationFromLastReliableFix, isFalse);
+
+    // 精度不良でOUTERを維持している間は、案内が過去の値であることを伝える。
+    final lowAccuracy = machine.evaluate(outside(14, accuracy: 999));
+    expect(lowAccuracy.status, LocationStateStatus.outer);
+    expect(lowAccuracy.navigationFromLastReliableFix, isTrue);
+
+    // 精度は良好だが座標が使えないfixでも同じ扱いになる。
+    final badCoordinates = machine.evaluate(outside(17, lat: double.nan));
+    expect(badCoordinates.status, LocationStateStatus.outer);
+    expect(badCoordinates.navigationFromLastReliableFix, isTrue);
   });
 }
 

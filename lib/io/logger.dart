@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 
 import '../platform/location_service.dart';
@@ -8,11 +9,15 @@ import '../state_machine/state.dart';
 ///
 /// 状態変更や位置情報の更新をログとして記録し、JSONL形式でエクスポートできます。
 class EventLogger {
-  EventLogger();
+  EventLogger({this.maxRecords = 20000})
+      : assert(maxRecords > 0, 'maxRecords must be positive');
+
+  final int maxRecords;
 
   final StreamController<Map<String, dynamic>> _events =
       StreamController<Map<String, dynamic>>.broadcast();
-  final List<Map<String, dynamic>> _records = <Map<String, dynamic>>[];
+  final ListQueue<Map<String, dynamic>> _records =
+      ListQueue<Map<String, dynamic>>();
 
   Stream<Map<String, dynamic>> get events => _events.stream;
 
@@ -38,7 +43,7 @@ class EventLogger {
       'nearestLon': snapshot.nearestBoundaryPoint?.longitude,
       'notes': snapshot.notes,
     };
-    _records.add(record);
+    _addRecord(record);
     _events.add(record);
     return message;
   }
@@ -57,7 +62,7 @@ class EventLogger {
       'status': 'GPS_FIX',
       'accuracyM': fix.accuracyMeters,
     };
-    _records.add(record);
+    _addRecord(record);
     _events.add(record);
     return message;
   }
@@ -65,6 +70,13 @@ class EventLogger {
   /// 記録されたすべてのログをJSONL形式でエクスポートします。
   Future<String> exportJsonl() async {
     const encoder = JsonEncoder.withIndent('  ');
-    return encoder.convert(_records);
+    return encoder.convert(_records.toList(growable: false));
+  }
+
+  void _addRecord(Map<String, dynamic> record) {
+    if (_records.length >= maxRecords) {
+      _records.removeFirst();
+    }
+    _records.addLast(record);
   }
 }

@@ -15,6 +15,21 @@ typedef ConfigLoader = Future<AppConfig> Function();
 /// ファイル操作を管理するクラス。
 ///
 /// GeoJSONファイルの選択、設定ファイルの読み書き、ログファイルの取得を提供します。
+/// 設定の読み込み結果。
+///
+/// 「まだ保存されていない（初回起動）」と「保存されているが読めなかった」を
+/// 区別するために使う。後者は利用者が調整した安全側の閾値が黙って初期値へ
+/// 戻ることを意味するので、伝える必要がある。
+class ConfigLoadResult {
+  const ConfigLoadResult({required this.config, this.fallbackReason});
+
+  final AppConfig config;
+
+  /// 保存済み設定を読めずに初期設定へ戻した理由。
+  /// 正常時とファイル未作成時（初回起動）は null。
+  final String? fallbackReason;
+}
+
 class FileManager {
   FileManager({
     GeoJsonFilePicker? filePicker,
@@ -80,15 +95,35 @@ class FileManager {
 
   /// 設定ファイルを読み込みます。
   ///
-  /// ファイルの読み込みに失敗した場合は、デフォルト設定を返します。
-  Future<AppConfig> readConfig() async {
+  /// 読み込めない場合はデフォルト設定を返す。ファイルが存在するのに読めな
+  /// かった場合だけ [ConfigLoadResult.fallbackReason] を埋める。初回起動の
+  /// ファイル未作成と、保存済み設定が壊れて初期値へ戻った状況は、利用者に
+  /// とって意味がまったく違う。
+  Future<ConfigLoadResult> readConfig() async {
+    File? file;
     try {
-      final file = await getConfigFile();
+      file = await getConfigFile();
+    } catch (error) {
+      return ConfigLoadResult(
+        config: (await _loadDefaultConfig()).normalized(),
+        fallbackReason: '設定ファイルの場所を特定できません: $error',
+      );
+    }
+
+    // getConfigFile() は存在しなければ初期設定を書き出して返すため、
+    // ここでは必ず存在する。初回起動は「初期設定が正しく読めた」として扱われ、
+    // fallbackReason は付かない。
+    try {
       final raw = await file.readAsString();
       final decoded = jsonDecode(raw) as Map<String, dynamic>;
-      return AppConfig.fromJson(decoded).normalized();
-    } catch (_) {
-      return (await _loadDefaultConfig()).normalized();
+      return ConfigLoadResult(
+        config: AppConfig.fromJson(decoded).normalized(),
+      );
+    } catch (error) {
+      return ConfigLoadResult(
+        config: (await _loadDefaultConfig()).normalized(),
+        fallbackReason: '設定ファイルを読み込めません: $error',
+      );
     }
   }
 
