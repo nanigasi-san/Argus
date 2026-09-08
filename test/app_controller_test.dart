@@ -2215,6 +2215,125 @@ void main() {
       );
     });
 
+    testWidgets('a failed resume after snooze is reported to the user',
+        (tester) async {
+      // 回帰テスト: ミュート解除の表示だけ戻して音が鳴らないと、エリア外
+      // なのに「警報は動いている」と誤解する。
+      final config = _testConfig();
+      final locationService = FakeLocationService();
+      final alarm = _FailRestartAlarmPlayer();
+      var elapsed = Duration.zero;
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: locationService,
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: alarm,
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+        elapsedProvider: () => elapsed,
+      );
+      controller.debugSeed(
+        config: config,
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+      await controller.startMonitoring();
+
+      locationService.add(
+        LocationFix(
+          latitude: 2,
+          longitude: 2,
+          accuracyMeters: 5,
+          timestamp: DateTime.utc(2024, 1, 1),
+        ),
+      );
+      await tester.pump();
+      elapsed += const Duration(seconds: 2);
+      locationService.add(
+        LocationFix(
+          latitude: 2,
+          longitude: 2,
+          accuracyMeters: 5,
+          timestamp: DateTime.utc(2024, 1, 1, 0, 0, 2),
+        ),
+      );
+      await tester.pump();
+      expect(controller.snapshot.status, LocationStateStatus.outer);
+
+      await controller.snoozeAlarmForOneMinute();
+      expect(controller.isAlarmSnoozed, isTrue);
+
+      await tester.pump(const Duration(minutes: 1));
+      await tester.pump();
+
+      expect(controller.isAlarmSnoozed, isFalse);
+      expect(
+        controller.alertReliabilityWarning,
+        contains('ミュート後に警報を再開できませんでした'),
+      );
+      controller.dispose();
+    });
+
+    testWidgets('a failed reassert on app resume is reported to the user',
+        (tester) async {
+      final config = _testConfig();
+      final locationService = FakeLocationService();
+      final alarm = _AppControllerFailSecondStartAlarmPlayer();
+      var elapsed = Duration.zero;
+      final controller = AppController(
+        stateMachine: StateMachine(config: config),
+        locationService: locationService,
+        fileManager: FakeFileManager(config: config),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: alarm,
+          vibrationPlayer: FakeVibrationPlayer(),
+        ),
+        permissionCoordinator: _GrantedPermissionCoordinator(),
+        elapsedProvider: () => elapsed,
+      );
+      controller.debugSeed(
+        config: config,
+        geoJson: _squareModel(),
+        permissionState: _grantedMonitoringPermissionState(),
+      );
+      await controller.startMonitoring();
+      locationService.add(
+        LocationFix(
+          latitude: 2,
+          longitude: 2,
+          accuracyMeters: 5,
+          timestamp: DateTime.utc(2024, 1, 1),
+        ),
+      );
+      await tester.pump();
+      elapsed += const Duration(seconds: 2);
+      locationService.add(
+        LocationFix(
+          latitude: 2,
+          longitude: 2,
+          accuracyMeters: 5,
+          timestamp: DateTime.utc(2024, 1, 1, 0, 0, 2),
+        ),
+      );
+      await tester.pump();
+      expect(controller.snapshot.status, LocationStateStatus.outer);
+
+      // OUTERのままアプリへ戻る。鳴らし直しに失敗する。
+      await controller.handleAppResumed();
+
+      expect(
+        controller.alertReliabilityWarning,
+        contains('アプリ復帰時に警報を再開できませんでした'),
+      );
+      controller.dispose();
+    });
+
     test('reconnect does not delay OUTER confirmation', () async {
       // 回帰テスト: 再接続は locationService.stop()/start() を呼ぶ。監視の経過時間を
       // 位置サービス側で計測していると、この stop/start でクロックが 0 に戻り、
@@ -3454,6 +3573,17 @@ class _AlwaysFailAlarmPlayer extends FakeAlarmPlayer {
 }
 
 /// 再生開始後は停止できなくなるプレイヤー。
+/// 一度停止したあと二度と再生できなくなるプレイヤー。
+class _FailRestartAlarmPlayer extends FakeAlarmPlayer {
+  @override
+  Future<void> start() async {
+    playCount += 1;
+    if (stopCount > 0) {
+      throw StateError('alarm restart failed');
+    }
+  }
+}
+
 class _StuckOnceStartedAlarmPlayer extends FakeAlarmPlayer {
   bool _started = false;
 

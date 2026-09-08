@@ -671,7 +671,14 @@ class AppController extends ChangeNotifier {
       await notifier.reassertAlarm();
       _logInfo('ALERT', 'Alarm playback reasserted after app resume.');
     } catch (error) {
-      _logWarning('ALERT', 'Failed to reassert alarm after app resume: $error');
+      // OUTERのままアプリへ戻ったのに警報を鳴らし直せなかった状態。
+      // 画面はOUTER表示のままなので、伝えないと「鳴っているはず」と誤解する。
+      _reportAlertFailure(
+        'アプリ復帰時に警報を再開できませんでした。'
+            'エリア外の警告に気づけない可能性があります。'
+            '端末の音量・サイレントモードを確認してください。',
+        'Failed to reassert alarm after app resume: $error',
+      );
     }
   }
 
@@ -1373,6 +1380,13 @@ class AppController extends ChangeNotifier {
   ///
   /// 停止失敗をログだけに残すと、警報が鳴り続けているのに画面には何も出ず、
   /// 利用者は原因も対処も分からないまま強制終了するしかなくなる。
+  /// 警報を出せなかったことを、閉じるまで消えない警告として伝えます。
+  void _reportAlertFailure(String message, String logMessage) {
+    _alertReliabilityWarning = message;
+    _logError('ALERT', logMessage);
+    notifyListeners();
+  }
+
   bool _reportUnstoppedAlert() {
     if (!notifier.hasActiveAlertPlayback) {
       return false;
@@ -1448,6 +1462,7 @@ class AppController extends ChangeNotifier {
         _alertReliabilityWarning = '${delivery.failedChannelsLabel}'
             'を発報できませんでした。エリア外の警告に気づけない可能性があります。'
             '端末の音量・サイレントモード・通知設定を確認してください。';
+        notifyListeners();
       }
       _logWarning(
         'ALERT',
@@ -1520,7 +1535,14 @@ class AppController extends ChangeNotifier {
         timestamp: _now(),
       );
     } catch (error) {
-      _logWarning('ALERT', 'Failed to resume alarm after snooze: $error');
+      // ミュート解除の表示だけ戻して音が鳴らないと、エリア外なのに
+      // 「警報は動いている」と誤解する。ログだけに残してはいけない。
+      _reportAlertFailure(
+        '1分間のミュート後に警報を再開できませんでした。'
+            'エリア外の警告に気づけない可能性があります。'
+            '端末の音量・サイレントモードを確認してください。',
+        'Failed to resume alarm after snooze: $error',
+      );
     }
     notifyListeners();
   }
