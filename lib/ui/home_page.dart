@@ -9,6 +9,7 @@ import '../geo/geo_model.dart';
 import '../io/log_entry.dart';
 import '../state_machine/state.dart';
 import 'background_location_disclosure_page.dart';
+import 'compass_navigation_card.dart';
 import 'monitoring_permission_card.dart';
 import 'qr_generator_page.dart';
 import 'qr_scanner_page.dart';
@@ -28,9 +29,9 @@ class HomePage extends StatelessWidget {
       builder: (context, controller, _) {
         final snapshot = controller.snapshot;
         final isIOS = Theme.of(context).platform == TargetPlatform.iOS;
-        final showNav = (controller.developerMode ||
-                snapshot.status == LocationStateStatus.outer) &&
-            controller.navigationEnabled;
+        final showNav = controller.developerMode ||
+            (snapshot.status == LocationStateStatus.outer &&
+                controller.navigationEnabled);
         // エラーはSnackbarで出して自動フェード
         WidgetsBinding.instance.addPostFrameCallback((_) {
           final msg = controller.lastErrorMessage;
@@ -187,6 +188,13 @@ class _HomeScrollableContent extends StatelessWidget {
                           ),
                         if (showNavigationDetails) ...[
                           const SizedBox(height: 24),
+                          CompassNavigationCard(
+                            targetBearingDeg: snapshot.bearingToBoundaryDeg,
+                            deviceHeadingDeg: controller.compassHeadingDeg,
+                            distanceToBoundaryM: snapshot.distanceToBoundaryM,
+                            compassAvailable: controller.compassAvailable,
+                          ),
+                          const SizedBox(height: 20),
                           Text(
                             '境界までの距離: '
                             '${snapshot.distanceToBoundaryM?.toStringAsFixed(1) ?? '-'} m',
