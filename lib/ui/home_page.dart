@@ -9,6 +9,7 @@ import '../geo/geo_model.dart';
 import '../io/log_entry.dart';
 import '../state_machine/state.dart';
 import 'background_location_disclosure_page.dart';
+import 'compass_navigation_card.dart';
 import 'monitoring_permission_card.dart';
 import 'qr_generator_page.dart';
 import 'qr_scanner_page.dart';
@@ -28,9 +29,9 @@ class HomePage extends StatelessWidget {
       builder: (context, controller, _) {
         final snapshot = controller.snapshot;
         final isIOS = Theme.of(context).platform == TargetPlatform.iOS;
-        final showNav = (controller.developerMode ||
-                snapshot.status == LocationStateStatus.outer) &&
-            controller.navigationEnabled;
+        final showNav = controller.developerMode ||
+            (snapshot.status == LocationStateStatus.outer &&
+                controller.navigationEnabled);
         // エラーはSnackbarで出して自動フェード
         WidgetsBinding.instance.addPostFrameCallback((_) {
           final msg = controller.lastErrorMessage;
@@ -151,6 +152,11 @@ class _HomeScrollableContent extends StatelessWidget {
                         const SizedBox(height: 20),
                         _LargeStatusDisplay(
                           status: snapshot.status,
+                          showCompass: showNavigationDetails,
+                          targetBearingDeg: snapshot.bearingToBoundaryDeg,
+                          deviceHeadingDeg: controller.compassHeadingDeg,
+                          compassAvailable: controller.compassAvailable,
+                          distanceToBoundaryM: snapshot.distanceToBoundaryM,
                           onTap: snapshot.status ==
                                   LocationStateStatus.waitStart
                               ? () {
@@ -186,24 +192,6 @@ class _HomeScrollableContent extends StatelessWidget {
                             },
                           ),
                         if (showNavigationDetails) ...[
-                          const SizedBox(height: 24),
-                          Text(
-                            '境界までの距離: '
-                            '${snapshot.distanceToBoundaryM?.toStringAsFixed(1) ?? '-'} m',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '方角: '
-                            '${snapshot.bearingToBoundaryDeg != null ? _formatBearing(snapshot.bearingToBoundaryDeg!) : '-'}',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
                           if (snapshot.status == LocationStateStatus.outer) ...[
                             const SizedBox(height: 16),
                             _AlarmSnoozeAction(
@@ -859,10 +847,20 @@ class _LargeStatusDisplay extends StatelessWidget {
   const _LargeStatusDisplay({
     required this.status,
     this.onTap,
+    this.showCompass = false,
+    this.targetBearingDeg,
+    this.deviceHeadingDeg,
+    this.compassAvailable = false,
+    this.distanceToBoundaryM,
   });
 
   final LocationStateStatus status;
   final VoidCallback? onTap;
+  final bool showCompass;
+  final double? targetBearingDeg;
+  final double? deviceHeadingDeg;
+  final bool compassAvailable;
+  final double? distanceToBoundaryM;
 
   Color _color(LocationStateStatus status) {
     switch (status) {
@@ -927,8 +925,8 @@ class _LargeStatusDisplay extends StatelessWidget {
     final statusText = _statusText(status);
     final statusCode = _statusCode(status);
     final screenSize = MediaQuery.of(context).size;
-    final circleSize = (screenSize.shortestSide * 0.75)
-        .clamp(220.0, screenSize.shortestSide * 0.9)
+    final circleSize = (screenSize.shortestSide * (showCompass ? 0.67 : 0.75))
+        .clamp(showCompass ? 180.0 : 220.0, screenSize.shortestSide * 0.9)
         .toDouble();
 
     Widget buildLabel(String text, TextStyle style) {
@@ -945,7 +943,8 @@ class _LargeStatusDisplay extends StatelessWidget {
       );
     }
 
-    final circleWidget = Container(
+    final circleWidget = RepaintBoundary(
+        child: Container(
       width: circleSize,
       height: circleSize,
       decoration: BoxDecoration(
@@ -956,66 +955,92 @@ class _LargeStatusDisplay extends StatelessWidget {
           width: 4,
         ),
       ),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            buildLabel(
-              statusText,
-              TextStyle(
-                fontSize: circleSize * 0.2,
-                fontWeight: FontWeight.bold,
-                color: color,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          if (showCompass)
+            Positioned.fill(
+              child: CompassStatusOverlay(
+                targetBearingDeg: targetBearingDeg,
+                deviceHeadingDeg: deviceHeadingDeg,
+                compassAvailable: compassAvailable,
               ),
             ),
-            const SizedBox(height: 12),
-            buildLabel(
-              statusCode,
-              TextStyle(
-                fontSize: circleSize *
-                    (status == LocationStateStatus.waitGeoJson ? 0.08 : 0.09),
-                color: color.withValues(alpha: 0.75),
-                fontWeight: FontWeight.w700,
-                letterSpacing:
-                    status == LocationStateStatus.waitGeoJson ? 0.8 : 1.2,
-              ),
-            ),
-            if (onTap != null && status == LocationStateStatus.waitStart) ...[
-              SizedBox(height: circleSize * 0.04),
-              Container(
-                padding: EdgeInsets.symmetric(
-                  vertical: circleSize * 0.02,
-                  horizontal: circleSize * 0.05,
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                buildLabel(
+                  statusText,
+                  TextStyle(
+                    fontSize: circleSize * (showCompass ? 0.18 : 0.2),
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
                 ),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(circleSize * 0.07),
-                  border: Border.all(color: color.withValues(alpha: 0.5)),
+                if (showCompass) ...[
+                  const SizedBox(height: 12),
+                  buildLabel(
+                    '境界までの距離: ${distanceToBoundaryM?.toStringAsFixed(0) ?? '-'} m',
+                    TextStyle(
+                        fontSize: circleSize * 0.065,
+                        color: Colors.black,
+                        fontWeight: FontWeight.w700),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                buildLabel(
+                  statusCode,
+                  TextStyle(
+                    fontSize: circleSize *
+                        (status == LocationStateStatus.waitGeoJson
+                            ? 0.08
+                            : 0.09),
+                    color: color.withValues(alpha: 0.75),
+                    fontWeight: FontWeight.w700,
+                    letterSpacing:
+                        status == LocationStateStatus.waitGeoJson ? 0.8 : 1.2,
+                  ),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.touch_app_rounded,
-                        size: circleSize * 0.07, color: color),
-                    SizedBox(width: circleSize * 0.015),
-                    Text(
-                      'タップで開始',
-                      style: TextStyle(
-                        fontSize: circleSize * 0.085,
-                        fontWeight: FontWeight.w800,
-                        color: color,
-                        letterSpacing: 0.5,
-                      ),
+                if (onTap != null &&
+                    status == LocationStateStatus.waitStart) ...[
+                  SizedBox(height: circleSize * 0.04),
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      vertical: circleSize * 0.02,
+                      horizontal: circleSize * 0.05,
                     ),
-                  ],
-                ),
-              ),
-            ],
-          ],
-        ),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(circleSize * 0.07),
+                      border: Border.all(color: color.withValues(alpha: 0.5)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.touch_app_rounded,
+                            size: circleSize * 0.07, color: color),
+                        SizedBox(width: circleSize * 0.015),
+                        Text(
+                          'タップで開始',
+                          style: TextStyle(
+                            fontSize: circleSize * 0.085,
+                            fontWeight: FontWeight.w800,
+                            color: color,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
-    );
+    ));
 
     // waitStartの時はタップ可能にする
     if (onTap != null) {
@@ -1029,7 +1054,48 @@ class _LargeStatusDisplay extends StatelessWidget {
       );
     }
 
-    return circleWidget;
+    if (!showCompass) return circleWidget;
+    final heading = deviceHeadingDeg;
+    final target = targetBearingDeg;
+    final ready = compassAvailable && heading != null && target != null;
+    final relative = ready
+        ? relativeBearingDegrees(
+            targetBearingDeg: target, deviceHeadingDeg: heading)
+        : 0.0;
+    final deviation = relative > 180 ? relative - 360 : relative;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Padding(
+          padding: EdgeInsets.all(circleSize * 0.17),
+          child: circleWidget,
+        ),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+          decoration: BoxDecoration(
+            color: ready && deviation.abs() <= 30
+                ? Colors.green.shade800
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            !ready
+                ? '方角を確認中'
+                : deviation.abs() <= 30
+                    ? '前へ'
+                    : '${deviation.abs().toStringAsFixed(0)}度${deviation > 0 ? '右' : '左'}を向いてください',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: ready && deviation.abs() <= 30
+                    ? Colors.white
+                    : Colors.black),
+          ),
+        ),
+      ],
+    );
   }
 }
 

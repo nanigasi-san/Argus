@@ -26,6 +26,8 @@
   <false/>
   <key>NSLocationWhenInUseUsageDescription</key>
   <string>監視開始時に現在地と競技エリアの位置関係を確認するため、位置情報を使用します。</string>
+  <key>NSMotionUsageDescription</key>
+  <string>エリア境界へ進むべき方向をコンパスで案内するため、モーションセンサーを使用します。</string>
   <key>NSCameraUsageDescription</key>
   <string>GeoJSONを含むQRコードを読み取るため、カメラへのアクセスが必要です。</string>
   <key>NSLocationAlwaysUsageDescription</key>

@@ -9,6 +9,7 @@ import 'package:argus/io/config.dart';
 import 'package:argus/io/file_manager.dart';
 import 'package:argus/io/logger.dart';
 import 'package:argus/platform/location_service.dart';
+import 'package:argus/platform/compass_service.dart';
 import 'package:argus/platform/notifier.dart';
 import 'package:argus/platform/permission_coordinator.dart';
 import 'package:argus/state_machine/state.dart';
@@ -111,6 +112,20 @@ class FakeLocationService implements LocationService {
   }
 }
 
+class FakeCompassService implements CompassService {
+  final StreamController<double?> _controller =
+      StreamController<double?>.broadcast();
+
+  @override
+  Stream<double?> get headings => _controller.stream;
+
+  void add(double? heading) => _controller.add(heading);
+
+  void addError(Object error) => _controller.addError(error);
+
+  Future<void> dispose() => _controller.close();
+}
+
 class RecordingAlarmVolumeClient implements AlarmVolumeClient {
   RecordingAlarmVolumeClient({
     this.states = const [
@@ -154,6 +169,7 @@ AppController buildTestController({
   PermissionCoordinator? permissionCoordinator,
   QrImageAnalyzer? qrImageAnalyzer,
   AlarmVolumeClient? alarmVolumeClient,
+  CompassService? compassService,
   bool? isAndroid,
 }) {
   final config = createTestConfig();
@@ -172,6 +188,7 @@ AppController buildTestController({
     permissionCoordinator: permissionCoordinator,
     qrImageAnalyzer: qrImageAnalyzer,
     alarmVolumeClient: alarmVolumeClient,
+    compassService: compassService,
     isAndroid: isAndroid,
   );
 

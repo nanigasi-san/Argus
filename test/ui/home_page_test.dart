@@ -10,6 +10,7 @@ import 'package:argus/platform/permission_coordinator.dart';
 import 'package:argus/state_machine/state.dart';
 import 'package:argus/state_machine/state_machine.dart';
 import 'package:argus/ui/home_page.dart';
+import 'package:argus/ui/compass_navigation_card.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../support/notifier_fakes.dart';
@@ -96,7 +97,73 @@ void main() {
     await _pumpHome(tester, controller);
 
     expect(find.textContaining('境界までの距離'), findsOneWidget);
-    expect(find.text('方角: 180度 (南)'), findsOneWidget);
+    expect(find.byType(CompassStatusOverlay), findsOneWidget);
+    expect(find.byType(CompassNavigationCard), findsNothing);
+  });
+
+  testWidgets('outer status and both buttons fit without scrolling',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final controller = buildTestController(
+      hasGeoJson: true,
+      snapshot: StateSnapshot(
+        status: LocationStateStatus.outer,
+        timestamp: DateTime.utc(2024, 1, 1),
+        distanceToBoundaryM: 457,
+        bearingToBoundaryDeg: 180,
+        geoJsonLoaded: true,
+      ),
+    );
+    await _pumpHome(tester, controller);
+    expect(find.byType(CompassNavigationCard), findsNothing);
+    expect(find.text('境界までの距離: 457 m'), findsOneWidget);
+    for (final label in ['長押しでレース終了', '1分間音を停止する']) {
+      final bounds = tester.getRect(find.text(label));
+      expect(bounds.top, greaterThan(0));
+      expect(bounds.bottom, lessThan(844));
+    }
+    expect(tester.takeException(), isNull);
+    controller.dispose();
+  });
+
+  testWidgets('uses large short guidance and highlights forward alignment',
+      (tester) async {
+    final compass = FakeCompassService();
+    final controller = buildTestController(
+      hasGeoJson: true,
+      compassService: compass,
+      snapshot: StateSnapshot(
+        status: LocationStateStatus.outer,
+        timestamp: DateTime.utc(2024, 1, 1),
+        distanceToBoundaryM: 457,
+        bearingToBoundaryDeg: 45,
+        geoJsonLoaded: true,
+      ),
+    );
+    controller.setDeveloperMode(true);
+    await _pumpHome(tester, controller);
+    compass.add(0);
+    await tester.pumpAndSettle();
+    expect(find.text('45度右を向いてください'), findsOneWidget);
+    expect(tester.getCenter(find.byKey(const Key('compassStatusPointer'))).dx,
+        greaterThan(tester.getCenter(find.byType(CompassStatusOverlay)).dx));
+    compass.add(90);
+    await tester.pumpAndSettle();
+    expect(find.text('45度左を向いてください'), findsOneWidget);
+    expect(tester.getCenter(find.byKey(const Key('compassStatusPointer'))).dx,
+        lessThan(tester.getCenter(find.byType(CompassStatusOverlay)).dx));
+    compass.add(15);
+    await tester.pumpAndSettle();
+    final forward = tester.widget<Text>(find.text('前へ'));
+    expect(forward.style!.fontSize, 28);
+    expect(forward.style!.color, Colors.white);
+    final distance = tester.widget<Text>(find.text('境界までの距離: 457 m'));
+    expect(distance.style!.color, Colors.black);
+    controller.dispose();
+    await compass.dispose();
   });
 
   testWidgets('shows snooze button only while OUTER', (tester) async {
@@ -150,7 +217,7 @@ void main() {
 
     expect(find.text('1分間ミュート中'), findsOneWidget);
     expect(find.textContaining('境界までの距離'), findsOneWidget);
-    expect(find.textContaining('方角'), findsOneWidget);
+    expect(find.byType(CompassStatusOverlay), findsOneWidget);
     expect(
       find.byWidgetPredicate(
         (widget) => widget is FilledButton && widget.onPressed == null,

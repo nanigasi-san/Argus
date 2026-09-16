@@ -14,6 +14,7 @@ import 'io/file_manager.dart';
 import 'io/log_entry.dart';
 import 'io/logger.dart';
 import 'platform/location_service.dart';
+import 'platform/compass_service.dart';
 import 'platform/notifier.dart';
 import 'platform/permission_coordinator.dart';
 import 'qr/geojson_qr_codec.dart';
@@ -38,17 +39,20 @@ class AppController extends ChangeNotifier {
     PermissionCoordinator? permissionCoordinator,
     QrImageAnalyzer? qrImageAnalyzer,
     AlarmVolumeClient? alarmVolumeClient,
+    CompassService? compassService,
     bool? isAndroid,
   })  : permissionCoordinator =
             permissionCoordinator ?? PermissionCoordinator(),
         _qrImageAnalyzer = qrImageAnalyzer ?? _defaultQrImageAnalyzer,
         alarmVolumeClient =
             alarmVolumeClient ?? const MethodChannelAlarmClient(),
+        compassService = compassService ?? const FlutterCompassService(),
         _isAndroidOverride = isAndroid;
 
   final PermissionCoordinator permissionCoordinator;
   final QrImageAnalyzer _qrImageAnalyzer;
   final AlarmVolumeClient alarmVolumeClient;
+  final CompassService compassService;
   final bool? _isAndroidOverride;
 
   final StateMachine stateMachine;
@@ -68,6 +72,9 @@ class AppController extends ChangeNotifier {
     notes: 'Booting',
   );
   StreamSubscription<LocationFix>? _subscription;
+  StreamSubscription<double?>? _compassSubscription;
+  double? _compassHeadingDeg;
+  bool _compassAvailable = false;
   String? _lastErrorMessage;
   String? _geoJsonFileName;
   String? _tempGeoJsonFilePath;
@@ -91,6 +98,8 @@ class AppController extends ChangeNotifier {
   bool get canSnoozeAlarm =>
       _snapshot.status == LocationStateStatus.outer && !_isAlarmSnoozed;
   bool get isAlarmPreviewPlaying => notifier.isAlarmPreviewPlaying;
+  double? get compassHeadingDeg => _compassHeadingDeg;
+  bool get compassAvailable => _compassAvailable;
   bool get canPreviewAlarm =>
       _subscription == null && _snapshot.status != LocationStateStatus.outer;
   MonitoringPermissionState get monitoringPermissionState =>
@@ -173,6 +182,7 @@ class AppController extends ChangeNotifier {
     _subscription = locationService.stream.listen(
       (fix) => unawaited(_handleFix(fix, runId)),
     );
+    _startCompass();
     _lastErrorMessage = null;
     _logInfo('APP', 'Monitoring started.');
     notifyListeners();
@@ -241,6 +251,9 @@ class AppController extends ChangeNotifier {
     await notifier.dismissOuterAlert();
     await _subscription?.cancel();
     _subscription = null;
+    if (!_developerMode) {
+      await _stopCompass();
+    }
     await locationService.stop();
     stateMachine.updateGeometry(_geoModel, _areaIndex);
     _snapshot = StateSnapshot(
@@ -266,6 +279,7 @@ class AppController extends ChangeNotifier {
     await notifier.dismissOuterAlert();
     await _subscription?.cancel();
     _subscription = null;
+    await _stopCompass();
     await locationService.stop();
     await cleanupTempGeoJsonFile();
     _logInfo('APP', 'Application terminated. Monitoring and alert stopped.');
@@ -292,6 +306,11 @@ class AppController extends ChangeNotifier {
       return;
     }
     _developerMode = enabled;
+    if (enabled) {
+      _startCompass();
+    } else if (_subscription == null) {
+      unawaited(_stopCompass());
+    }
     _logInfo('APP', 'Developer mode ${enabled ? 'enabled' : 'disabled'}.');
     notifyListeners();
   }
@@ -554,6 +573,48 @@ class AppController extends ChangeNotifier {
     return _subscription != null && runId == _monitoringRunId;
   }
 
+  void _startCompass() {
+    final previousSubscription = _compassSubscription;
+    _compassSubscription = null;
+    if (previousSubscription != null) {
+      unawaited(previousSubscription.cancel());
+    }
+
+    _compassHeadingDeg = null;
+    _compassAvailable = false;
+    _compassSubscription = compassService.headings.listen(
+      (heading) {
+        if (_isDisposed) {
+          return;
+        }
+        _compassHeadingDeg =
+            heading == null ? null : _normalizeBearing(heading);
+        _compassAvailable = heading != null;
+        notifyListeners();
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        if (_isDisposed) {
+          return;
+        }
+        _compassHeadingDeg = null;
+        _compassAvailable = false;
+        _logWarning('COMPASS', 'Compass unavailable: $error');
+        notifyListeners();
+      },
+    );
+  }
+
+  Future<void> _stopCompass() async {
+    await _compassSubscription?.cancel();
+    _compassSubscription = null;
+    _compassHeadingDeg = null;
+    _compassAvailable = false;
+  }
+
+  double _normalizeBearing(double bearing) {
+    return (bearing % 360 + 360) % 360;
+  }
+
   Future<void> _handleFix(LocationFix fix, int runId) async {
     if (!_isCurrentMonitoringRun(runId)) {
       return;
@@ -719,6 +780,7 @@ class AppController extends ChangeNotifier {
     _isDisposed = true;
     _clearAlarmSnooze();
     _subscription?.cancel();
+    _compassSubscription?.cancel();
     // dispose()は同期メソッドなので、非同期処理は実行しない
     // アプリ終了時のクリーンアップはmain.dartのWidgetsBindingObserverで処理
     super.dispose();
@@ -830,9 +892,8 @@ class AppController extends ChangeNotifier {
 
   @visibleForTesting
   String describeSnapshot(StateSnapshot snapshot) {
-    final showNav =
-        (_developerMode || snapshot.status == LocationStateStatus.outer) &&
-            _navigationEnabled;
+    final showNav = _developerMode ||
+        (snapshot.status == LocationStateStatus.outer && _navigationEnabled);
     final dist = showNav && snapshot.distanceToBoundaryM != null
         ? '${snapshot.distanceToBoundaryM!.toStringAsFixed(2)}m'
         : '-';

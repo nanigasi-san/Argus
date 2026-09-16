@@ -9,6 +9,7 @@ import 'package:argus/io/file_manager.dart';
 import 'package:argus/io/logger.dart';
 import 'package:argus/main.dart';
 import 'package:argus/platform/location_service.dart';
+import 'package:argus/platform/compass_service.dart';
 import 'package:argus/platform/notifier.dart';
 import 'package:argus/platform/permission_coordinator.dart';
 import 'package:argus/state_machine/state.dart';
@@ -37,13 +38,15 @@ class HarnessBuilder {
     StateSnapshot? snapshot,
     MonitoringPermissionState? permissionState,
     PermissionCoordinator? permissionCoordinator,
+    LocationService? locationService,
+    CompassService? compassService,
   }) {
     final config = createConfig();
     final stateMachine = StateMachine(config: config);
     final fileManager = HarnessFileManager(config: config);
     final controller = AppController(
       stateMachine: stateMachine,
-      locationService: HarnessLocationService(),
+      locationService: locationService ?? HarnessLocationService(),
       fileManager: fileManager,
       logger: HarnessEventLogger(),
       notifier: Notifier(
@@ -52,6 +55,7 @@ class HarnessBuilder {
         vibrationPlayer: HarnessVibrationPlayer(),
       ),
       permissionCoordinator: permissionCoordinator,
+      compassService: compassService,
     );
 
     GeoModel? geoModel;
