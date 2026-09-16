@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 /// Returns the clockwise turn from the device top to the target direction.
@@ -131,7 +133,9 @@ class CompassNavigationCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    const _CompassCardinalLabels(),
+                    _CompassCardinalLabels(
+                      headingDeg: compassAvailable ? heading ?? 0 : 0,
+                    ),
                     AnimatedRotation(
                       key: const Key('compassTargetArrow'),
                       turns: relativeBearing / 360,
@@ -266,8 +270,124 @@ class _DirectionArrowPainter extends CustomPainter {
   }
 }
 
+/// Adds live cardinal labels and a large boundary pointer to the status circle.
+class CompassStatusOverlay extends StatelessWidget {
+  const CompassStatusOverlay({
+    super.key,
+    required this.targetBearingDeg,
+    required this.deviceHeadingDeg,
+    required this.compassAvailable,
+  });
+
+  final double? targetBearingDeg;
+  final double? deviceHeadingDeg;
+  final bool compassAvailable;
+
+  @override
+  Widget build(BuildContext context) {
+    final heading = deviceHeadingDeg;
+    final target = targetBearingDeg;
+    final hasHeading = compassAvailable && heading != null;
+    final hasDirection = hasHeading && target != null;
+    final relative = hasDirection
+        ? relativeBearingDegrees(
+            targetBearingDeg: target, deviceHeadingDeg: heading)
+        : 180.0;
+    final aligned = hasDirection && (relative <= 30 || relative >= 330);
+    final pointerColor =
+        aligned ? Colors.green.shade800 : Theme.of(context).colorScheme.primary;
+    final dialAngle = hasHeading ? -heading * math.pi / 180 : 0.0;
+    final angle = hasDirection ? target * math.pi / 180 : 0.0;
+    return IgnorePointer(
+      child: LayoutBuilder(builder: (context, constraints) {
+        final size = constraints.maxWidth;
+        final pointerSize = size * 0.23;
+        return Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.center,
+          children: [
+            Positioned.fill(
+              child: CustomPaint(
+                key: const Key('compassForwardRange'),
+                painter: _ForwardRangePainter(aligned: aligned),
+              ),
+            ),
+            Positioned.fill(
+              child: Transform.rotate(
+                key: const Key('compassStatusDial'),
+                angle: dialAngle,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    if (hasHeading)
+                      for (final cardinal in const {
+                        '北': 0,
+                        '東': 90,
+                        '南': 180,
+                        '西': 270
+                      }.entries)
+                        Positioned(
+                          left: size / 2 +
+                              math.sin(cardinal.value * math.pi / 180) *
+                                  size *
+                                  0.60 -
+                              18,
+                          top: size / 2 -
+                              math.cos(cardinal.value * math.pi / 180) *
+                                  size *
+                                  0.60 -
+                              16,
+                          child: Transform.rotate(
+                            angle: -dialAngle,
+                            child: SizedBox(
+                              width: 36,
+                              height: 32,
+                              child: Center(
+                                  child: Text(cardinal.key,
+                                      style: const TextStyle(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.black))),
+                            ),
+                          ),
+                        ),
+                    if (hasDirection)
+                      Positioned(
+                        left: size / 2 +
+                            math.sin(angle) * size * 0.40 -
+                            pointerSize / 2,
+                        top: size / 2 -
+                            math.cos(angle) * size * 0.40 -
+                            pointerSize / 2,
+                        child: Transform.rotate(
+                          key: const Key('compassStatusPointer'),
+                          angle: angle,
+                          child: SizedBox(
+                            width: pointerSize,
+                            height: pointerSize,
+                            child: CustomPaint(
+                              painter: _DirectionArrowPainter(
+                                color: pointerColor,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      }),
+    );
+  }
+}
+
 class _CompassCardinalLabels extends StatelessWidget {
-  const _CompassCardinalLabels();
+  const _CompassCardinalLabels({required this.headingDeg});
+
+  final double headingDeg;
 
   @override
   Widget build(BuildContext context) {
@@ -276,20 +396,56 @@ class _CompassCardinalLabels extends StatelessWidget {
         );
     return Stack(
       children: [
-        Align(alignment: Alignment.topCenter, child: Text('N', style: style)),
-        Align(
-          alignment: Alignment.centerRight,
-          child: Text('E', style: style),
-        ),
-        Align(
-          alignment: Alignment.bottomCenter,
-          child: Text('S', style: style),
-        ),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: Text('W', style: style),
-        ),
+        for (final cardinal
+            in const {'北': 0, '東': 90, '南': 180, '西': 270}.entries)
+          Align(
+            // Move the labels around the dial, keeping the text upright.
+            alignment: Alignment(
+              math.sin((cardinal.value - headingDeg) * math.pi / 180),
+              -math.cos((cardinal.value - headingDeg) * math.pi / 180),
+            ),
+            child: Text(cardinal.key, style: style),
+          ),
       ],
     );
   }
+}
+
+/// Fixed screen-forward acceptance range; the compass rotates beneath it.
+class _ForwardRangePainter extends CustomPainter {
+  const _ForwardRangePainter({required this.aligned});
+
+  final bool aligned;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = math.min(size.width, size.height) / 2;
+    const start = -math.pi / 2 - math.pi / 6;
+    const sweep = math.pi / 3;
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius * 0.91),
+      start,
+      sweep,
+      false,
+      Paint()
+        ..color = Colors.green.withValues(alpha: aligned ? 0.65 : 0.2)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = radius * 0.16,
+    );
+    final outline = Paint()
+      ..color = Colors.green
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = aligned ? 7 : 4;
+    canvas.drawArc(Rect.fromCircle(center: center, radius: radius - 2), start,
+        sweep, false, outline);
+    for (final angle in [start, start + sweep]) {
+      final direction = Offset(math.cos(angle), math.sin(angle));
+      canvas.drawLine(center + direction * radius * 0.8,
+          center + direction * (radius - 2), outline);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ForwardRangePainter oldDelegate) =>
+      aligned != oldDelegate.aligned;
 }

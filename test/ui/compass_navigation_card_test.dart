@@ -36,6 +36,80 @@ void main() {
     );
   });
 
+  testWidgets('cardinal labels follow the device heading', (tester) async {
+    Future<void> showHeading(double heading) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: CompassNavigationCard(
+            targetBearingDeg: 90,
+            deviceHeadingDeg: heading,
+            distanceToBoundaryM: 72,
+            compassAvailable: true,
+          ),
+        ),
+      ));
+    }
+
+    await showHeading(0);
+    expect(tester.getCenter(find.text('北')).dy,
+        lessThan(tester.getCenter(find.text('東')).dy));
+
+    await showHeading(90);
+    expect(tester.getCenter(find.text('北')).dx,
+        lessThan(tester.getCenter(find.text('東')).dx));
+    expect(tester.getCenter(find.text('東')).dy,
+        lessThan(tester.getCenter(find.text('北')).dy));
+
+    await showHeading(359);
+    final beforeNorth = tester.getCenter(find.text('北'));
+    await showHeading(1);
+    expect(
+        (tester.getCenter(find.text('北')) - beforeNorth).distance, lessThan(5));
+  });
+
+  testWidgets(
+      'status pointer and Japanese labels rotate together under fixed range',
+      (tester) async {
+    Future<void> showHeading(double heading) async {
+      await tester.pumpWidget(MaterialApp(
+          home: Center(
+              child: SizedBox(
+        width: 292,
+        height: 292,
+        child: CompassStatusOverlay(
+            targetBearingDeg: 0,
+            deviceHeadingDeg: heading,
+            compassAvailable: true),
+      ))));
+    }
+
+    await showHeading(0);
+    final rangeBefore =
+        tester.getRect(find.byKey(const Key('compassForwardRange')));
+    final northBefore = tester.getCenter(find.text('北'));
+    final pointerBefore =
+        tester.getCenter(find.byKey(const Key('compassStatusPointer')));
+    expect(pointerBefore.dx, closeTo(northBefore.dx, 0.01));
+    expect(pointerBefore.dy, greaterThan(northBefore.dy));
+    await showHeading(90);
+    final northAfter = tester.getCenter(find.text('北'));
+    final pointerAfter =
+        tester.getCenter(find.byKey(const Key('compassStatusPointer')));
+    expect(pointerAfter.dy, closeTo(northAfter.dy, 0.01));
+    expect(pointerAfter.dx, greaterThan(northAfter.dx));
+    expect(
+        tester.getRect(find.text('北')).right,
+        lessThan(tester
+            .getRect(find.byKey(const Key('compassStatusPointer')))
+            .left));
+    expect(tester.getRect(find.byKey(const Key('compassForwardRange'))),
+        rangeBefore);
+    expect(find.text('N'), findsNothing);
+    expect(find.text('東'), findsOneWidget);
+    expect(find.text('南'), findsOneWidget);
+    expect(find.text('西'), findsOneWidget);
+  });
+
   testWidgets('renders an active compass direction', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
