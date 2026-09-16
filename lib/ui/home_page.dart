@@ -1084,7 +1084,7 @@ class _LargeStatusDisplay extends StatelessWidget {
                 ? '方角を確認中'
                 : deviation.abs() <= 30
                     ? '前へ'
-                    : '${deviation.abs().toStringAsFixed(0)}度${deviation > 0 ? '右' : '左'}です',
+                    : '${deviation.abs().toStringAsFixed(0)}度${deviation > 0 ? '左' : '右'}を向いてください',
             textAlign: TextAlign.center,
             style: TextStyle(
                 fontSize: 28,

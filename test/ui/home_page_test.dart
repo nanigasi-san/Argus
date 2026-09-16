@@ -147,10 +147,14 @@ void main() {
     await _pumpHome(tester, controller);
     compass.add(0);
     await tester.pumpAndSettle();
-    expect(find.text('45度右です'), findsOneWidget);
+    expect(find.text('45度左を向いてください'), findsOneWidget);
+    expect(tester.getCenter(find.byKey(const Key('compassStatusPointer'))).dx,
+        greaterThan(tester.getCenter(find.byType(CompassStatusOverlay)).dx));
     compass.add(90);
     await tester.pumpAndSettle();
-    expect(find.text('45度左です'), findsOneWidget);
+    expect(find.text('45度右を向いてください'), findsOneWidget);
+    expect(tester.getCenter(find.byKey(const Key('compassStatusPointer'))).dx,
+        lessThan(tester.getCenter(find.byType(CompassStatusOverlay)).dx));
     compass.add(15);
     await tester.pumpAndSettle();
     final forward = tester.widget<Text>(find.text('前へ'));

@@ -59,16 +59,16 @@ void main() {
       expect(find.text(guidance), findsOneWidget);
     }
 
-    await heading(target - 90, '90度右です');
+    await heading(target - 90, '90度左を向いてください');
     expect(find.byKey(const Key('compassStatusPointer')), findsOneWidget);
     for (final label in ['北', '東', '南', '西']) {
       expect(find.text(label), findsOneWidget);
     }
     await binding.takeScreenshot('compass-right');
-    await heading(target + 90, '90度左です');
+    await heading(target + 90, '90度右を向いてください');
     await heading(target - 29, '前へ');
     await binding.takeScreenshot('compass-forward');
-    await heading(target - 31, '31度右です');
+    await heading(target - 31, '31度左を向いてください');
     await heading(null, '方角を確認中');
     expect(find.byKey(const Key('compassStatusPointer')), findsNothing);
     await heading(target, '前へ');
