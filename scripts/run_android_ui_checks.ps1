@@ -27,7 +27,7 @@ $currentDevices = (& flutter devices) -join "`n"
 if ($LASTEXITCODE -ne 0) {
     throw "Unable to list Flutter devices."
 }
-if ($currentDevices -notmatch "android") {
+if ($currentDevices -notmatch "emulator-\d+") {
     Write-Host "Launching emulator: $EmulatorId"
     flutter emulators --launch $EmulatorId | Out-Null
     if ($LASTEXITCODE -ne 0) {
@@ -37,19 +37,32 @@ if ($currentDevices -notmatch "android") {
 
 $deviceId = Wait-ForAndroidDevice
 Write-Host "Running integration_test on $deviceId"
-if ($CaptureScreenshots) {
-    $screenshotDir = "build\\integration_test\\screenshots"
-    if (Test-Path $screenshotDir) {
-        Remove-Item -LiteralPath $screenshotDir -Recurse -Force
+New-Item -ItemType Directory -Force -Path "build/e2e" | Out-Null
+$result = 0
+$testRoots = @("integration_test", "e2e") | Where-Object { Test-Path -LiteralPath $_ }
+$testFiles = @(Get-ChildItem -LiteralPath $testRoots -Recurse -File -Filter "*_test.dart" | Sort-Object FullName)
+if ($testFiles.Count -eq 0) {
+    throw "No E2E test files found in integration_test/ or e2e/."
+}
+$testFiles.FullName | Set-Content "build/e2e/suites.txt"
+Set-Content "build/e2e/results.txt" -Value ""
+foreach ($testFile in $testFiles) {
+    $target = (Resolve-Path -LiteralPath $testFile.FullName -Relative).Replace('\', '/') -replace '^\./', ''
+    $suite = $target -replace '_test\.dart$', '' -replace '/', '_'
+    if ($CaptureScreenshots) {
+        flutter drive --driver test_driver/ui_smoke_driver.dart --target $target -d $deviceId 2>&1 | Tee-Object -FilePath "build/e2e/${suite}.log"
+    } else {
+        flutter test $target -d $deviceId 2>&1 | Tee-Object -FilePath "build/e2e/${suite}.log"
     }
-    flutter drive --driver test_driver/ui_smoke_driver.dart --target integration_test/ui_smoke_test.dart -d $deviceId
     if ($LASTEXITCODE -ne 0) {
-        exit $LASTEXITCODE
-    }
-    Write-Host "Screenshots saved under $screenshotDir"
-} else {
-    flutter test integration_test/ui_smoke_test.dart -d $deviceId
-    if ($LASTEXITCODE -ne 0) {
-        exit $LASTEXITCODE
+        $result = 1
+        Add-Content "build/e2e/results.txt" "${suite}: failure"
+    } else {
+        Add-Content "build/e2e/results.txt" "${suite}: success"
     }
 }
+& adb -s $deviceId logcat -d | Set-Content "build/e2e/logcat.txt"
+if ($CaptureScreenshots) {
+    Write-Host "Screenshots saved under build/integration_test/screenshots"
+}
+exit $result

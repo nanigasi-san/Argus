@@ -1,0 +1,87 @@
+name: Android E2E
+
+on:
+  pull_request:
+    branches: ["*"]
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  core-e2e:
+    name: All Android E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      E2E_ANDROID_API: "36"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run Android E2E
+        id: e2e
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ env.E2E_ANDROID_API }}
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: bash scripts/run_android_e2e.sh emulator-5554
+
+      - name: Write E2E summary
+        if: always()
+        env:
+          E2E_OUTCOME: ${{ steps.e2e.outcome }}
+        run: |
+          {
+            echo '## Android E2E'
+            echo "- Emulator API: $E2E_ANDROID_API (google_apis / x86_64)"
+            echo "- Result: $E2E_OUTCOME"
+            echo '```text'
+            flutter --version
+            if [ -f build/e2e/suites.txt ]; then cat build/e2e/suites.txt; fi
+            if [ -f build/e2e/results.txt ]; then cat build/e2e/results.txt; fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload E2E diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-e2e-diagnostics
+          path: |
+            build/integration_test/screenshots/
+            build/e2e/
+          retention-days: 14
+          if-no-files-found: warn

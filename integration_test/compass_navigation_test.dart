@@ -12,6 +12,7 @@ void main() {
 
   testWidgets('outside navigation follows location and device heading',
       (tester) async {
+    await binding.convertFlutterSurfaceToImage();
     final location = doubles.FakeLocationService();
     final compass = doubles.FakeCompassService();
     final controller = HarnessBuilder.buildController(
