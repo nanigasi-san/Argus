@@ -14,6 +14,23 @@ import run_ios_e2e as e2e
 
 
 class SimulatorTests(unittest.TestCase):
+    def test_selects_only_available_iphones_from_ios_runtimes(self):
+        devices = {"devices": {
+            "tvOS-26": [{"udid": "tv", "isAvailable": True,
+                          "deviceTypeIdentifier": "Apple-TV"}],
+            "iOS-26": [
+                {"udid": "unavailable", "isAvailable": False,
+                 "deviceTypeIdentifier": "iPhone-17-Pro"},
+                {"udid": "tablet", "isAvailable": True, "deviceTypeIdentifier": "iPad-Pro"},
+                {"udid": "phone", "isAvailable": True, "deviceTypeIdentifier": "iPhone-17-Pro"},
+            ],
+        }}
+        with patch.object(ios_simulator.subprocess, "run", return_value=
+                          subprocess.CompletedProcess([], 0, json.dumps(devices))) as run:
+            self.assertEqual(ios_simulator.select_device(), "phone")
+        self.assertEqual(run.call_count, 1)
+        self.assertGreaterEqual(run.call_args.kwargs["timeout"], 120)
+
     def run_boot(self, state="Shutdown", boot_failure=False):
         devices = {"devices": {"iOS-26": [{"udid": "device", "state": state}]}}
         commands = []

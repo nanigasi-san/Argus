@@ -7,7 +7,7 @@ import time
 
 def select_device():
     result = subprocess.run(["xcrun", "simctl", "list", "devices", "available", "-j"],
-                            check=True, capture_output=True, text=True, timeout=30)
+                            check=True, capture_output=True, text=True, timeout=120)
     devices = json.loads(result.stdout)["devices"]
     return next(device["udid"] for runtime, entries in devices.items()
                 if "iOS" in runtime for device in entries
@@ -20,7 +20,7 @@ def boot(device, report):
     print(f"[simulator] Booting {device} alongside the build", flush=True)
     # Only an already-booted device may bypass boot; other errors must fail CI.
     result = subprocess.run(["xcrun", "simctl", "list", "devices", "available", "-j"],
-                            check=True, capture_output=True, text=True, timeout=30)
+                            check=True, capture_output=True, text=True, timeout=120)
     devices = json.loads(result.stdout)["devices"]
     current = next(entry for entries in devices.values() for entry in entries
                    if entry["udid"] == device)
