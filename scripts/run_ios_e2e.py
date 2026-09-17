@@ -14,6 +14,7 @@ import time
 from urllib.parse import urlsplit
 
 import ios_simulator
+from ios_build_process import build_app
 
 
 TARGET = "integration_test/ci_all_suites.dart"
@@ -71,36 +72,6 @@ def wait_for_vm_service(device, executable, pid, started, report, timeout=120):
     raise TimeoutError(f"No saved VM Service URI for PID {pid} within {timeout}s")
 
 
-def build_app(command, on_xcode_build=None):
-    if on_xcode_build is None:
-        subprocess.run(command, check=True)
-        return
-    # Flutter probes Xcode/Simulator during preparation. Starting a cold boot
-    # during those probes increased preparation by several minutes in CI.
-    # Wait for compilation to start; this progress message has no newline.
-    triggered = False
-    pending = ""
-    with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                          text=True, bufsize=1) as process:
-        while character := process.stdout.read(1):
-            pending += character
-            if not triggered and "Running Xcode build" in pending:
-                print(pending, end="", flush=True)
-                pending = ""
-                on_xcode_build()
-                triggered = True
-            elif character == "\n":
-                print(pending, end="", flush=True)
-                pending = ""
-        print(pending, end="", flush=True)
-        status = process.wait()
-    if status != 0:
-        raise subprocess.CalledProcessError(status, command)
-    if not triggered:
-        # Log format changes may lose the overlap, but must never skip boot.
-        on_xcode_build()
-
-
 def run_e2e(device, report, boot_simulator=False):
     # Build once; the generated target registers every discovered E2E file.
     print("[build] Building all iOS E2E suites", flush=True)
@@ -112,8 +83,10 @@ def run_e2e(device, report, boot_simulator=False):
             nonlocal ready
             ready = pool.submit(ios_simulator.boot, device, report)
 
-        build_app(["flutter", "build", "ios", "--simulator", "--debug",
-                   f"--target={TARGET}"], start_boot if boot_simulator else None)
+        command = ["flutter", "build", "ios", "--simulator", "--debug", f"--target={TARGET}"]
+        if boot_simulator:
+            command.append("--verbose")  # Expose Xcode's post-preparation milestone.
+        build_app(command, start_boot if boot_simulator else None)
         build_seconds = time.monotonic() - started_build
         if ready is not None:
             ready.result()  # Install and launch only after successful bootstatus.

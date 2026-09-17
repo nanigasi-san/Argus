@@ -83,8 +83,9 @@ Simulatorアプリを一度ビルド・インストールする。Dartを停止�
 
 CIでは `E2E_IOS_BOOT_SIMULATOR=true` により、Simulator起動と全件用アプリの
 ビルドを並行して行う。Flutterの初期設定・Xcode探索中に起動を開始すると
-初期処理が数分延びる実行があったため、コンパイル開始の進捗出力を受けて
-Simulator起動を始める。改行のない進捗出力も処理する。
+初期処理が数分延びる実行があったため、依存解決・SDK探索後の
+`Build description signature:` 出力を受けてSimulator起動を始める。
+FlutterビルドはverboseにしてXcodeの出力を取得し、改行のない出力も処理する。
 進捗の形式が変わって検出できなかった場合はビルド後に起動し、起動確認を維持する。
 インストール・起動・driver接続はビルドと
 `simctl bootstatus -b` の両方の成功後にだけ進める。ローカルで起動済み端末を
@@ -116,7 +117,8 @@ Flutter設定・プラグイン・CocoaPodsを準備し、`xcodebuild build-for-
 でアプリと全テストを一つのDerivedDataに一度だけビルドする。
 ビルドはgeneric Simulator向けとし、通常アプリのSimulator用アーキテクチャを
 特定の端末のものだけに絞らない。
-Flutterの設定準備を完了してから、Simulator起動をXcodeのビルドと並行して行う。
+Flutterの設定準備、Xcodeの依存解決・SDK探索を完了してから、
+同じ出力検出処理でSimulator起動をコンパイルと並行して行う。
 IDE向けの索引生成は `COMPILER_INDEX_STORE_ENABLE=NO` で省き、
 Flutterの通常ビルドと同じ設定にする。コンパイル・解析警告・テスト実行は維持する。
 両方の成功後に同じDerivedDataの成果物を

@@ -134,12 +134,17 @@ class NativeTests(unittest.TestCase):
                 self.assertTrue(boot_finished.is_set())
             return subprocess.CompletedProcess(command, 0, json.dumps(summary))
 
+        def build(command, callback):
+            callback()
+            execute(command)
+
         with tempfile.TemporaryDirectory() as directory:
             report = Path(directory)
             with patch.object(native, "REPORT", report), \
                     patch.object(native, "DERIVED_DATA", report / "DerivedData"), \
                     patch.object(native.ios_simulator, "select_device", return_value="device"), \
                     patch.object(native.ios_simulator, "boot", side_effect=boot), \
+                    patch.object(native, "build_app", side_effect=build), \
                     patch.object(native.subprocess, "run", side_effect=execute):
                 native.run_build()
             self.assertEqual(json.loads((report / "test-results.json").read_text()), summary)
@@ -181,13 +186,26 @@ class NativeTests(unittest.TestCase):
 
 
 class BuildProgressTests(unittest.TestCase):
+    def test_boot_waits_for_build_description_after_the_earlier_flutter_progress(self):
+        import io
+        output = "Running Xcode build...\nBuild description signature: abc\ndone\n"
+        starts = []
+        with patch.object(e2e.subprocess, "Popen") as popen:
+            process = popen.return_value.__enter__.return_value
+            process.stdout = io.StringIO(output)
+            process.wait.return_value = 0
+            e2e.build_app(["build"], lambda: starts.append(process.stdout.tell()))
+        self.assertEqual(starts, [len("Running Xcode build...\nBuild description signature:")])
+
     def test_starts_boot_at_partial_progress_before_compilation_finishes(self):
         import sys
         with tempfile.TemporaryDirectory() as directory:
             signal_file = Path(directory, "boot-started")
             script = (
                 "import sys, time; from pathlib import Path; "
-                "sys.stdout.write('Running Xcode build...'); sys.stdout.flush(); "
+                "print('Running Xcode build...'); sys.stdout.flush(); "
+                "assert not Path(sys.argv[1]).exists(), 'Boot started before Xcode preparation'\n"
+                "sys.stdout.write('Build description signature:'); sys.stdout.flush(); "
                 "deadline=time.monotonic()+3\n"
                 "while not Path(sys.argv[1]).exists() and time.monotonic()<deadline: time.sleep(.01)\n"
                 "assert Path(sys.argv[1]).exists(), 'Boot callback waited for newline/build exit'\n"

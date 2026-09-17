@@ -8,6 +8,7 @@ import sys
 import time
 
 import ios_simulator
+from ios_build_process import build_app
 
 
 REPORT = Path("build/ios-native-tests")
@@ -26,11 +27,15 @@ def run_build():
     subprocess.run(["flutter", "build", "ios", "--simulator", "--debug",
                     "--config-only", "--target=lib/main.dart"], check=True)
     with ThreadPoolExecutor(max_workers=1) as pool:
-        ready = pool.submit(ios_simulator.boot, device, REPORT)
+        ready = None
+
+        def start_boot():
+            nonlocal ready
+            ready = pool.submit(ios_simulator.boot, device, REPORT)
         # Flutter prepares plugins, CocoaPods and the normal Dart entry point;
         # Xcode then builds Runner and every test bundle in one output tree.
-        subprocess.run(["xcodebuild", "build-for-testing", *arguments,
-                        "-destination", "generic/platform=iOS Simulator"], check=True)
+        build_app(["xcodebuild", "build-for-testing", *arguments,
+                   "-destination", "generic/platform=iOS Simulator"], start_boot)
         build_seconds = time.monotonic() - started
         ready.result()  # A successful build never bypasses failed Simulator startup.
     tests_started = time.monotonic()
