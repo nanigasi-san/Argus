@@ -15,6 +15,10 @@
 Android Build・iOS Buildと両E2Eは手動実行にも対応する。
 Android Releaseはバージョンタグのpushまたは手動実行で起動する。
 
+iOS のストア配信 workflow は未実装。
+Android と同じバージョンタグ push を起点にした署名ビルド・審査提出の構成、
+必要な認証情報、公式資料と導入事例は [iOS リリース自動化の調査と設計](ios_release_automation.md) にまとめる。
+
 Android E2Eはテストを入口にしたdebug APKをビルドする。
 Android Buildは `flutter build appbundle --release` により通常のアプリ入口、
 release向けDartコンパイル、ネイティブコードとリソース、AABの生成を検証する。
