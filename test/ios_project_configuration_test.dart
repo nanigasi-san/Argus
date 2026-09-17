@@ -172,7 +172,7 @@ void main() {
           File('.github/workflows/ios_build.yml').readAsStringSync();
 
       expect(gitignore, contains('!/ios/Podfile.lock'));
-      expect(workflow, contains('xcodebuild test \\'));
+      expect(workflow, contains('python3 scripts/run_ios_build.py'));
     });
 
     test('does not depend on flutter_ringtone_player fallback', () {
