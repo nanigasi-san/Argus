@@ -6,6 +6,30 @@
 実行コマンドとArtifactの取得方法は
 [integration_test/README.md](../integration_test/README.md) を参照。
 
+通常実行の14シナリオ（Core 8件・UI smoke 5件・コンパス1件）と、
+任意のiOS仮想GPSシナリオ1件を、スクリーンショットではない説明図で示す。
+一覧図は流れの要約、各シナリオの詳細図は操作・位置入力と検証結果を示す。
+
+### 図の読み方
+
+- 箱は監視状態・画面の表示状態・準備処理、矢印は入力または操作。上から下、一覧図は左から右へ読む。
+- 青は開始待ち・停止、緑はINNER / NEAR、黄はOUTER_PENDING、赤はOUTER、紫はGPS_BAD。
+- 水色はUIの画面・表示、灰色は準備・設定反映の処理。UI smokeの箱はStateMachineの位置判定状態ではない。
+- 同じ状態の箱が続く場合は、その入力後も状態を維持する検証。赤い箱でもスヌーズ中は音・振動を停止する。
+- `t` は注入する `monitoringElapsed` の秒数。Coreの確定待ちで実時間10秒を待つ意味ではない。
+- C3・C5・C8はC1のOUTER確定まで、C4はSTART後の判定待ちまでを先頭の箱にまとめている。
+- N2は任意モードの実装説明。通常CIの実行結果に含めず、この図の追加に伴って実行したものでもない。
+
+### シナリオ一覧図
+
+![C1〜C4: 範囲外の確定、GPS精度、判定待ちの停止と再開](images/e2e/overview-core-1.png)
+
+![C5〜C8: 警告の停止と再開、権限更新、設定反映、スヌーズ](images/e2e/overview-core-2.png)
+
+![S1〜S5: UI smokeの表示と画面遷移](images/e2e/overview-ui.png)
+
+![N1とN2: コンパス案内と任意のiOS仮想GPS](images/e2e/overview-navigation.png)
+
 ## 1. テストの役割と実行範囲
 
 | 層 | ファイル | 目的 | Android E2E CIでの実行 |
@@ -77,6 +101,8 @@ flowchart TD
 
 テスト名: `monitor-exit-recover`
 
+![C1: STARTから範囲外の確定、警告開始、範囲内復帰による解除まで](images/e2e/c1-monitor-exit-recover.png)
+
 | 手順 | 操作・入力 | 期待する状態 | 警告 |
 | --- | --- | --- | --- |
 | 1 | 共通準備でGeoJSONを読み込む | WAIT START | 停止 |
@@ -95,6 +121,8 @@ OUTER確定画面と復帰後の画面を保存する。
 
 テスト名: `gps-bad-recover`
 
+![C2: 精度100mの範囲外位置でGPS_BADとなり、精度5mの範囲内位置で復旧](images/e2e/c2-gps-bad-recover.png)
+
 | 手順 | 操作・入力 | 期待する状態 | 警告 |
 | --- | --- | --- | --- |
 | 1 | GeoJSON読込 → UIからSTART | 監視開始 | 停止 |
@@ -109,6 +137,8 @@ OUTER確定画面と復帰後の画面を保存する。
 
 テスト名: `outer-survives-low-accuracy`
 
+![C3: 確定済みOUTERでは低精度でも警告を維持し、範囲内の位置で解除](images/e2e/c3-outer-survives-low-accuracy.png)
+
 | 手順 | 操作・入力 | 期待する状態 | 警告 |
 | --- | --- | --- | --- |
 | 1 | C1の手順6まで実行 | OUTER | 開始済み |
@@ -122,6 +152,8 @@ OUTER確定画面と復帰後の画面を保存する。
 ### C4. 判定待ちでSTOP → 再START
 
 テスト名: `stop-restart-clears-pending`
+
+![C4: 判定待ちで停止し、停止中の入力を無視し、再開後はサンプル1個から判定](images/e2e/c4-stop-restart-clears-pending.png)
 
 | 手順 | 操作・入力 | 期待する状態・処理 |
 | --- | --- | --- |
@@ -139,6 +171,8 @@ OUTER確定画面と復帰後の画面を保存する。
 
 テスト名: `stop-restart-clears-alarm`
 
+![C5: 警告中に停止して通知・音・振動を解除し、旧警告を残さず再開](images/e2e/c5-stop-restart-clears-alarm.png)
+
 | 手順 | 操作・入力 | 期待する状態・警告 |
 | --- | --- | --- |
 | 1 | C1の手順6まで実行 | OUTER、警告中 |
@@ -152,6 +186,8 @@ OUTER確定画面と復帰後の画面を保存する。
 ### C6. 権限不足 → 開示画面 → 権限更新 → START
 
 テスト名: `permission-setup-refresh-start`
+
+![C6: 開示への同意だけでは開始せず、権限状態の更新後に監視開始](images/e2e/c6-permission-setup-refresh-start.png)
 
 | 手順 | 操作・入力 | 期待する状態・UI |
 | --- | --- | --- |
@@ -168,6 +204,8 @@ Androidのnative dialog自体の操作は対象にしない。
 
 テスト名: `settings-update-monitoring-buffer`
 
+![C7: バッファ30mから50mへ変更し、自動再開後は同じ座標をINNERからNEARへ判定](images/e2e/c7-settings-update-monitoring-buffer.png)
+
 | 手順 | 操作・入力 | 期待する状態・処理 |
 | --- | --- | --- |
 | 1 | START → bufferProbe 0秒、バッファ30 m | INNER |
@@ -181,6 +219,8 @@ Androidのnative dialog自体の操作は対象にしない。
 ### C8. OUTER中のスヌーズ → 状態維持 → 復帰
 
 テスト名: `outer-snooze-keeps-state`
+
+![C8: スヌーズで音・振動を止めてもOUTERを維持し、復帰時に通知とスヌーズを解除](images/e2e/c8-outer-snooze-keeps-state.png)
 
 | 手順 | 操作・入力 | 状態 | 音・振動／通知 |
 | --- | --- | --- | --- |
@@ -207,9 +247,56 @@ CoreのGeoJSONロード・範囲外判定を通す役割は持たない。
 
 S1〜S4の画面をスクリーンショットとして保存する。
 
+以下はそのスクリーンショットではなく、テストで確認する表示・遷移の説明図。
+
+### S1. Homeの権限不足表示
+
+テスト名: `home shows setup card when monitoring permissions are incomplete`
+
+![S1: 通知と常に位置許可が不足したHomeにセットアップカードを表示](images/e2e/s1-home-permission-card.png)
+
+表示のみを検証する。権限を許可するボタンのタップや監視開始は行わない。
+
+### S2. Homeからバックグラウンド位置情報の開示画面へ
+
+テスト名: `home can open background location disclosure`
+
+![S2: Homeの設定導線から開示画面へ遷移し、プラットフォーム別ボタンを確認](images/e2e/s2-background-location-disclosure.png)
+
+開示画面とボタンの表示までを確認する。続行ボタンのタップはC6で扱う。
+
+### S3. 設定フォームとiOSの警告音テストボタン
+
+テスト名: `settings page renders the monitoring card and form`
+
+![S3: Settingsのフォームを表示し、iOSではスクロールして警告音ボタンも確認](images/e2e/s3-settings-form.png)
+
+Settingsを直接描画する。Androidはフォーム表示まで、iOSは警告音ボタンの表示まで。
+設定保存や警告音の再生は行わない。
+
+### S4. カメラ未許可時のQR画面
+
+テスト名: `qr page shows retry UI when camera permission is denied`
+
+![S4: カメラ権限deniedでQR画面に権限エラーと再試行ボタンを表示](images/e2e/s4-qr-camera-permission-denied.png)
+
+再試行ボタンを表示するまで。実カメラの起動、再試行のタップ、QR読取は行わない。
+
+### S5. Homeのメニューから設定画面へ
+
+テスト名: `home can navigate to settings from overflow menu`
+
+![S5: Homeからメニューを開き、設定項目をタップしてSettingsへ遷移](images/e2e/s5-home-to-settings.png)
+
+画面遷移を確認する。設定変更・保存・監視の自動再開はC7で扱う。
+
 ## 5. コンパスE2Eの流れ
 
+### N1. 距離・方向案内の更新と範囲内復帰
+
 テスト名: `outside navigation follows location and device heading`
+
+![N1: OUTER中に位置と方位から案内を更新し、INNERで解除して停止](images/e2e/n1-compass-navigation.png)
 
 この既存suiteは緯度・経度0〜1の正方形と、短いテスト用ヒステリシス設定を使う。
 Androidでもスクリーンショットを取れるよう、テスト内でsurface変換を行う。
@@ -230,7 +317,11 @@ Androidでもスクリーンショットを取れるよう、テスト内でsurf
 
 右向き案内と前進案内の画面を保存する。
 
-### 既存のiOS native GPSオプション
+### N2. 既存のiOS native GPSオプション
+
+テスト名: `iOS native virtual GPS enters and leaves navigation`
+
+![N2: 任意モードのsimctl位置注入から実Geolocator経由の範囲外案内と範囲内復帰](images/e2e/n2-ios-native-virtual-gps.png)
 
 `SIMULATOR_GPS=true` と `ARGUS_SIMULATOR_ID` を指定した場合に追加実行する。
 driverが `simctl privacy` で位置権限を付与し、2秒おきに仮想位置を送る。
@@ -247,6 +338,19 @@ simctlで権限付与・範囲外位置を送信
 ```
 
 これは既存の個別実行オプションで、今回のAndroid E2E CIには含めない。
+
+### 説明図の更新方法
+
+画像の定義と描画処理は [generate_e2e_diagrams.py](../scripts/generate_e2e_diagrams.py)。
+テストの操作・入力・assertionを変更した場合は、`SCENARIOS` と本文の表を更新して再生成する。
+Pillowと日本語フォントが必要。生成されるPNGをコミットするため、ドキュメントを読む際の追加ツールは不要。
+
+```powershell
+python scripts/generate_e2e_diagrams.py --font C:/Windows/Fonts/meiryo.ttc
+```
+
+Windows以外では `--font` にNoto Sans CJKなどの日本語フォントファイルを指定する。
+生成結果は `docs/images/e2e/` の詳細図15枚と一覧図4枚。
 
 ## 6. CIでの実行・失敗時の調査
 

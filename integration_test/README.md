@@ -3,7 +3,8 @@
 This directory contains Android and iOS device/emulator tests for ARGUS. UI smoke checks rendering and navigation; Core E2E checks monitoring flows across the production app components.
 
 各シナリオの操作・位置入力・状態遷移・警告動作は
-[E2Eテストの流れ](../docs/e2e_test_flows.md) に整理しています。
+[E2Eテストの流れ](../docs/e2e_test_flows.md) に、シナリオごとの状態遷移図と一覧図付きで整理しています。
+通常の14シナリオと任意のiOS仮想GPSシナリオを区別し、UI smokeは画面の表示・遷移として説明しています。
 
 ## What Is Covered
 
