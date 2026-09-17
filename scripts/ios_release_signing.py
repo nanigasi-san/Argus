@@ -45,8 +45,8 @@ def validate_profile(profile, team, bundle, cert_hashes=None):
         raise ValueError('Profile does not match a valid imported distribution identity')
 
 
-def credentials():
-    missing = [name for name in REQUIRED if not os.environ.get(name)]
+def credentials(names=REQUIRED):
+    missing = [name for name in names if not os.environ.get(name)]
     if missing:
         raise ValueError('Register required ios-release credentials: ' + ', '.join(missing))
 
@@ -58,7 +58,7 @@ def signing_dir():
 
 
 def install():
-    credentials()
+    credentials(('IOS_TEAM_ID', 'IOS_DISTRIBUTION_P12_BASE64', 'IOS_DISTRIBUTION_P12_PASSWORD', 'IOS_APPSTORE_PROFILE_BASE64'))
     directory = signing_dir()
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     cert = directory / 'distribution.p12'

@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from ios_release_config import CHECKS, check_status, resolve
+from ios_release_config import CHECKS, WORKFLOWS, check_status, resolve, verify_main_workflows, gate
 from ios_release_signing import cleanup, validate_ipa_info, validate_profile
 
 
@@ -38,6 +38,36 @@ class ReleaseGateTests(unittest.TestCase):
             check_status(checks, 'expected')
         checks[-1].update(status='in_progress', conclusion=None)
         self.assertEqual(check_status(checks, 'expected'), ['Flutter Tests'])
+
+    def test_main_workflows_reject_same_name_checks_from_other_events_or_paths(self):
+        def answer(endpoint):
+            name = endpoint.split('/workflows/')[1].split('/')[0]
+            return {'workflow_runs': [{'head_sha':'sha', 'head_branch':'main', 'event':'push',
+                    'path':'.github/workflows/' + name, 'run_number':1, 'run_attempt':1,
+                    'status':'completed', 'conclusion':'success'}]}
+        with patch('ios_release_config.gh_json', side_effect=answer):
+            self.assertTrue(verify_main_workflows('owner/repo', 'sha'))
+        for mutation in ({'event':'pull_request'}, {'head_branch':'feature'}, {'path':'fake.yml'},
+                         {'head_sha':'other'}, {'conclusion':'failure'}, {'status':'in_progress'}):
+            def bad_answer(endpoint):
+                result = answer(endpoint)
+                result['workflow_runs'][0].update(mutation)
+                return result
+            with self.subTest(mutation=mutation), patch('ios_release_config.gh_json', side_effect=bad_answer):
+                self.assertFalse(verify_main_workflows('owner/repo', 'sha'))
+
+    def test_manual_dispatch_cannot_enter_either_release_gate(self):
+        for platform in ('android', 'ios'):
+            with patch.dict('os.environ', {'GITHUB_EVENT_NAME':'workflow_dispatch', 'GITHUB_REF_TYPE':'branch'}):
+                with self.assertRaisesRegex(ValueError, 'Only tag pushes'):
+                    gate(0, platform)
+
+    def test_android_build_number_must_not_use_missing_offset(self):
+        self.assertEqual(resolve('v0.9.0', 6, '1005', 'android'), ('0.9.0', '1011'))
+        with self.assertRaises(ValueError):
+            resolve('v0.9.0', 6, '', 'android')
+        with self.assertRaises(ValueError):
+            resolve('v0.9.0', 1, '2100000000', 'android')
 
 
 class SigningVerificationTests(unittest.TestCase):

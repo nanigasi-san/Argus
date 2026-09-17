@@ -10,11 +10,11 @@
 | Android E2E | `.github/workflows/android_e2e.yml` | Android Emulator上の全共通E2E |
 | iOS E2E | `.github/workflows/ios_e2e.yml` | iOS Simulator上の全共通E2E |
 | iOS Release | `.github/workflows/ios_release.yml` | タグのコミットのCI確認、署名IPA生成、App Store Connect upload・審査提出 |
-| Android Release | `.github/workflows/android_release.yml` | ストア向けAABの生成、設定済みの場合のGoogle Playへのアップロード |
+| Android Release | `.github/workflows/android_release.yml` | main CI 成功確認、署名AAB生成、Google Play production への公開要求 |
 
 テスト・ビルド・E2EはPRとmain pushで実行する。
 Android Build・iOS Buildと両E2Eは手動実行にも対応する。
-Android Releaseはバージョンタグのpushまたは手動実行で起動する。
+Android Release と iOS Release はバージョンタグの push のみで起動する。
 
 iOS Release は Android と同じ `vX.Y.Z` タグ push で起動する。
 5つの必須チェックが対象 SHA で成功した後、署名ビルド・upload・審査提出を実行し、
@@ -56,11 +56,10 @@ PRがない作業ブランチへのpushでは実行せず、mainへのpushでは
 現在はDraft PRも通常PRと同じ検証対象であり、Readyにした時だけ実行する
 最適化は導入していない。
 
-既存6ワークフローに `concurrency` と `cancel-in-progress: true` を設定し、
+5つの検証ワークフローに `concurrency` と `cancel-in-progress: true` を設定し、
 同じワークフロー・同じブランチの新しい実行が始まると古い実行をキャンセルする。
-`Android Release` はブランチ・タグを含む完全なrefでグループを分け、
-同じrefの再実行だけをキャンセルする。
-`iOS Release` は App ID 単位で配信を直列化し、進行中の配信をキャンセルしない。
+`Android Release` と `iOS Release` は各ストアのアプリ単位で配信を直列化し、
+進行中の配信をキャンセルしない。
 これは古い実行の重複を抑える設定であり、マージを制限する必須チェック設定とは
 別の仕組みである。
 
@@ -148,3 +147,9 @@ Flutterの通常ビルドと同じ設定にする。コンパイル・解析警�
 不完全な結果の検出もPython回帰テストで検証する。
 5つの必須チェック、Android release AAB、全E2Eシナリオは削減しない。
 PRとmain pushの実行条件も変更しない。
+
+## モバイル CD の保護
+
+Android / iOS の配信は main 反映と5つの必須 main CI 成功後のみ開始する。
+タグ作成者制限・Secrets の保存先・再実行と公開条件は [配信セキュリティ](mobile_release_security.md)、
+[Android リリース](release.md)、[iOS リリース](ios_release_cd.md)を参照。

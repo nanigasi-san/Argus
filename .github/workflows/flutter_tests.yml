@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: ["*"]
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
@@ -100,7 +103,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload coverage reports to Codecov
-        if: always()
+        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: codecov/codecov-action@v5
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

@@ -53,7 +53,7 @@ platform :ios do
     checked_command('python3', 'scripts/ios_release_signing.py', 'verify', '--ipa', ipa.first)
   end
 
-  desc 'Upload once, wait for processing and submit the exact build for automatic release'
+  desc 'Upload once, wait for processing and submit the verified build for automatic release'
   lane :release do
     api_key = authenticate_apple
     context = release_context

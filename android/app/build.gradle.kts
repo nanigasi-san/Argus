@@ -4,6 +4,9 @@ import java.io.FileInputStream
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
 val hasReleaseKeystore = keystorePropertiesFile.exists()
+check(System.getenv("ARGUS_RELEASE_REQUIRE_SIGNING") != "true" || hasReleaseKeystore) {
+    "Store release requires the upload signing key; debug signing is forbidden"
+}
 if (hasReleaseKeystore) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }

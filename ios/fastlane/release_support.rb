@@ -87,7 +87,7 @@ module ArgusRelease
       build = target_build
       if build
         raise 'Existing Apple build has no matching receipt; refusing to adopt it' unless receipt.verified_upload?
-        raise 'Receipt build ID mismatch' if receipt.data['build_id'] && receipt.data['build_id'] != build.id
+        assert_owned_build!(build)
         receipt.update('build_id' => build.id)
       end
       all_versions = versions
@@ -137,6 +137,7 @@ module ArgusRelease
       loop do
         build = target_build
         if build
+          assert_owned_build!(build)
           raise "Apple build processing failed: #{build.processing_state}" if %w[FAILED INVALID].include?(build.processing_state)
           receipt.update('build_id' => build.id, 'processing_state' => build.processing_state)
           if build.processing_state == 'VALID'
@@ -152,6 +153,7 @@ module ArgusRelease
 
     def upload(api_key, pilot)
       build = target_build
+      assert_owned_build!(build) if build
       unless build
         raise 'No verified IPA receipt for upload' unless receipt.verified_upload?
         ipa = Dir[File.join(@root, 'build/ios/ipa/*.ipa')]
@@ -166,10 +168,23 @@ module ArgusRelease
       wait_for_build
     end
 
+    def assert_owned_build!(build)
+      raise 'Apple build has no upload provenance; manual investigation required' unless receipt.verified_upload?
+      known_id = receipt.data['build_id']
+      if known_id
+        raise 'Receipt build ID mismatch' unless known_id == build.id
+      elsif receipt.data['status'] != 'uploaded'
+        # Only a successful upload response may establish a previously unknown Apple ID.
+        # built / uploading may refer to an external upload or an ambiguous failure.
+        raise 'Unknown Apple build appeared without confirmed upload; refusing to adopt it'
+      end
+    end
+
     def submit(api_key, deliver)
       version = target_version
       build = target_build
       raise 'Build is not ready for review' unless build && build.processing_state == 'VALID'
+      assert_owned_build!(build)
       if version && ACCEPTED_STATES.include?(version.app_version_state)
         verify_submission(version, build)
         return
@@ -182,6 +197,7 @@ module ArgusRelease
         raise 'Cannot resume unknown review draft' unless receipt.verified_upload? && version.get_build&.id == build.id
         receipt.update('version_id' => version.id, 'submission_id' => ready.id, 'status' => 'submitting')
         raise "Version is not ready to submit: #{version.app_version_state}" unless version.app_version_state == 'READY_FOR_REVIEW'
+        verify_submission_content!(version, build)
         ready.submit_for_review
       else
         notes = File.read(File.join(@root, "docs/app_store/releases/#{@version}/ja-JP.txt")).strip
@@ -199,8 +215,28 @@ module ArgusRelease
                      skip_binary_upload: true, skip_screenshots: true, skip_metadata: false,
                      metadata_path: File.join(@root, 'build/ios-release/metadata'),
                      release_notes: { 'ja' => notes }, app_review_information: review_information,
-                     submit_for_review: true, automatic_release: true, phased_release: false,
+                     submit_for_review: false, automatic_release: true, phased_release: false,
                      reset_ratings: false, run_precheck_before_submit: false)
+        version = target_version
+        raise 'Target editable version missing after metadata update' unless version && EDITABLE_STATES.include?(version.app_version_state)
+        version.select_build(build_id: build.id)
+        version = target_version
+        verify_submission_content!(version, build)
+        active = submissions.reject { |submission| submission.state == 'COMPLETE' }
+        raise 'Another submission appeared during upload' if active.any? { |submission| submission.state != 'READY_FOR_REVIEW' || !review_items(submission).empty? }
+        ready = app.get_ready_review_submission(platform: 'IOS') || app.create_review_submission(platform: 'IOS')
+        receipt.update('version_id' => version.id, 'submission_id' => ready.id, 'status' => 'submitting')
+        ready.add_app_store_version_to_review_items(app_store_version_id: version.id)
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 150
+        loop do
+          version = target_version
+          break if version.app_version_state == 'READY_FOR_REVIEW'
+          raise 'Version did not become ready for review; rerun after inspection' if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+          sleep(15)
+        end
+        ArgusRelease.assert_submission_items!(review_items(ready), version.id)
+        verify_submission_content!(version, build)
+        ready.submit_for_review
       end
       deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 300
       loop do
@@ -212,6 +248,28 @@ module ArgusRelease
         raise 'Submission state not confirmed; inspect receipt and rerun' if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
         sleep(15)
       end
+    end
+
+    def optional_relation_present?(version, method)
+      # Read raw data: fastlane's model parser can raise on the valid data:null response.
+      # Do not treat authorization/network/API errors as 'disabled'.
+      response = Spaceship::ConnectAPI.public_send(method, app_store_version_id: version.id)
+      raise 'Invalid Apple optional-relation response' unless response.body.is_a?(Hash) && response.body.key?('data')
+      !response.body['data'].nil?
+    end
+
+    def verify_submission_content!(version, build)
+      raise 'Unexpected version or state before submission' unless version && version.version_string == @version && EDITABLE_STATES.include?(version.app_version_state)
+      raise 'Selected build changed before submission' unless version.get_build&.id == build.id
+      raise 'Release type is not automatic' unless version.release_type == 'AFTER_APPROVAL'
+      raise 'Phased release must be disabled before submission' if optional_relation_present?(version, :get_app_store_version_phased_release)
+      notes = File.read(File.join(@root, "docs/app_store/releases/#{@version}/ja-JP.txt")).strip
+      review_notes = "ARGUS #{@version} (#{@build})\n\n" + File.read(File.join(@root, "docs/app_store/releases/#{@version}/review_notes.md")).strip
+      japanese = version.get_app_store_version_localizations.find { |localization| localization.locale == 'ja' }
+      raise 'Release notes changed before submission' unless japanese&.whats_new == notes
+      detail = version.fetch_app_store_review_detail
+      raise 'Review notes changed before submission' unless detail && detail.notes == review_notes
+      existing_review_information(version) # Also ensure required contacts / demo login remain complete.
     end
 
     def existing_review_information(version)
@@ -240,6 +298,7 @@ module ArgusRelease
     end
 
     def verify_submission(version, build)
+      raise 'Submitted version unexpectedly enables phased release' if optional_relation_present?(version, :get_app_store_version_phased_release)
       raise 'Submitted build ID mismatch' unless version.get_build&.id == build.id
       raise 'Release type is not automatic' unless version.release_type == 'AFTER_APPROVAL'
       submission = submissions.find do |candidate|

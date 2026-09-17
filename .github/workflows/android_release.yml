@@ -1,138 +1,121 @@
 name: Android Release
-
 on:
   push:
-    tags:
-      - "v*.*.*"
-  workflow_dispatch:
-
+    tags: ["v*.*.*"]
 permissions:
   contents: read
-
+  checks: read
+  actions: read
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
+  group: android-store-com.argus.orienteering
+  cancel-in-progress: false
 env:
-  RELEASE_VERSION_CODE_OFFSET: ${{ vars.RELEASE_VERSION_CODE_OFFSET || 1000 }}
-
+  RELEASE_VERSION_CODE_OFFSET: ${{ vars.RELEASE_VERSION_CODE_OFFSET }}
 jobs:
-  release:
-    name: Android Release
+  gate:
+    name: Validate Android release source
+    if: github.actor == 'nanigasi-san' && github.triggering_actor == 'nanigasi-san'
     runs-on: ubuntu-latest
-    env:
-      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-      ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
-      PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
-      PLAY_CLOSED_TRACK: ${{ vars.PLAY_CLOSED_TRACK }}
-
+    timeout-minutes: 45
+    outputs:
+      version: ${{ steps.config.outputs.version }}
+      build: ${{ steps.config.outputs.build }}
+      sha: ${{ steps.config.outputs.sha }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           fetch-depth: 0
-
-      - name: Resolve release config
-        id: release_config
-        run: |
-          set -euo pipefail
-
-          if ! [[ "$RELEASE_VERSION_CODE_OFFSET" =~ ^[0-9]+$ ]]; then
-            echo "RELEASE_VERSION_CODE_OFFSET must be a non-negative integer: $RELEASE_VERSION_CODE_OFFSET" >&2
-            exit 1
-          fi
-
-          build_number=$((GITHUB_RUN_NUMBER + RELEASE_VERSION_CODE_OFFSET))
-
-          if [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            tag="${GITHUB_REF_NAME}"
-            if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              echo "Unsupported release tag: $tag" >&2
-              exit 1
-            fi
-
-            build_name="${tag#v}"
-            track="production"
-            release_status="draft"
-            artifact_suffix="production"
-          else
-            current_line="$(awk '/^version:[[:space:]]*[0-9]+\.[0-9]+\.[0-9]+\+[0-9]+$/ {print; exit}' pubspec.yaml)"
-            if [[ -z "$current_line" ]]; then
-              echo "version line not found or unsupported format in pubspec.yaml" >&2
-              exit 1
-            fi
-
-            current_version="${current_line#version: }"
-            build_name="${current_version%%+*}"
-            track="${PLAY_CLOSED_TRACK:-beta}"
-            release_status="completed"
-            artifact_suffix="closed"
-          fi
-
-          echo "build_name=$build_name" >> "$GITHUB_OUTPUT"
-          echo "build_number=$build_number" >> "$GITHUB_OUTPUT"
-          echo "track=$track" >> "$GITHUB_OUTPUT"
-          echo "release_status=$release_status" >> "$GITHUB_OUTPUT"
-          echo "artifact_suffix=$artifact_suffix" >> "$GITHUB_OUTPUT"
-          echo "release_name=Argus $build_name ($build_number)" >> "$GITHUB_OUTPUT"
-
-          echo "Build name: $build_name"
-          echo "Build number: $build_number"
-          echo "Track: $track"
-          echo "Release status: $release_status"
-
-      - name: Set up Java
-        uses: actions/setup-java@v5
+          persist-credentials: false
+      - name: Verify main ancestry and all main CI workflows
+        id: config
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ios_release_config.py gate --platform android
+  release:
+    needs: gate
+    name: Android Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: android-release
+    env:
+      RELEASE_VERSION: ${{ needs.gate.outputs.version }}
+      RELEASE_BUILD: ${{ needs.gate.outputs.build }}
+      RELEASE_SHA: ${{ needs.gate.outputs.sha }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+          persist-credentials: false
+      - name: Require all release credentials
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: python3 scripts/android_release.py credentials
+      - name: Restore original verified AAB and receipt
+        run: python3 scripts/ios_release_config.py restore --platform android
+      - name: Determine whether a build is required
+        id: restore
+        run: python3 scripts/android_release.py restore_check
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
         with:
           distribution: temurin
           java-version: "17"
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        if: steps.restore.outputs.build_required == 'true'
         with:
+          flutter-version: "3.44.1"
           channel: stable
-
-      - name: Restore Android signing config
-        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' && env.ANDROID_KEY_ALIAS != '' && env.ANDROID_KEY_PASSWORD != '' && env.ANDROID_STORE_PASSWORD != '' }}
+      - name: Restore release signing key
+        if: steps.restore.outputs.build_required == 'true'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+        run: python3 scripts/android_release.py install
+      - name: Build signed production AAB
+        if: steps.restore.outputs.build_required == 'true'
+        env:
+          ARGUS_RELEASE_REQUIRE_SIGNING: "true"
         run: |
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release-keystore.jks"
-
-          cat > android/key.properties <<KEYS
-          storeFile=$RUNNER_TEMP/release-keystore.jks
-          storePassword=$ANDROID_STORE_PASSWORD
-          keyAlias=$ANDROID_KEY_ALIAS
-          keyPassword=$ANDROID_KEY_PASSWORD
-          KEYS
-
-      - name: Get dependencies
-        run: flutter pub get
-
-      - name: Build release appbundle
-        run: |
-          flutter build appbundle --release \
-            --build-name "${{ steps.release_config.outputs.build_name }}" \
-            --build-number "${{ steps.release_config.outputs.build_number }}"
-
-      - name: Upload Android artifacts
-        uses: actions/upload-artifact@v7
+          flutter pub get
+          flutter build appbundle --release --build-name "$RELEASE_VERSION" --build-number "$RELEASE_BUILD"
+          cp build/app/outputs/bundle/release/app-release.aab build/android-release/app-release.aab
+      - name: Verify upload signature and record original AAB hash
+        if: steps.restore.outputs.build_required == 'true'
+        env:
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+        run: python3 scripts/android_release.py verify
+      - name: Preserve original verified AAB before upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: android-release-${{ steps.release_config.outputs.artifact_suffix }}-artifacts
-          path: |
-            build/app/outputs/bundle/release/app-release.aab
-            build/app/outputs/mapping/release/mapping.txt
+          name: android-release-preupload-${{ github.run_attempt }}
+          path: build/android-release/
+          if-no-files-found: error
+          retention-days: 90
+      - name: Publish production release for Google review
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: python3 scripts/android_release.py publish
+      - name: Write release state
+        if: always()
+        run: |
+          if [ -f build/android-release/receipt.json ]; then
+            python3 scripts/android_release.py summary
+          fi
+      - name: Save original AAB and recovery receipt
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: android-release-result-${{ github.run_attempt }}
+          path: build/android-release/
           if-no-files-found: warn
-          retention-days: 30
-
-      - name: Upload to Google Play
-        if: ${{ env.PLAY_SERVICE_ACCOUNT_JSON != '' }}
-        uses: r0adkll/upload-google-play@v1
-        with:
-          serviceAccountJsonPlainText: ${{ env.PLAY_SERVICE_ACCOUNT_JSON }}
-          packageName: com.argus.orienteering
-          releaseFiles: build/app/outputs/bundle/release/app-release.aab
-          releaseName: ${{ steps.release_config.outputs.release_name }}
-          track: ${{ steps.release_config.outputs.track }}
-          status: ${{ steps.release_config.outputs.release_status }}
-          inAppUpdatePriority: 2
+          retention-days: 90
+      - name: Remove signing material
+        if: always()
+        run: python3 scripts/android_release.py cleanup
