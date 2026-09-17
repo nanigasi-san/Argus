@@ -43,6 +43,7 @@ jobs:
           )"
           echo "udid=$simulator_udid" >> "$GITHUB_OUTPUT"
           echo "Selected iOS Simulator: $simulator_udid"
+          open -a Simulator --args -CurrentDeviceUDID "$simulator_udid"
           xcrun simctl boot "$simulator_udid" || true
           python3 scripts/run_with_timeout.py 420 xcrun simctl bootstatus "$simulator_udid" -b
           mkdir -p build/e2e/ios

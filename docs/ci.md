@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | Flutter Tests | `.github/workflows/flutter_tests.yml` | 静的解析、unit/widgetテスト、カバレッジ |
 | Android Build | `.github/workflows/android_build.yml` | 本番エントリーポイントのrelease AAB生成 |
-| iOS Build | `.github/workflows/ios_build.yml` | iOS関連Dartテスト、Simulator向けビルド、native XCTest |
+| iOS Build | `.github/workflows/ios_build.yml` | Simulator向けビルド、native XCTest（Dartテスト・解析はFlutter Testsに集約） |
 | Android E2E | `.github/workflows/android_e2e.yml` | Android Emulator上の全共通E2E |
 | iOS E2E | `.github/workflows/ios_e2e.yml` | iOS Simulator上の全共通E2E |
 | Android Release | `.github/workflows/android_release.yml` | ストア向けAABの生成、設定済みの場合のGoogle Playへのアップロード |
@@ -57,16 +57,38 @@ PRがない作業ブランチへのpushでは実行せず、mainへのpushでは
 
 ## iOS E2Eの診断ログと時間制限
 
-`scripts/run_ios_e2e.sh` は全E2Eファイルを順番に実行し、各ファイルの
-`flutter drive --verbose` ログと結果を `build/e2e/ios/` に保存する。
-30秒ごとに経過時間を出力し、各ファイルの制限は600秒とする。
+両E2Eスクリプトは `integration_test/` と `e2e/` の `*_test.dart` を
+再帰検出し、全ファイルのmainをgroupとして登録する入口を
+`integration_test/ci_all_suites.dart` に自動生成する（生成物はGit対象外）。追加ファイルも自動で対象となる。
+ファイルごとのビルド・インストール・起動を繰り返さず、一度のアプリ起動で
+全シナリオを実行する。検出一覧は `suites.txt`、全体結果は `results.txt`、
+個別シナリオの成否は `all_suites.log` に記録する。
+実行件数を `test-results.json` に記録し、検出した各ファイルの完了件数が
+0または報告が欠けている場合はdriverを失敗させる。完了通知は最上位で
+登録し、最初のgroupだけで成功が返ることを防ぐ。
+WindowsのPowerShellスクリプトは従来のファイル別全件実行を維持する。
+
+`scripts/run_ios_e2e.sh` は `flutter drive --verbose` ログと結果を
+`build/e2e/ios/` に保存する。
+30秒ごとに経過時間を出力し、全件実行の制限は900秒とする。
 ローカルで変更する場合は `E2E_IOS_SUITE_TIMEOUT_SECONDS` を指定する。
 時間超過は終了コード124の失敗として記録し、子プロセスも終了する。
-失敗したファイルを成功扱いしたり、残りのファイルを省略したりはしない。
+失敗を成功扱いせず、全件の登録と実行を維持する。
 
 Simulatorの起動待ちは420秒に制限し、起動後の画面取得で応答を確認する。
+両iOSワークフローはSimulatorアプリも明示的に起動する。
 終了時のアプリ・インストールサービスのログ取得と
 スクリーンショット取得にも時間制限を設け、診断処理自体の停止を防ぐ。
 結果・詳細ログ・スクリーンショットは `ios-e2e-diagnostics` Artifactに
 14日間保存する。コマンドの時間制限・キャンセル処理の回帰テストは
 `Flutter Tests` で実行する。
+
+## キャッシュと重複削減
+
+Flutter SDK・pubキャッシュを全検証ワークフローで有効にする。
+Android Build・Android E2Eは `gradle/actions/setup-gradle` により
+Gradle依存と再利用可能なビルド状態をキャッシュする。
+iOS Buildで重複実行していた解析・DartテストはFlutter Testsの全件実行に
+集約し、Simulator向け通常アプリビルドとnative XCTestは維持する。
+5つの必須チェック、Android release AAB、全E2Eシナリオは削減しない。
+PRとmain pushの実行条件も変更しない。

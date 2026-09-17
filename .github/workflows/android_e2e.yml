@@ -38,6 +38,12 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Cache Gradle dependencies and build state
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork }}
+
       - name: Get dependencies
         run: flutter pub get
 
