@@ -75,6 +75,10 @@ class ConcurrentPreparationTests(unittest.TestCase):
                 self.assertTrue(boot_finished.is_set())
             return subprocess.CompletedProcess(command, 0, "com.argus: 123\n")
 
+        def build(command, on_xcode_build=None):
+            on_xcode_build()
+            execute(command)
+
         with tempfile.TemporaryDirectory() as directory:
             report = Path(directory)
             app = report / "Runner.app"
@@ -83,6 +87,7 @@ class ConcurrentPreparationTests(unittest.TestCase):
                 plistlib.dump({"CFBundleIdentifier": "com.argus", "CFBundleExecutable": "Runner"}, file)
             with patch.object(e2e, "APP", app), \
                     patch.object(e2e.ios_simulator, "boot", side_effect=boot), \
+                    patch.object(e2e, "build_app", side_effect=build), \
                     patch.object(e2e.subprocess, "run", side_effect=execute), \
                     patch.object(e2e, "wait_for_vm_service", return_value="http://127.0.0.1:123/a/"):
                 self.assertEqual(e2e.run_e2e("device", report, boot_simulator=True), 0)
@@ -91,11 +96,11 @@ class ConcurrentPreparationTests(unittest.TestCase):
     def test_e2e_does_not_install_or_run_tests_after_boot_failure(self):
         with tempfile.TemporaryDirectory() as directory, \
                 patch.object(e2e.ios_simulator, "boot", side_effect=TimeoutError("boot failed")), \
+                patch.object(e2e, "build_app", side_effect=lambda command, callback: callback()), \
                 patch.object(e2e.subprocess, "run") as run:
             with self.assertRaises(TimeoutError):
                 e2e.run_e2e("device", Path(directory), boot_simulator=True)
-        self.assertEqual(run.call_count, 1)
-        self.assertEqual(run.call_args.args[0][:2], ["flutter", "build"])
+        run.assert_not_called()
 
 
 class NativeTests(unittest.TestCase):
@@ -119,10 +124,11 @@ class NativeTests(unittest.TestCase):
         def execute(command, **kwargs):
             commands.append(command)
             if command[:2] == ["flutter", "build"]:
-                self.assertTrue(boot_started.wait(2))
+                self.assertFalse(boot_started.is_set(), "Flutter preparation must precede boot")
             if failing_action and failing_action in command:
                 raise subprocess.CalledProcessError(7, command)
             if "build-for-testing" in command:
+                self.assertTrue(boot_started.wait(2))
                 build_finished.set()
             if "test-without-building" in command:
                 self.assertTrue(boot_finished.is_set())
@@ -172,6 +178,43 @@ class NativeTests(unittest.TestCase):
         for summary in summaries:
             with self.subTest(summary=summary), self.assertRaises(ValueError):
                 self.run_native(summary=summary)
+
+
+class BuildProgressTests(unittest.TestCase):
+    def test_starts_boot_at_partial_progress_before_compilation_finishes(self):
+        import sys
+        with tempfile.TemporaryDirectory() as directory:
+            signal_file = Path(directory, "boot-started")
+            script = (
+                "import sys, time; from pathlib import Path; "
+                "sys.stdout.write('Running Xcode build...'); sys.stdout.flush(); "
+                "deadline=time.monotonic()+3\n"
+                "while not Path(sys.argv[1]).exists() and time.monotonic()<deadline: time.sleep(.01)\n"
+                "assert Path(sys.argv[1]).exists(), 'Boot callback waited for newline/build exit'\n"
+                "print('done')\n"
+            )
+            calls = []
+
+            def start_boot():
+                calls.append(True)
+                signal_file.touch()
+
+            e2e.build_app([sys.executable, "-c", script, str(signal_file)], start_boot)
+            self.assertEqual(calls, [True])
+
+    def test_missing_progress_still_starts_boot_after_success(self):
+        import sys
+        calls = []
+        e2e.build_app([sys.executable, "-c", "print('new log format')"], lambda: calls.append(True))
+        self.assertEqual(calls, [True])
+
+    def test_build_failure_preserves_exit_status_and_never_starts_fallback_boot(self):
+        import sys
+        calls = []
+        with self.assertRaises(subprocess.CalledProcessError) as error:
+            e2e.build_app([sys.executable, "-c", "import sys; sys.exit(7)"], lambda: calls.append(True))
+        self.assertEqual(error.exception.returncode, 7)
+        self.assertEqual(calls, [])
 
 
 if __name__ == "__main__":

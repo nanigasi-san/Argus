@@ -82,7 +82,11 @@ Simulatorアプリを一度ビルド・インストールする。Dartを停止�
 失敗を成功扱いせず、全件の登録と実行を維持する。
 
 CIでは `E2E_IOS_BOOT_SIMULATOR=true` により、Simulator起動と全件用アプリの
-ビルドを並行して行う。インストール・起動・driver接続はビルドと
+ビルドを並行して行う。Flutterの初期設定・Xcode探索中に起動を開始すると
+初期処理が数分延びる実行があったため、コンパイル開始の進捗出力を受けて
+Simulator起動を始める。改行のない進捗出力も処理する。
+進捗の形式が変わって検出できなかった場合はビルド後に起動し、起動確認を維持する。
+インストール・起動・driver接続はビルドと
 `simctl bootstatus -b` の両方の成功後にだけ進める。ローカルで起動済み端末を
 指定する従来のコマンドも維持する。
 Simulatorの起動待ちは420秒に制限し、起動後の診断画像を最大30秒で取得する。
@@ -112,12 +116,15 @@ Flutter設定・プラグイン・CocoaPodsを準備し、`xcodebuild build-for-
 でアプリと全テストを一つのDerivedDataに一度だけビルドする。
 ビルドはgeneric Simulator向けとし、通常アプリのSimulator用アーキテクチャを
 特定の端末のものだけに絞らない。
-Simulator起動はビルドと並行して行い、両方の成功後に同じDerivedDataの成果物を
+Flutterの設定準備を完了してから、Simulator起動をXcodeのビルドと並行して行う。
+IDE向けの索引生成は `COMPILER_INDEX_STORE_ENABLE=NO` で省き、
+Flutterの通常ビルドと同じ設定にする。コンパイル・解析警告・テスト実行は維持する。
+両方の成功後に同じDerivedDataの成果物を
 `xcodebuild test-without-building` で実行する。
 短いnative XCTestのためだけに別のSimulatorを複製・起動する待ち時間を避けるため、
 テストの並列実行を無効にする。テストの除外や自動再試行は行わない。
 結果Bundleを `xcresulttool` で読み、0件・失敗・スキップ・完了件数不足を失敗とする。
-全体は既存の子プロセス終了付きwatchdogで900秒に制限する。
+全体は子プロセス終了付きwatchdogで1080秒に制限する（WFの上限は従来の20分）。
 起動時間・ビルド時間・テスト時間・全件結果・ログ・`.xcresult` は
 `ios-native-test-results` Artifactに14日間保存する。
 並行起動時の成功待ち、起動失敗時の中断、通常入口と全テストの単一ビルド、

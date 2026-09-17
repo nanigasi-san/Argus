@@ -20,13 +20,15 @@ def run_build():
     started = time.monotonic()
     arguments = ["-workspace", "ios/Runner.xcworkspace", "-scheme", "Runner",
                  "-configuration", "Debug", "-sdk", "iphonesimulator",
-                 "-derivedDataPath", str(DERIVED_DATA), "CODE_SIGNING_ALLOWED=NO"]
+                 "-derivedDataPath", str(DERIVED_DATA), "CODE_SIGNING_ALLOWED=NO",
+                 "COMPILER_INDEX_STORE_ENABLE=NO"]
+    # Finish Flutter's Xcode/Simulator probes before starting a cold boot.
+    subprocess.run(["flutter", "build", "ios", "--simulator", "--debug",
+                    "--config-only", "--target=lib/main.dart"], check=True)
     with ThreadPoolExecutor(max_workers=1) as pool:
         ready = pool.submit(ios_simulator.boot, device, REPORT)
         # Flutter prepares plugins, CocoaPods and the normal Dart entry point;
         # Xcode then builds Runner and every test bundle in one output tree.
-        subprocess.run(["flutter", "build", "ios", "--simulator", "--debug",
-                        "--config-only", "--target=lib/main.dart"], check=True)
         subprocess.run(["xcodebuild", "build-for-testing", *arguments,
                         "-destination", "generic/platform=iOS Simulator"], check=True)
         build_seconds = time.monotonic() - started
@@ -62,4 +64,3 @@ if __name__ == "__main__":
             ValueError, OSError, KeyError, StopIteration) as error:
         print(f"[error] {error}", file=sys.stderr)
         sys.exit(error.returncode if isinstance(error, subprocess.CalledProcessError) else 1)
-

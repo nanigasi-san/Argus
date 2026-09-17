@@ -34,7 +34,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build/ios-native-tests
-          python3 scripts/run_with_timeout.py 900 python3 scripts/run_ios_build.py \
+          python3 scripts/run_with_timeout.py 1080 python3 scripts/run_ios_build.py \
             2>&1 | tee build/ios-native-tests/run.log
 
       - name: Write native test summary
