@@ -1,4 +1,4 @@
-name: iOS CI
+name: iOS Build
 
 on:
   push:
@@ -11,7 +11,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  ios-simulator-build:
+  build:
+    name: iOS Build
     runs-on: macos-latest
     timeout-minutes: 20
 

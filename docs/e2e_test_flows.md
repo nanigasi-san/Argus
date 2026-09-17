@@ -20,7 +20,7 @@ Core E2Eの状態は、各位置投入後にControllerのsnapshot、Notifierのb
 Homeの状態表示が一致することを確認する。
 警告は本物のNotifierが動作させる通知・音・振動のテスト実装で観測する。
 
-iOSでも `.github/workflows/e2e_ios.yml` によりUI smoke・Core monitoring・
+iOSでも `.github/workflows/ios_e2e.yml` によりUI smoke・Core monitoring・
 コンパスの全suiteをPR / main push / 手動で実行する。
 macOS上でiPhone Simulatorを起動し、`scripts/run_ios_e2e.sh` が全E2Eを
 再帰検出する。コンパスの方位はDartから注入し、磁気センサーは使わない。
@@ -276,7 +276,7 @@ driverはスクリーンショットをホスト側に書き出し、Coreの例�
 | 終了時の端末画面 | `build/e2e/final-screen.png` |
 
 Artifact名は `android-e2e-diagnostics`、保存期間は14日。
-必須チェックとして設定する際のjob名は `All Android E2E`。
+必須チェックとして設定する際のjob名は `Android E2E`。
 workflowの追加と、リポジトリ側で必須チェックに指定する設定は別の作業になる。
 
 ### PR提出前の全件実行

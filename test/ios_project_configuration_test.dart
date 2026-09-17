@@ -168,7 +168,8 @@ void main() {
 
     test('keeps Podfile.lock trackable and executes native XCTests in CI', () {
       final gitignore = File('.gitignore').readAsStringSync();
-      final workflow = File('.github/workflows/ios_ci.yml').readAsStringSync();
+      final workflow =
+          File('.github/workflows/ios_build.yml').readAsStringSync();
 
       expect(gitignore, contains('!/ios/Podfile.lock'));
       expect(workflow, contains('xcodebuild test \\'));

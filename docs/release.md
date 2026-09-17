@@ -99,7 +99,7 @@ gh secret set ANDROID_KEY_PASSWORD --repo $repo --body $props["keyPassword"]
 - production配信が走らない
   - `v1.2.3` のような `vX.Y.Z` 形式のtagをpushしているか確認してください。
 - closed test配信が走らない
-  - Actions画面から `android_release` workflowを手動実行してください。
+  - Actions画面から `Android Release` workflowを手動実行してください。
 - 署名エラー
   - `ANDROID_KEYSTORE_BASE64`、alias、store password、key password の不一致を確認してください。
 - Play uploadがスキップされる

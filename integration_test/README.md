@@ -55,7 +55,7 @@ Saved files:
 
 ## Notes
 
-- `.github/workflows/e2e_android.yml` provisions an Android API 36 emulator and runs all E2E files on every PR and main push, and supports manual runs.
+- `.github/workflows/android_e2e.yml` provisions an Android API 36 emulator and runs all E2E files on every PR and main push, and supports manual runs.
 - If multiple devices are connected, always pass `-d <android-device-id>`.
 - GPS and camera hardware behavior should be treated as manual/device verification; app-side permission and error flows are covered by tests.
 
@@ -78,11 +78,11 @@ iOSでは、単一「続ける」ボタンの位置情報説明画面と、設�
 bash scripts/run_ios_e2e.sh <ios-simulator-id>
 ```
 
-`.github/workflows/e2e_ios.yml` はPR・main push・手動実行時に標準の
+`.github/workflows/ios_e2e.yml` はPR・main push・手動実行時に標準の
 `macos-latest` runnerで利用可能なiPhone Simulatorを起動し、このスクリプトを
 実行します。`integration_test/` と、存在する場合は `e2e/` の全
 `*_test.dart` を再帰的に検出します。失敗しても残りのsuiteを続行し、
-1件でも失敗すれば `All iOS E2E` チェックを失敗にします。
+1件でも失敗すれば `iOS E2E` チェックを失敗にします。
 
 仮想方位はDartサービスへ注入するため、Simulatorの磁気センサーは不要です。
 OS固有の任意モード `SIMULATOR_GPS=true` はCIでは有効にしません。
@@ -206,9 +206,9 @@ Artifact `android-e2e-diagnostics` は成功・失敗とも14日間保存され�
 Step SummaryにもAPI level、Flutter version、実行suite、成否を表示します。
 実行中のlogcatはエミュレーター終了前に収集します。
 実行ファイル一覧は `build/e2e/suites.txt` に保存します。
-PRの必須チェックにする場合のチェック名は `All Android E2E` です。
+PRの必須チェックにする場合のチェック名は `Android E2E` です。
 PR提出前にローカルで全件を成功させるルールを `AGENTS.md` に記載しています。
-既存のunit/widget、iOS CI、Android release workflowは独立して動作します。
+`Flutter Tests`、`iOS Build`、`Android Release` は独立して動作します。
 
 ### Platform E2Eの残る範囲
 

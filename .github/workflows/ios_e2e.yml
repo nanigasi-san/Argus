@@ -15,8 +15,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  all-e2e:
-    name: All iOS E2E
+  e2e:
+    name: iOS E2E
     runs-on: macos-latest
     timeout-minutes: 45
     steps:

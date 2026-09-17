@@ -15,8 +15,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  core-e2e:
-    name: All Android E2E
+  e2e:
+    name: Android E2E
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:

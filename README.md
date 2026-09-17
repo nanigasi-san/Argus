@@ -3,8 +3,10 @@
 https://argus-lp.vercel.app/
 
 
-[![CI](https://github.com/nanigasi-san/Argus/actions/workflows/ci.yml/badge.svg)](https://github.com/nanigasi-san/Argus/actions/workflows/ci.yml)
+[![Flutter Tests](https://github.com/nanigasi-san/Argus/actions/workflows/flutter_tests.yml/badge.svg)](https://github.com/nanigasi-san/Argus/actions/workflows/flutter_tests.yml)
 [![codecov](https://codecov.io/gh/nanigasi-san/Argus/branch/main/graph/badge.svg)](https://codecov.io/gh/nanigasi-san/Argus)
+
+テスト・ビルド・E2Eのワークフロー構成は [docs/ci.md](docs/ci.md) を参照してください。
 
 ![App icon](./icon.png)
 
