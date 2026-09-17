@@ -26,12 +26,12 @@ def boot(device, report):
                    if entry["udid"] == device)
     if current["state"] != "Booted":
         subprocess.run(["xcrun", "simctl", "boot", device], check=True, timeout=60)
-    # The Simulator GUI may boot its current device automatically. Open it only
-    # after simctl boot, so it cannot race with our state check and boot command.
-    subprocess.run(["open", "-a", "Simulator", "--args", "-CurrentDeviceUDID", device],
-                   check=True, timeout=30)
     subprocess.run(["xcrun", "simctl", "bootstatus", device, "-b"],
                    check=True, timeout=420)
+    # Complete device startup before asking Launch Services to open the GUI.
+    # The first GUI launch can exceed 30 seconds on a cold CI runner.
+    subprocess.run(["open", "-a", "Simulator", "--args", "-CurrentDeviceUDID", device],
+                   check=True, timeout=120)
     elapsed = time.monotonic() - started
     Path(report, "simulator-boot.json").write_text(json.dumps({
         "device": device, "seconds": elapsed, "ready": True,

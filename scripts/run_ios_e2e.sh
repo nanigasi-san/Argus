@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run every portable E2E suite; CI can boot the Simulator alongside the build.
+# Run every portable E2E suite; CI boots the Simulator after a successful build.
 set -euo pipefail
 device_id="${1:?Usage: bash scripts/run_ios_e2e.sh <simulator-udid>}"
 output_dir=build/e2e/ios

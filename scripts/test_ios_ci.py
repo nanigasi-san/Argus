@@ -55,14 +55,19 @@ class SimulatorTests(unittest.TestCase):
         gui_index = next(index for index, (command, _) in enumerate(commands)
                          if command[0] == "open")
         self.assertLess(boot_index, gui_index, "Simulator GUI must not race simctl boot")
-        self.assertEqual(commands[-2], (["xcrun", "simctl", "bootstatus", "device", "-b"],
-                                       {"check": True, "timeout": 420}))
+        readiness_index = next(index for index, (command, _) in enumerate(commands)
+                               if "bootstatus" in command)
+        self.assertLess(readiness_index, gui_index, "Device startup must finish before GUI launch")
+        self.assertEqual(commands[readiness_index],
+                         (["xcrun", "simctl", "bootstatus", "device", "-b"],
+                          {"check": True, "timeout": 420}))
+        self.assertEqual(commands[gui_index][1], {"check": True, "timeout": 120})
 
     def test_already_booted_device_still_requires_readiness(self):
         commands = self.run_boot(state="Booted")
         self.assertFalse(any(command[:3] == ["xcrun", "simctl", "boot"]
                              for command, _ in commands))
-        self.assertIn("bootstatus", commands[-2][0])
+        self.assertTrue(any("bootstatus" in command for command, _ in commands))
 
     def test_boot_errors_are_not_ignored(self):
         with self.assertRaises(subprocess.CalledProcessError):
