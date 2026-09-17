@@ -18,8 +18,6 @@ def select_device():
 def boot(device, report):
     started = time.monotonic()
     print(f"[simulator] Booting {device} alongside the build", flush=True)
-    subprocess.run(["open", "-a", "Simulator", "--args", "-CurrentDeviceUDID", device],
-                   check=True, timeout=30)
     # Only an already-booted device may bypass boot; other errors must fail CI.
     result = subprocess.run(["xcrun", "simctl", "list", "devices", "available", "-j"],
                             check=True, capture_output=True, text=True, timeout=30)
@@ -28,6 +26,10 @@ def boot(device, report):
                    if entry["udid"] == device)
     if current["state"] != "Booted":
         subprocess.run(["xcrun", "simctl", "boot", device], check=True, timeout=60)
+    # The Simulator GUI may boot its current device automatically. Open it only
+    # after simctl boot, so it cannot race with our state check and boot command.
+    subprocess.run(["open", "-a", "Simulator", "--args", "-CurrentDeviceUDID", device],
+                   check=True, timeout=30)
     subprocess.run(["xcrun", "simctl", "bootstatus", device, "-b"],
                    check=True, timeout=420)
     elapsed = time.monotonic() - started

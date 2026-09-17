@@ -34,6 +34,11 @@ class SimulatorTests(unittest.TestCase):
         commands = self.run_boot()
         self.assertTrue(any(command[:3] == ["xcrun", "simctl", "boot"]
                             for command, _ in commands))
+        boot_index = next(index for index, (command, _) in enumerate(commands)
+                          if command[:3] == ["xcrun", "simctl", "boot"])
+        gui_index = next(index for index, (command, _) in enumerate(commands)
+                         if command[0] == "open")
+        self.assertLess(boot_index, gui_index, "Simulator GUI must not race simctl boot")
         self.assertEqual(commands[-2], (["xcrun", "simctl", "bootstatus", "device", "-b"],
                                        {"check": True, "timeout": 420}))
 
