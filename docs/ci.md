@@ -68,8 +68,14 @@ PRがない作業ブランチへのpushでは実行せず、mainへのpushでは
 登録し、最初のgroupだけで成功が返ることを防ぐ。
 WindowsのPowerShellスクリプトは従来のファイル別全件実行を維持する。
 
-`scripts/run_ios_e2e.sh` は `flutter drive --verbose` ログと結果を
-`build/e2e/ios/` に保存する。
+`scripts/run_ios_e2e.sh` は `scripts/run_ios_e2e.py` を呼び出し、全件用の
+Simulatorアプリを一度ビルド・インストールする。Dartを停止した状態で起動し、
+起動開始時刻以降の保存ログを `log show --style json` で読み直す。
+今回起動したPIDのVM Service URLを取得し、`flutter drive --use-existing-app`
+で接続する。起動とライブのログ監視の競合でURL通知を取り逃がす問題を避ける。
+以前のPIDや起動開始前のURLを使用せず、URL取得は120秒、各ログ取得は最大15秒に
+制限する。アプリ起動・テストを再試行して失敗を隠す処理は行わない。
+ビルド・起動・`flutter drive --verbose` のログと結果を `build/e2e/ios/` に保存する。
 30秒ごとに経過時間を出力し、全件実行の制限は900秒とする。
 ローカルで変更する場合は `E2E_IOS_SUITE_TIMEOUT_SECONDS` を指定する。
 時間超過は終了コード124の失敗として記録し、子プロセスも終了する。
@@ -79,9 +85,12 @@ Simulatorの起動待ちは420秒に制限し、起動後の画面取得で応�
 両iOSワークフローはSimulatorアプリも明示的に起動する。
 終了時のアプリ・インストールサービスのログ取得と
 スクリーンショット取得にも時間制限を設け、診断処理自体の停止を防ぐ。
+起動情報は `launch.json`、接続URLは `vm-service-uri.txt`、取得した保存ログは
+`vm-service-log.json` に保存する。終了時の診断取得後にアプリを停止する。
 結果・詳細ログ・スクリーンショットは `ios-e2e-diagnostics` Artifactに
 14日間保存する。コマンドの時間制限・キャンセル処理の回帰テストは
-`Flutter Tests` で実行する。
+`Flutter Tests` で実行する。保存済み通知の回収、古い起動情報の除外、
+URL取得の時間制限、接続不能時の中断、driver失敗の保持もPythonテストで検証する。
 
 ## キャッシュと重複削減
 

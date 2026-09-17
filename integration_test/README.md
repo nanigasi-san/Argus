@@ -78,6 +78,11 @@ iOSでは、単一「続ける」ボタンの位置情報説明画面と、設�
 bash scripts/run_ios_e2e.sh <ios-simulator-id>
 ```
 
+iOSの全件実行は一度ビルドしたアプリを停止状態で起動し、今回のPIDの
+VM Service URLを保存ログから取得してdriverへ接続します。URL取得は120秒、
+ビルドからテスト完了までの全体は900秒に制限します。
+起動情報・接続URL・保存ログは `build/e2e/ios/` に記録します。
+
 `.github/workflows/ios_e2e.yml` はPR・main push・手動実行時に標準の
 `macos-latest` runnerで利用可能なiPhone Simulatorを起動し、このスクリプトを
 実行します。`integration_test/` と、存在する場合は `e2e/` の全

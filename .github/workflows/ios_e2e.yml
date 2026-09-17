@@ -67,7 +67,7 @@ jobs:
             echo "- Result: $E2E_OUTCOME"
             echo '- Native GPS option: disabled; headings are injected in Dart'
             echo '```text'
-            for report in flutter-version.txt xcode-version.txt suites.txt results.txt; do
+            for report in flutter-version.txt xcode-version.txt launch.json suites.txt results.txt test-results.json; do
               if [ -f "build/e2e/ios/$report" ]; then cat "build/e2e/ios/$report"; fi
             done
             echo '```'

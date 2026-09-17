@@ -7,6 +7,10 @@ suite_timeout="${E2E_IOS_SUITE_TIMEOUT_SECONDS:-900}"
 bounded() { python3 scripts/run_with_timeout.py "$@"; }
 mkdir -p "$output_dir"
 : > "$output_dir/results.txt"
+# Clear metadata before a run so diagnostics cannot stop a previous app.
+rm -f "$output_dir/bundle-id.txt" "$output_dir/launch.json" \
+  "$output_dir/vm-service-uri.txt" "$output_dir/vm-service-log.json" \
+  "$output_dir/test-results.json"
 python3 scripts/generate_e2e_entrypoint.py "$output_dir"
 flutter --version > "$output_dir/flutter-version.txt"
 xcodebuild -version > "$output_dir/xcode-version.txt"
@@ -17,6 +21,9 @@ capture_diagnostics() {
     --predicate 'process == "Runner" OR process == "installd"' > "$output_dir/simulator.log" 2>&1 || true
   bounded 15 xcrun simctl io "$device_id" screenshot "$output_dir/final-screen.png" 2>/dev/null || true
   ps -axo pid,ppid,state,etime,comm > "$output_dir/processes.txt"
+  if [ -f "$output_dir/bundle-id.txt" ]; then
+    bounded 15 xcrun simctl terminate "$device_id" "$(cat "$output_dir/bundle-id.txt")" || true
+  fi
 }
 trap capture_diagnostics EXIT
 
@@ -27,8 +34,7 @@ export E2E_REPORT_DIR="$output_dir"
 # Virtual headings are injected in Dart; no magnetic sensor is required.
 # Native GPS remains a separate opt-in mode (SIMULATOR_GPS is not enabled).
 echo "[$(date -u '+%FT%TZ')] Starting $test_file (timeout ${suite_timeout}s)"
-if bounded "$suite_timeout" flutter drive --verbose --driver=test_driver/ui_smoke_driver.dart \
-    --target="$test_file" -d "$device_id" \
+if bounded "$suite_timeout" python3 scripts/run_ios_e2e.py "$device_id" "$output_dir" \
     2>&1 | tee "$output_dir/${suite}.log"; then
   echo "$suite: success" | tee -a "$output_dir/results.txt"
 else
