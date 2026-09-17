@@ -21,6 +21,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
+      - name: Complete Xcode first-launch setup
+        timeout-minutes: 5
+        run: |
+          sudo xcodebuild -runFirstLaunch
+          xcodebuild -checkFirstLaunchStatus
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:

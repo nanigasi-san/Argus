@@ -71,3 +71,18 @@ URLを取得する経路を確実にすることを優先する。タイムア�
 別案はFlutter側のログ監視を初期化完了後に起動するよう修正する方法である。SDK変更を採用する場合は、CIで使用するFlutterのバージョンと変更対象の一致を検証する必要がある。
 
 この調査では既存CIログ・artifactと公式ソースを照合した。修正実装や追加のCI再実行は行っていない。Windows環境のためiOS Simulatorでのローカル再現・対策の効果検証は未実施。
+
+## 高速化検証中のCoreSimulator初期化の失敗
+
+VM Serviceの通知取り逃がしとは別に、2026-09-17の検証で次の失敗を確認した。
+
+| 実行 | 停止箇所 | 状況 |
+| --- | --- | --- |
+| [35218293280](https://github.com/nanigasi-san/Argus/actions/runs/35218293280) | `open -a Simulator` が30秒でタイムアウト | アプリと全nativeテストのビルドは成功。GUIを端末起動完了前に開いており、nativeテストは未実行 |
+| [35219182806](https://github.com/nanigasi-san/Argus/actions/runs/35219182806) | 初回の `simctl list devices available -j` が120秒でタイムアウト | macos-26-arm64 / image 20260907.0351.1。E2Eアプリのビルド前のため、VM Service接続問題とは区別する |
+
+各WFでは前の処理の成功後に次へ進む方針とし、ビルドと起動の並行化・進捗出力解析を削除した。端末の`bootstatus`完了後にGUIを開き、GUI初回起動は120秒まで待つ。
+
+[Appleのコンポーネント準備手順](https://developer.apple.com/documentation/xcode/downloading-and-installing-additional-xcode-components)に従い、WFの最初に`xcodebuild -runFirstLaunch`を実行して`-checkFirstLaunchStatus`で成功を確認する。初回の端末取得は300秒まで待ち、失敗を成功扱いしたりアプリ・テストを再試行したりしない。
+
+端末一覧の停止だけでは必須コンポーネント未準備やサービス内部の停止を断定できない。初期設定の明示と待ち時間の修正は対策として検証し、修正後の全件成功・複数runnerでの結果をPR本文に記録する。

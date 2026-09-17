@@ -7,7 +7,7 @@ import time
 
 def select_device():
     result = subprocess.run(["xcrun", "simctl", "list", "devices", "available", "-j"],
-                            check=True, capture_output=True, text=True, timeout=120)
+                            check=True, capture_output=True, text=True, timeout=300)
     devices = json.loads(result.stdout)["devices"]
     return next(device["udid"] for runtime, entries in devices.items()
                 if "iOS" in runtime for device in entries

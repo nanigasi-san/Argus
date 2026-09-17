@@ -28,7 +28,7 @@ class SimulatorTests(unittest.TestCase):
                           subprocess.CompletedProcess([], 0, json.dumps(devices))) as run:
             self.assertEqual(ios_simulator.select_device(), "phone")
         self.assertEqual(run.call_count, 1)
-        self.assertGreaterEqual(run.call_args.kwargs["timeout"], 120)
+        self.assertEqual(run.call_args.kwargs["timeout"], 300)
 
     def run_boot(self, state="Shutdown", boot_failure=False):
         devices = {"devices": {"iOS-26": [{"udid": "device", "state": state}]}}
