@@ -5,6 +5,7 @@ on:
     branches: ["main"]
   pull_request:
     branches: ["*"]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
@@ -29,22 +30,34 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Build iOS simulator app
-        run: flutter build ios --simulator --debug
-
-      - name: Run native XCTest target
+      - name: Build simulator app and run all native XCTest
         run: |
           set -euo pipefail
-          simulator_udid="$(
-            xcrun simctl list devices available -j |
-              python3 -c 'import json, sys; devices = json.load(sys.stdin)["devices"]; print(next(device["udid"] for runtime in devices.values() for device in runtime if device["name"].startswith("iPhone")))'
-          )"
-          open -a Simulator --args -CurrentDeviceUDID "$simulator_udid"
-          xcrun simctl boot "$simulator_udid" || true
-          xcrun simctl bootstatus "$simulator_udid" -b
-          xcodebuild test \
-            -workspace ios/Runner.xcworkspace \
-            -scheme Runner \
-            -sdk iphonesimulator \
-            -destination "platform=iOS Simulator,id=$simulator_udid" \
-            CODE_SIGNING_ALLOWED=NO
+          mkdir -p build/ios-native-tests
+          python3 scripts/run_with_timeout.py 900 python3 scripts/run_ios_build.py \
+            2>&1 | tee build/ios-native-tests/run.log
+
+      - name: Write native test summary
+        if: always()
+        run: |
+          {
+            echo '## iOS native XCTest'
+            echo '```json'
+            for report in simulator-boot.json timings.json test-results.json; do
+              if [ -f "build/ios-native-tests/$report" ]; then cat "build/ios-native-tests/$report"; fi
+            done
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload native test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-native-test-results
+          path: |
+            build/ios-native-tests/*.json
+            build/ios-native-tests/run.log
+            build/ios-native-tests/boot-screen.png
+            build/ios-native-tests/Tests.xcresult/
+          retention-days: 14
+          if-no-files-found: warn

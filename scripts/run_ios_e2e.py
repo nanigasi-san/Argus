@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build all iOS E2E suites and attach using the current app's persisted VM URI."""
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 import ipaddress
 import json
@@ -11,6 +12,8 @@ import subprocess
 import sys
 import time
 from urllib.parse import urlsplit
+
+import ios_simulator
 
 
 TARGET = "integration_test/ci_all_suites.dart"
@@ -68,11 +71,21 @@ def wait_for_vm_service(device, executable, pid, started, report, timeout=120):
     raise TimeoutError(f"No saved VM Service URI for PID {pid} within {timeout}s")
 
 
-def run_e2e(device, report):
+def run_e2e(device, report, boot_simulator=False):
     # Build once; the generated target registers every discovered E2E file.
     print("[build] Building all iOS E2E suites", flush=True)
-    subprocess.run(["flutter", "build", "ios", "--simulator", "--debug",
-                    f"--target={TARGET}"], check=True)
+    started_build = time.monotonic()
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        ready = pool.submit(ios_simulator.boot, device, report) if boot_simulator else None
+        subprocess.run(["flutter", "build", "ios", "--simulator", "--debug",
+                        f"--target={TARGET}"], check=True)
+        build_seconds = time.monotonic() - started_build
+        if ready is not None:
+            ready.result()  # Install and launch only after successful bootstatus.
+    (report / "build-timing.json").write_text(json.dumps({
+        "buildSeconds": build_seconds,
+        "buildAndBootSeconds": time.monotonic() - started_build,
+    }, indent=2) + "\n", encoding="utf-8")
     with (APP / "Info.plist").open("rb") as file:
         info = plistlib.load(file)
     bundle = info["CFBundleIdentifier"]
@@ -114,10 +127,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("device")
     parser.add_argument("report", type=Path)
+    parser.add_argument("--boot-simulator", action="store_true")
     args = parser.parse_args()
     args.report.mkdir(parents=True, exist_ok=True)
     try:
-        return run_e2e(args.device, args.report)
+        return run_e2e(args.device, args.report, args.boot_simulator)
     except subprocess.CalledProcessError as error:
         print(f"[error] Command failed: {error.cmd}\n{error.stderr or ''}", file=sys.stderr)
         return error.returncode

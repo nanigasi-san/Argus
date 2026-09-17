@@ -12,7 +12,7 @@
 | Android Release | `.github/workflows/android_release.yml` | ストア向けAABの生成、設定済みの場合のGoogle Playへのアップロード |
 
 テスト・ビルド・E2EはPRとmain pushで実行する。
-Android Buildと両E2Eは手動実行にも対応する。
+Android Build・iOS Buildと両E2Eは手動実行にも対応する。
 Android Releaseはバージョンタグのpushまたは手動実行で起動する。
 
 Android E2Eはテストを入口にしたdebug APKをビルドする。
@@ -81,7 +81,14 @@ Simulatorアプリを一度ビルド・インストールする。Dartを停止�
 時間超過は終了コード124の失敗として記録し、子プロセスも終了する。
 失敗を成功扱いせず、全件の登録と実行を維持する。
 
-Simulatorの起動待ちは420秒に制限し、起動後の画面取得で応答を確認する。
+CIでは `E2E_IOS_BOOT_SIMULATOR=true` により、Simulator起動と全件用アプリの
+ビルドを並行して行う。インストール・起動・driver接続はビルドと
+`simctl bootstatus -b` の両方の成功後にだけ進める。ローカルで起動済み端末を
+指定する従来のコマンドも維持する。
+Simulatorの起動待ちは420秒に制限し、起動後の診断画像を最大30秒で取得する。
+画像取得は診断用途であり、取得失敗だけでテストを中断しない。
+起動時間は `simulator-boot.json`、ビルドと起動待ちの時間は
+`build-timing.json` に記録する。
 両iOSワークフローはSimulatorアプリも明示的に起動する。
 終了時のアプリ・インストールサービスのログ取得と
 スクリーンショット取得にも時間制限を設け、診断処理自体の停止を防ぐ。
@@ -98,6 +105,22 @@ Flutter SDK・pubキャッシュを全検証ワークフローで有効にする
 Android Build・Android E2Eは `gradle/actions/setup-gradle` により
 Gradle依存と再利用可能なビルド状態をキャッシュする。
 iOS Buildで重複実行していた解析・DartテストはFlutter Testsの全件実行に
-集約し、Simulator向け通常アプリビルドとnative XCTestは維持する。
+集約する。通常入口のSimulatorアプリとnative XCTestは
+`scripts/run_ios_build.py` で検証する。
+`flutter build ios --simulator --debug --config-only --target=lib/main.dart` で
+Flutter設定・プラグイン・CocoaPodsを準備し、`xcodebuild build-for-testing`
+でアプリと全テストを一つのDerivedDataに一度だけビルドする。
+ビルドはgeneric Simulator向けとし、通常アプリのSimulator用アーキテクチャを
+特定の端末のものだけに絞らない。
+Simulator起動はビルドと並行して行い、両方の成功後に同じDerivedDataの成果物を
+`xcodebuild test-without-building` で実行する。
+短いnative XCTestのためだけに別のSimulatorを複製・起動する待ち時間を避けるため、
+テストの並列実行を無効にする。テストの除外や自動再試行は行わない。
+結果Bundleを `xcresulttool` で読み、0件・失敗・スキップ・完了件数不足を失敗とする。
+全体は既存の子プロセス終了付きwatchdogで900秒に制限する。
+起動時間・ビルド時間・テスト時間・全件結果・ログ・`.xcresult` は
+`ios-native-test-results` Artifactに14日間保存する。
+並行起動時の成功待ち、起動失敗時の中断、通常入口と全テストの単一ビルド、
+不完全な結果の検出もPython回帰テストで検証する。
 5つの必須チェック、Android release AAB、全E2Eシナリオは削減しない。
 PRとmain pushの実行条件も変更しない。
