@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run a command with progress messages and a process-group time limit."""
 import argparse
+import math
 import os
 import signal
 import subprocess
@@ -13,7 +14,7 @@ def main():
     parser.add_argument("seconds", type=float)
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
-    if args.seconds <= 0 or not args.command:
+    if not math.isfinite(args.seconds) or args.seconds <= 0 or not args.command:
         parser.error("a positive timeout and command are required")
     process = subprocess.Popen(args.command, start_new_session=True)
     started = time.monotonic()
@@ -47,7 +48,8 @@ def main():
             print(f"[timeout] {args.command[0]} exceeded {args.seconds:g}s", flush=True)
             return stop(None)
         try:
-            return process.wait(timeout=min(30, remaining))
+            code = process.wait(timeout=min(30, remaining))
+            return code if code >= 0 else 128 - code
         except subprocess.TimeoutExpired:
             print(f"[progress] {args.command[0]} running for {time.monotonic() - started:.0f}s", flush=True)
 

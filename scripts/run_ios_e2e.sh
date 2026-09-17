@@ -28,7 +28,7 @@ xcrun simctl list devices available -j > "$output_dir/simulators.json"
 
 capture_diagnostics() {
   bounded 30 xcrun simctl spawn "$device_id" log show --last 30m --style compact \
-    --predicate 'process == "Runner"' > "$output_dir/simulator.log" 2>&1 || true
+    --predicate 'process == "Runner" OR process == "installd"' > "$output_dir/simulator.log" 2>&1 || true
   bounded 15 xcrun simctl io "$device_id" screenshot "$output_dir/final-screen.png" 2>/dev/null || true
   ps -axo pid,ppid,state,etime,comm > "$output_dir/processes.txt"
 }

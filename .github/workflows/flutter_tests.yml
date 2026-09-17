@@ -26,6 +26,9 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      - name: Test CI command watchdog
+        run: python3 -m unittest discover -s scripts -p test_run_with_timeout.py
+
       - name: Analyze code
         run: flutter analyze
 
