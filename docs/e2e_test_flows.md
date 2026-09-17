@@ -20,6 +20,13 @@ Core E2Eの状態は、各位置投入後にControllerのsnapshot、Notifierのb
 Homeの状態表示が一致することを確認する。
 警告は本物のNotifierが動作させる通知・音・振動のテスト実装で観測する。
 
+iOSでも `.github/workflows/e2e_ios.yml` によりUI smoke・Core monitoring・
+コンパスの全suiteをPR / main push / 手動で実行する。
+macOS上でiPhone Simulatorを起動し、`scripts/run_ios_e2e.sh` が全E2Eを
+再帰検出する。コンパスの方位はDartから注入し、磁気センサーは使わない。
+native GPSの任意モードは通常CIの対象外。診断情報は
+`ios-e2e-diagnostics` Artifactとして14日間保存する。
+
 ## 2. Core E2Eの共通準備
 
 ```mermaid
@@ -150,7 +157,7 @@ OUTER確定画面と復帰後の画面を保存する。
 | --- | --- | --- |
 | 1 | gatewayをdeniedにしてrefresh → 共通準備 | WAIT START、開始不可、Homeにセットアップカード |
 | 2 | 「監視開始前に設定する」をタップ | バックグラウンド位置情報の開示画面 |
-| 3 | deniedのまま「同意して位置情報の設定へ進む」 | Homeへ戻るが開始不可、位置サービス未開始 |
+| 3 | deniedのまま開示画面のボタンをタップ（Androidは「同意して位置情報の設定へ進む」、iOSは「続ける」） | Homeへ戻るが開始不可、位置サービス未開始 |
 | 4 | gatewayをgrantedへ変更 → 「状態を更新」 | 開始可能、セットアップカードが消える |
 | 5 | UIからSTART → inside 0秒 | INNER、警告なし |
 

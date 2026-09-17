@@ -72,6 +72,27 @@ flutter drive \
 
 iOSでは、単一「続ける」ボタンの位置情報説明画面と、設定画面の「警告音をテスト」も検証します。上記コマンドで取得したスクリーンショットはAndroidと同じ出力先に保存されます。
 
+全E2E（UI smoke・Core monitoringの8シナリオ・コンパス）を実行する場合:
+
+```bash
+bash scripts/run_ios_e2e.sh <ios-simulator-id>
+```
+
+`.github/workflows/e2e_ios.yml` はPR・main push・手動実行時に標準の
+`macos-latest` runnerで利用可能なiPhone Simulatorを起動し、このスクリプトを
+実行します。`integration_test/` と、存在する場合は `e2e/` の全
+`*_test.dart` を再帰的に検出します。失敗しても残りのsuiteを続行し、
+1件でも失敗すれば `All iOS E2E` チェックを失敗にします。
+
+仮想方位はDartサービスへ注入するため、Simulatorの磁気センサーは不要です。
+OS固有の任意モード `SIMULATOR_GPS=true` はCIでは有効にしません。
+実センサー・OS権限ダイアログ・実通知／警告音は引き続き別途実機確認します。
+
+Artifact `ios-e2e-diagnostics` は成功・失敗とも14日間保存します。
+スクリーンショットは `build/integration_test/screenshots/`、suiteログ・結果・
+Flutter/Xcodeバージョン・Simulator情報・Runnerログ・最終画面は
+`build/e2e/ios/` に保存し、実行結果はStep Summaryにも表示します。
+
 ## Compass navigation E2E
 
 仮想位置・方位をサービスの入口から流し、監視開始、範囲内→範囲外、

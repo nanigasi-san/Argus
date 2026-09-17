@@ -3,6 +3,7 @@ import 'package:argus/main.dart';
 import 'package:argus/state_machine/state.dart';
 import 'package:argus/ui/home_page.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
@@ -211,7 +212,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('バックグラウンド位置情報の開示'), findsOneWidget);
     // OS still denies permission: disclosure alone must not permit START.
-    await tester.tap(find.text('同意して位置情報の設定へ進む'));
+    await tester.tap(find.text(defaultTargetPlatform == TargetPlatform.iOS
+        ? '続ける'
+        : '同意して位置情報の設定へ進む'));
     await tester.pumpAndSettle();
     expect(harness.controller.canStartMonitoring, isFalse);
     expect(harness.location.startCount, 0);
