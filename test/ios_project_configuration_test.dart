@@ -168,10 +168,11 @@ void main() {
 
     test('keeps Podfile.lock trackable and executes native XCTests in CI', () {
       final gitignore = File('.gitignore').readAsStringSync();
-      final workflow = File('.github/workflows/ios_ci.yml').readAsStringSync();
+      final workflow =
+          File('.github/workflows/ios_build.yml').readAsStringSync();
 
       expect(gitignore, contains('!/ios/Podfile.lock'));
-      expect(workflow, contains('xcodebuild test \\'));
+      expect(workflow, contains('python3 scripts/run_ios_build.py'));
     });
 
     test('does not depend on flutter_ringtone_player fallback', () {

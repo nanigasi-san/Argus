@@ -929,13 +929,14 @@ class _LargeStatusDisplay extends StatelessWidget {
         .clamp(showCompass ? 180.0 : 220.0, screenSize.shortestSide * 0.9)
         .toDouble();
 
-    Widget buildLabel(String text, TextStyle style) {
+    Widget buildLabel(String text, TextStyle style, {Key? key}) {
       return SizedBox(
         width: circleSize * 0.78,
         child: FittedBox(
           fit: BoxFit.scaleDown,
           child: Text(
             text,
+            key: key,
             textAlign: TextAlign.center,
             style: style,
           ),
@@ -1002,6 +1003,7 @@ class _LargeStatusDisplay extends StatelessWidget {
                     letterSpacing:
                         status == LocationStateStatus.waitGeoJson ? 0.8 : 1.2,
                   ),
+                  key: const Key('monitoringStatusText'),
                 ),
                 if (onTap != null &&
                     status == LocationStateStatus.waitStart) ...[
@@ -1047,6 +1049,7 @@ class _LargeStatusDisplay extends StatelessWidget {
       return Material(
         type: MaterialType.transparency,
         child: InkWell(
+          key: const Key('monitoringStatusButton'),
           customBorder: const CircleBorder(),
           onTap: onTap,
           child: circleWidget,

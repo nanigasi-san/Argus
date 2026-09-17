@@ -1,4 +1,4 @@
-name: CI
+name: Flutter Tests
 
 on:
   push:
@@ -6,8 +6,13 @@ on:
   pull_request:
     branches: ["*"]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   test:
+    name: Flutter Tests
     runs-on: ubuntu-latest
 
     steps:
@@ -18,12 +23,16 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: "stable"
+          cache: true
 
       - name: Verify Flutter installation
         run: flutter --version
 
       - name: Get dependencies
         run: flutter pub get
+
+      - name: Test CI command watchdog
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
       - name: Analyze code
         run: flutter analyze

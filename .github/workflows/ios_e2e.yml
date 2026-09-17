@@ -1,0 +1,83 @@
+name: iOS E2E
+
+on:
+  pull_request:
+    branches: ["*"]
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: iOS E2E
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Complete Xcode first-launch setup
+        timeout-minutes: 5
+        run: |
+          sudo xcodebuild -runFirstLaunch
+          xcodebuild -checkFirstLaunchStatus
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Select iOS Simulator
+        id: simulator
+        run: |
+          set -euo pipefail
+          simulator_udid="$(python3 -c 'import sys; sys.path.insert(0, "scripts"); import ios_simulator; print(ios_simulator.select_device())')"
+          echo "udid=$simulator_udid" >> "$GITHUB_OUTPUT"
+          echo "Selected iOS Simulator: $simulator_udid"
+
+      - name: Run iOS E2E
+        id: e2e
+        env:
+          SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
+          E2E_IOS_BOOT_SIMULATOR: "true"
+        run: bash scripts/run_ios_e2e.sh "$SIMULATOR_UDID"
+
+      - name: Write E2E summary
+        if: always()
+        env:
+          E2E_OUTCOME: ${{ steps.e2e.outcome }}
+          SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
+        run: |
+          {
+            echo '## iOS E2E'
+            echo "- Simulator: $SIMULATOR_UDID"
+            echo "- Result: $E2E_OUTCOME"
+            echo '- Native GPS option: disabled; headings are injected in Dart'
+            echo '```text'
+            for report in flutter-version.txt xcode-version.txt simulator-boot.json build-timing.json launch.json suites.txt results.txt test-results.json; do
+              if [ -f "build/e2e/ios/$report" ]; then cat "build/e2e/ios/$report"; fi
+            done
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload E2E diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-e2e-diagnostics
+          path: |
+            build/integration_test/screenshots/
+            build/e2e/ios/
+          retention-days: 14
+          if-no-files-found: warn
