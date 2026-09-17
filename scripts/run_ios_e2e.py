@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Build all iOS E2E suites and attach using the current app's persisted VM URI."""
 import argparse
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 import ipaddress
 import json
@@ -14,7 +13,6 @@ import time
 from urllib.parse import urlsplit
 
 import ios_simulator
-from ios_build_process import build_app
 
 
 TARGET = "integration_test/ci_all_suites.dart"
@@ -76,20 +74,11 @@ def run_e2e(device, report, boot_simulator=False):
     # Build once; the generated target registers every discovered E2E file.
     print("[build] Building all iOS E2E suites", flush=True)
     started_build = time.monotonic()
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        ready = None
-
-        def start_boot():
-            nonlocal ready
-            ready = pool.submit(ios_simulator.boot, device, report)
-
-        command = ["flutter", "build", "ios", "--simulator", "--debug", f"--target={TARGET}"]
-        if boot_simulator:
-            command.append("--verbose")  # Expose Xcode's post-preparation milestone.
-        build_app(command, start_boot if boot_simulator else None)
-        build_seconds = time.monotonic() - started_build
-        if ready is not None:
-            ready.result()  # Install and launch only after successful bootstatus.
+    subprocess.run(["flutter", "build", "ios", "--simulator", "--debug",
+                    f"--target={TARGET}"], check=True)
+    build_seconds = time.monotonic() - started_build
+    if boot_simulator:
+        ios_simulator.boot(device, report)
     (report / "build-timing.json").write_text(json.dumps({
         "buildSeconds": build_seconds,
         "buildAndBootSeconds": time.monotonic() - started_build,

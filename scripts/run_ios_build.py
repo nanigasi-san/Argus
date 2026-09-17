@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Build the normal app and all native tests once, then run the built tests."""
-from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
 import subprocess
@@ -8,7 +7,6 @@ import sys
 import time
 
 import ios_simulator
-from ios_build_process import build_app
 
 
 REPORT = Path("build/ios-native-tests")
@@ -23,21 +21,14 @@ def run_build():
                  "-configuration", "Debug", "-sdk", "iphonesimulator",
                  "-derivedDataPath", str(DERIVED_DATA), "CODE_SIGNING_ALLOWED=NO",
                  "COMPILER_INDEX_STORE_ENABLE=NO"]
-    # Finish Flutter's Xcode/Simulator probes before starting a cold boot.
+    # Complete each preparation step before starting the next one.
     subprocess.run(["flutter", "build", "ios", "--simulator", "--debug",
                     "--config-only", "--target=lib/main.dart"], check=True)
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        ready = None
-
-        def start_boot():
-            nonlocal ready
-            ready = pool.submit(ios_simulator.boot, device, REPORT)
-        # Flutter prepares plugins, CocoaPods and the normal Dart entry point;
-        # Xcode then builds Runner and every test bundle in one output tree.
-        build_app(["xcodebuild", "build-for-testing", *arguments,
-                   "-destination", "generic/platform=iOS Simulator"], start_boot)
-        build_seconds = time.monotonic() - started
-        ready.result()  # A successful build never bypasses failed Simulator startup.
+    # Xcode builds Runner and every test bundle in one output tree.
+    subprocess.run(["xcodebuild", "build-for-testing", *arguments,
+                    "-destination", "generic/platform=iOS Simulator"], check=True)
+    build_seconds = time.monotonic() - started
+    ios_simulator.boot(device, REPORT)
     tests_started = time.monotonic()
     # These short XCTest cases do not benefit from launching a cloned Simulator.
     # No test filters or test retries: run the entire scheme on the ready device.

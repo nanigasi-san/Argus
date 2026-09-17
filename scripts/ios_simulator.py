@@ -17,7 +17,7 @@ def select_device():
 
 def boot(device, report):
     started = time.monotonic()
-    print(f"[simulator] Booting {device} alongside the build", flush=True)
+    print(f"[simulator] Booting {device} after the build", flush=True)
     # Only an already-booted device may bypass boot; other errors must fail CI.
     result = subprocess.run(["xcrun", "simctl", "list", "devices", "available", "-j"],
                             check=True, capture_output=True, text=True, timeout=120)

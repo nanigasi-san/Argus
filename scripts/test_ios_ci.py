@@ -1,10 +1,9 @@
-"""Regression tests for concurrent preparation and complete native test results."""
+"""Regression tests for sequential preparation and complete native test results."""
 import json
 from pathlib import Path
 import plistlib
 import subprocess
 import tempfile
-import threading
 import unittest
 from unittest.mock import patch
 
@@ -70,31 +69,34 @@ class SimulatorTests(unittest.TestCase):
             self.run_boot(boot_failure=True)
 
 
-class ConcurrentPreparationTests(unittest.TestCase):
-    def test_e2e_build_overlaps_boot_but_install_waits_until_ready(self):
-        boot_started = threading.Event()
-        build_finished = threading.Event()
-        boot_finished = threading.Event()
-        commands = []
+class SequentialPreparationTests(unittest.TestCase):
+    def run_e2e(self, failure=None, boot_simulator=True):
+        events = []
 
         def boot(*args):
-            boot_started.set()
-            self.assertTrue(build_finished.wait(2), "Build did not overlap Simulator boot")
-            boot_finished.set()
+            events.append("boot")
+            if failure == "boot":
+                raise TimeoutError("boot failed")
 
         def execute(command, **kwargs):
-            commands.append(command)
             if command[:2] == ["flutter", "build"]:
-                self.assertTrue(boot_started.wait(2))
-                self.assertFalse(boot_finished.is_set())
-                build_finished.set()
-            if command[:3] == ["xcrun", "simctl", "install"]:
-                self.assertTrue(boot_finished.is_set())
+                action = "build"
+            elif command[:3] == ["xcrun", "simctl", "install"]:
+                action = "install"
+            elif command[:3] == ["xcrun", "simctl", "launch"]:
+                action = "launch"
+            else:
+                action = "drive"
+            events.append(action)
+            if failure == action:
+                raise subprocess.CalledProcessError(7, command)
             return subprocess.CompletedProcess(command, 0, "com.argus: 123\n")
 
-        def build(command, on_xcode_build=None):
-            on_xcode_build()
-            execute(command)
+        def vm_uri(*args):
+            events.append("uri")
+            if failure == "uri":
+                raise TimeoutError("VM Service unavailable")
+            return "http://127.0.0.1:123/a/"
 
         with tempfile.TemporaryDirectory() as directory:
             report = Path(directory)
@@ -104,56 +106,53 @@ class ConcurrentPreparationTests(unittest.TestCase):
                 plistlib.dump({"CFBundleIdentifier": "com.argus", "CFBundleExecutable": "Runner"}, file)
             with patch.object(e2e, "APP", app), \
                     patch.object(e2e.ios_simulator, "boot", side_effect=boot), \
-                    patch.object(e2e, "build_app", side_effect=build), \
                     patch.object(e2e.subprocess, "run", side_effect=execute), \
-                    patch.object(e2e, "wait_for_vm_service", return_value="http://127.0.0.1:123/a/"):
-                self.assertEqual(e2e.run_e2e("device", report, boot_simulator=True), 0)
-        self.assertEqual(sum(command[:2] == ["flutter", "build"] for command in commands), 1)
+                    patch.object(e2e, "wait_for_vm_service", side_effect=vm_uri):
+                if failure:
+                    with self.assertRaises((subprocess.CalledProcessError, TimeoutError)):
+                        e2e.run_e2e("device", report, boot_simulator=boot_simulator)
+                else:
+                    self.assertEqual(e2e.run_e2e("device", report, boot_simulator=boot_simulator), 0)
+        return events
 
-    def test_e2e_does_not_install_or_run_tests_after_boot_failure(self):
-        with tempfile.TemporaryDirectory() as directory, \
-                patch.object(e2e.ios_simulator, "boot", side_effect=TimeoutError("boot failed")), \
-                patch.object(e2e, "build_app", side_effect=lambda command, callback: callback()), \
-                patch.object(e2e.subprocess, "run") as run:
-            with self.assertRaises(TimeoutError):
-                e2e.run_e2e("device", Path(directory), boot_simulator=True)
-        run.assert_not_called()
+    def test_e2e_completes_build_then_boot_then_install_launch_uri_and_drive(self):
+        self.assertEqual(self.run_e2e(), ["build", "boot", "install", "launch", "uri", "drive"])
+
+    def test_e2e_failure_at_each_step_prevents_every_later_step(self):
+        steps = ["build", "boot", "install", "launch", "uri", "drive"]
+        for index, step in enumerate(steps):
+            with self.subTest(step=step):
+                self.assertEqual(self.run_e2e(failure=step), steps[:index + 1])
+
+    def test_local_e2e_keeps_already_running_device(self):
+        self.assertEqual(self.run_e2e(boot_simulator=False),
+                         ["build", "install", "launch", "uri", "drive"])
 
 
 class NativeTests(unittest.TestCase):
-    def run_native(self, summary=None, failing_action=None, boot_error=None):
+    def run_native(self, summary=None, failing_action=None):
         if summary is None:
             summary = {"totalTestCount": 4, "passedTests": 4, "failedTests": 0, "skippedTests": 0}
         commands = []
-        boot_started = threading.Event()
-        build_finished = threading.Event()
-        boot_finished = threading.Event()
+        events = []
 
         def boot(*args):
-            boot_started.set()
-            # Error paths need not complete a build, and must still return promptly.
-            if boot_error:
-                raise boot_error
-            if failing_action is None:
-                self.assertTrue(build_finished.wait(2))
-            boot_finished.set()
+            events.append("boot")
+            if failing_action == "boot":
+                raise TimeoutError("boot failed")
 
         def execute(command, **kwargs):
             commands.append(command)
             if command[:2] == ["flutter", "build"]:
-                self.assertFalse(boot_started.is_set(), "Flutter preparation must precede boot")
-            if failing_action and failing_action in command:
+                action = "--config-only"
+            elif command[0] == "xcodebuild":
+                action = command[1]
+            else:
+                action = "summary"
+            events.append(action)
+            if failing_action == action:
                 raise subprocess.CalledProcessError(7, command)
-            if "build-for-testing" in command:
-                self.assertTrue(boot_started.wait(2))
-                build_finished.set()
-            if "test-without-building" in command:
-                self.assertTrue(boot_finished.is_set())
             return subprocess.CompletedProcess(command, 0, json.dumps(summary))
-
-        def build(command, callback):
-            callback()
-            execute(command)
 
         with tempfile.TemporaryDirectory() as directory:
             report = Path(directory)
@@ -161,14 +160,19 @@ class NativeTests(unittest.TestCase):
                     patch.object(native, "DERIVED_DATA", report / "DerivedData"), \
                     patch.object(native.ios_simulator, "select_device", return_value="device"), \
                     patch.object(native.ios_simulator, "boot", side_effect=boot), \
-                    patch.object(native, "build_app", side_effect=build), \
                     patch.object(native.subprocess, "run", side_effect=execute):
-                native.run_build()
-            self.assertEqual(json.loads((report / "test-results.json").read_text()), summary)
-        return commands
+                if failing_action:
+                    with self.assertRaises((subprocess.CalledProcessError, TimeoutError)):
+                        native.run_build()
+                else:
+                    native.run_build()
+                    self.assertEqual(json.loads((report / "test-results.json").read_text()), summary)
+        return commands, events
 
     def test_builds_normal_app_and_all_native_tests_once_and_executes_same_products(self):
-        commands = self.run_native()
+        commands, events = self.run_native()
+        self.assertEqual(events, ["--config-only", "build-for-testing", "boot",
+                                  "test-without-building", "summary"])
         self.assertIn("--config-only", commands[0])
         self.assertIn("--target=lib/main.dart", commands[0])
         self.assertEqual(commands[1][:2], ["xcodebuild", "build-for-testing"])
@@ -180,15 +184,12 @@ class NativeTests(unittest.TestCase):
                          commands[2][commands[2].index("-derivedDataPath") + 1])
         self.assertEqual(commands[2][commands[2].index("-parallel-testing-enabled") + 1], "NO")
 
-    def test_native_build_and_test_failures_propagate(self):
-        for action in ("--config-only", "build-for-testing", "test-without-building"):
-            with self.subTest(action=action), self.assertRaises(subprocess.CalledProcessError) as error:
-                self.run_native(failing_action=action)
-            self.assertEqual(error.exception.returncode, 7)
-
-    def test_native_boot_failure_prevents_test_execution(self):
-        with self.assertRaises(TimeoutError):
-            self.run_native(boot_error=TimeoutError("boot failed"))
+    def test_native_failure_at_each_step_prevents_every_later_step(self):
+        steps = ["--config-only", "build-for-testing", "boot", "test-without-building", "summary"]
+        for index, step in enumerate(steps):
+            with self.subTest(step=step):
+                _, events = self.run_native(failing_action=step)
+                self.assertEqual(events, steps[:index + 1])
 
     def test_empty_skipped_failed_or_incomplete_results_fail(self):
         summaries = [
@@ -200,56 +201,6 @@ class NativeTests(unittest.TestCase):
         for summary in summaries:
             with self.subTest(summary=summary), self.assertRaises(ValueError):
                 self.run_native(summary=summary)
-
-
-class BuildProgressTests(unittest.TestCase):
-    def test_boot_waits_for_build_description_after_the_earlier_flutter_progress(self):
-        import io
-        output = "Running Xcode build...\nBuild description signature: abc\ndone\n"
-        starts = []
-        with patch.object(e2e.subprocess, "Popen") as popen:
-            process = popen.return_value.__enter__.return_value
-            process.stdout = io.StringIO(output)
-            process.wait.return_value = 0
-            e2e.build_app(["build"], lambda: starts.append(process.stdout.tell()))
-        self.assertEqual(starts, [len("Running Xcode build...\nBuild description signature:")])
-
-    def test_starts_boot_at_partial_progress_before_compilation_finishes(self):
-        import sys
-        with tempfile.TemporaryDirectory() as directory:
-            signal_file = Path(directory, "boot-started")
-            script = (
-                "import sys, time; from pathlib import Path; "
-                "print('Running Xcode build...'); sys.stdout.flush(); "
-                "assert not Path(sys.argv[1]).exists(), 'Boot started before Xcode preparation'\n"
-                "sys.stdout.write('Build description signature:'); sys.stdout.flush(); "
-                "deadline=time.monotonic()+3\n"
-                "while not Path(sys.argv[1]).exists() and time.monotonic()<deadline: time.sleep(.01)\n"
-                "assert Path(sys.argv[1]).exists(), 'Boot callback waited for newline/build exit'\n"
-                "print('done')\n"
-            )
-            calls = []
-
-            def start_boot():
-                calls.append(True)
-                signal_file.touch()
-
-            e2e.build_app([sys.executable, "-c", script, str(signal_file)], start_boot)
-            self.assertEqual(calls, [True])
-
-    def test_missing_progress_still_starts_boot_after_success(self):
-        import sys
-        calls = []
-        e2e.build_app([sys.executable, "-c", "print('new log format')"], lambda: calls.append(True))
-        self.assertEqual(calls, [True])
-
-    def test_build_failure_preserves_exit_status_and_never_starts_fallback_boot(self):
-        import sys
-        calls = []
-        with self.assertRaises(subprocess.CalledProcessError) as error:
-            e2e.build_app([sys.executable, "-c", "import sys; sys.exit(7)"], lambda: calls.append(True))
-        self.assertEqual(error.exception.returncode, 7)
-        self.assertEqual(calls, [])
 
 
 if __name__ == "__main__":
