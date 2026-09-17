@@ -1,0 +1,64 @@
+require_relative 'release_support'
+require 'fileutils'
+require 'base64'
+
+opt_out_usage
+
+ROOT = File.expand_path('../..', __dir__)
+
+def release_context
+  ArgusRelease::AppleRelease.new(root: ROOT,
+    version: ENV.fetch('RELEASE_VERSION'), build: ENV.fetch('RELEASE_BUILD'),
+    sha: ENV.fetch('RELEASE_SHA'), app_id: ENV.fetch('IOS_APP_ID'),
+    bundle_id: ENV.fetch('IOS_BUNDLE_ID'), team: ENV.fetch('IOS_TEAM_ID'),
+    run_id: ENV.fetch('GITHUB_RUN_ID'))
+end
+
+def authenticate_apple
+  ArgusRelease.mask_for_actions(Base64.strict_decode64(ENV.fetch('ASC_PRIVATE_KEY_BASE64')))
+  app_store_connect_api_key(key_id: ENV.fetch('ASC_KEY_ID'),
+    issuer_id: ENV.fetch('ASC_ISSUER_ID'), key_content: ENV.fetch('ASC_PRIVATE_KEY_BASE64'),
+    is_key_content_base64: true, duration: 1200, in_house: false)
+end
+
+def checked_command(*args)
+  UI.user_error!("Command failed: #{args.first}") unless system(*args, chdir: ROOT)
+end
+
+default_platform(:ios)
+
+platform :ios do
+  desc 'Read Apple state, resolve whether a new archive is needed; never upload'
+  lane :preflight do
+    authenticate_apple
+    context = release_context
+    required = context.preflight
+    File.open(ENV.fetch('GITHUB_OUTPUT'), 'a') { |out| out.puts("build_required=#{required}") }
+  end
+
+  desc 'Create a signed App Store IPA with the exact tag version and build'
+  lane :archive do
+    checked_command('flutter', 'pub', 'get')
+    checked_command('flutter', 'build', 'ios', '--release', '--config-only', '--no-codesign')
+    update_code_signing_settings(use_automatic_signing: false,
+      path: File.join(ROOT, 'ios/Runner.xcodeproj'), targets: ['Runner'],
+      build_configurations: ['Release'], team_id: ENV.fetch('IOS_TEAM_ID'),
+      code_sign_identity: 'Apple Distribution', profile_name: ENV.fetch('IOS_PROFILE_UUID'),
+      profile_uuid: ENV.fetch('IOS_PROFILE_UUID'))
+    checked_command('flutter', 'build', 'ipa', '--release',
+      '--build-name', ENV.fetch('RELEASE_VERSION'), '--build-number', ENV.fetch('RELEASE_BUILD'),
+      '--export-options-plist', ENV.fetch('IOS_EXPORT_OPTIONS'))
+    ipa = Dir[File.join(ROOT, 'build/ios/ipa/*.ipa')]
+    UI.user_error!('Expected exactly one generated IPA') unless ipa.length == 1
+    checked_command('python3', 'scripts/ios_release_signing.py', 'verify', '--ipa', ipa.first)
+  end
+
+  desc 'Upload once, wait for processing and submit the exact build for automatic release'
+  lane :release do
+    api_key = authenticate_apple
+    context = release_context
+    FileUtils.mkdir_p(File.join(ROOT, 'build/ios-release/metadata'))
+    context.upload(api_key, ->(**options) { upload_to_testflight(**options) })
+    context.submit(api_key, ->(**options) { deliver(**options) })
+  end
+end

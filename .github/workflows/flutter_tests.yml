@@ -34,6 +34,17 @@ jobs:
       - name: Test CI command watchdog
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
+      - name: Set up Ruby for release regression checks
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+          working-directory: ios
+
+      - name: Test iOS release retry and submission safeguards
+        working-directory: ios
+        run: bundle exec ruby fastlane/test_release_support.rb
+
       - name: Analyze code
         run: flutter analyze
 

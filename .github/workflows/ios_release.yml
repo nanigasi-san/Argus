@@ -1,0 +1,127 @@
+name: iOS Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+  checks: read
+  actions: read
+
+concurrency:
+  group: ios-store-6781527103
+  cancel-in-progress: false
+
+env:
+  IOS_RELEASE_BUILD_NUMBER_OFFSET: ${{ vars.IOS_RELEASE_BUILD_NUMBER_OFFSET }}
+
+jobs:
+  gate:
+    name: Validate iOS release source
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      version: ${{ steps.config.outputs.version }}
+      build: ${{ steps.config.outputs.build }}
+      sha: ${{ steps.config.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate tag, main ancestry and all required checks
+        id: config
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ios_release_config.py gate
+
+  release:
+    name: iOS Release
+    needs: gate
+    runs-on: macos-26
+    timeout-minutes: 90
+    environment: ios-release
+    env:
+      IOS_TEAM_ID: ${{ vars.IOS_TEAM_ID }}
+      IOS_APP_ID: "6781527103"
+      IOS_BUNDLE_ID: com.argus.orienteering
+      RELEASE_VERSION: ${{ needs.gate.outputs.version }}
+      RELEASE_BUILD: ${{ needs.gate.outputs.build }}
+      RELEASE_SHA: ${{ needs.gate.outputs.sha }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_PRIVATE_KEY_BASE64: ${{ secrets.ASC_PRIVATE_KEY_BASE64 }}
+      IOS_DISTRIBUTION_P12_BASE64: ${{ secrets.IOS_DISTRIBUTION_P12_BASE64 }}
+      IOS_DISTRIBUTION_P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_P12_PASSWORD }}
+      IOS_APPSTORE_PROFILE_BASE64: ${{ secrets.IOS_APPSTORE_PROFILE_BASE64 }}
+      GH_TOKEN: ${{ github.token }}
+      FASTLANE_SKIP_UPDATE_CHECK: "true"
+      FASTLANE_HIDE_CHANGELOG: "true"
+      FASTLANE_OPT_OUT_USAGE: "true"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+          persist-credentials: false
+      - name: Check required credentials
+        run: python3 scripts/ios_release_signing.py credentials
+      - name: Restore receipt for rerun
+        run: python3 scripts/ios_release_config.py restore
+      - name: Select Xcode 26.6 and complete setup
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+          sudo xcodebuild -runFirstLaunch
+          xcodebuild -checkFirstLaunchStatus
+          xcodebuild -version
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+          working-directory: ios
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.1"
+          channel: stable
+          cache: true
+      - name: Check Apple state and build number
+        id: preflight
+        working-directory: ios
+        run: bundle exec fastlane ios preflight
+      - name: Restore signing certificate and profile
+        if: steps.preflight.outputs.build_required == 'true'
+        run: python3 scripts/ios_release_signing.py install
+      - name: Create and verify signed IPA
+        if: steps.preflight.outputs.build_required == 'true'
+        working-directory: ios
+        run: bundle exec fastlane ios archive
+      # Save provenance before any upload; a rerun can recover an ambiguous upload result.
+      - name: Save preupload receipt
+        if: steps.preflight.outputs.build_required == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-release-preupload-${{ github.run_attempt }}
+          path: build/ios-release/receipt.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Upload, wait and submit for review
+        working-directory: ios
+        run: bundle exec fastlane ios release
+      - name: Write release summary
+        if: always()
+        run: |
+          if [ -f build/ios-release/receipt.json ]; then
+            python3 scripts/ios_release_signing.py summary
+          fi
+      - name: Save release receipt
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-release-result-${{ github.run_attempt }}
+          path: build/ios-release/receipt.json
+          retention-days: 90
+          if-no-files-found: warn
+      - name: Remove temporary signing files
+        if: always()
+        run: python3 scripts/ios_release_signing.py cleanup

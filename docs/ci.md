@@ -9,15 +9,17 @@
 | iOS Build | `.github/workflows/ios_build.yml` | Simulator向けビルド、native XCTest（Dartテスト・解析はFlutter Testsに集約） |
 | Android E2E | `.github/workflows/android_e2e.yml` | Android Emulator上の全共通E2E |
 | iOS E2E | `.github/workflows/ios_e2e.yml` | iOS Simulator上の全共通E2E |
+| iOS Release | `.github/workflows/ios_release.yml` | タグのコミットのCI確認、署名IPA生成、App Store Connect upload・審査提出 |
 | Android Release | `.github/workflows/android_release.yml` | ストア向けAABの生成、設定済みの場合のGoogle Playへのアップロード |
 
 テスト・ビルド・E2EはPRとmain pushで実行する。
 Android Build・iOS Buildと両E2Eは手動実行にも対応する。
 Android Releaseはバージョンタグのpushまたは手動実行で起動する。
 
-iOS のストア配信 workflow は未実装。
-Android と同じバージョンタグ push を起点にした署名ビルド・審査提出の構成、
-必要な認証情報、公式資料と導入事例は [iOS リリース自動化の調査と設計](ios_release_automation.md) にまとめる。
+iOS Release は Android と同じ `vX.Y.Z` タグ push で起動する。
+5つの必須チェックが対象 SHA で成功した後、署名ビルド・upload・審査提出を実行し、
+承認後は自動公開する。必要な設定と再実行の手順は [iOS CD 運用](ios_release_cd.md)、
+公式資料と導入事例は [調査と設計](ios_release_automation.md) にまとめる。
 
 Android E2Eはテストを入口にしたdebug APKをビルドする。
 Android Buildは `flutter build appbundle --release` により通常のアプリ入口、
@@ -54,10 +56,11 @@ PRがない作業ブランチへのpushでは実行せず、mainへのpushでは
 現在はDraft PRも通常PRと同じ検証対象であり、Readyにした時だけ実行する
 最適化は導入していない。
 
-全6ワークフローに `concurrency` と `cancel-in-progress: true` を設定し、
+既存6ワークフローに `concurrency` と `cancel-in-progress: true` を設定し、
 同じワークフロー・同じブランチの新しい実行が始まると古い実行をキャンセルする。
 `Android Release` はブランチ・タグを含む完全なrefでグループを分け、
 同じrefの再実行だけをキャンセルする。
+`iOS Release` は App ID 単位で配信を直列化し、進行中の配信をキャンセルしない。
 これは古い実行の重複を抑える設定であり、マージを制限する必須チェック設定とは
 別の仕組みである。
 

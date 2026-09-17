@@ -3,6 +3,7 @@
 *.iml
 *.lock
 !pubspec.lock
+!ios/Gemfile.lock
 *.log
 *.pyc
 *.swp
@@ -128,3 +129,11 @@ app.*.symbols
 !/ios/Podfile.lock
 !/packages/flutter_tools/test/data/dart_dependencies_test/**/.packages
 !/dev/ci/**/Gemfile.lock
+
+# iOS release credentials and fastlane generated reports
+*.p8
+*.p12
+*.mobileprovision
+**/fastlane/report.xml
+**/fastlane/README.md
+.bundle/
