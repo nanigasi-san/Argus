@@ -1,9 +1,13 @@
 import copy
+import json
 from datetime import datetime, timedelta
+from pathlib import Path
+import tempfile
 import unittest
+from unittest.mock import patch
 
 from ios_release_config import CHECKS, check_status, resolve
-from ios_release_signing import validate_ipa_info, validate_profile
+from ios_release_signing import cleanup, validate_ipa_info, validate_profile
 
 
 class ReleaseGateTests(unittest.TestCase):
@@ -37,6 +41,24 @@ class ReleaseGateTests(unittest.TestCase):
 
 
 class SigningVerificationTests(unittest.TestCase):
+    def test_cleanup_removes_secrets_even_when_keychain_restore_fails(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary) / 'signing'
+            directory.mkdir()
+            (directory / 'original-keychains.json').write_text(json.dumps(['original.keychain-db']))
+            (directory / 'release.keychain-db').touch()
+            (directory / 'distribution.p12').write_bytes(b'private')
+            profile = Path(temporary) / 'installed.mobileprovision'
+            profile.touch()
+            (directory / 'installed-profile.txt').write_text(str(profile))
+            with patch('ios_release_signing.signing_dir', return_value=directory), \
+                 patch('ios_release_signing.run', side_effect=[RuntimeError('restore failed'), b'']) as command:
+                with self.assertRaisesRegex(RuntimeError, 'restore failed'):
+                    cleanup()
+            self.assertEqual(command.call_count, 2)
+            self.assertFalse(directory.exists())
+            self.assertFalse(profile.exists())
+
     def profile(self):
         return {'ExpirationDate': datetime.now() + timedelta(days=20),
                 'TeamIdentifier': ['TEAM'], 'DeveloperCertificates': [b'certificate'],

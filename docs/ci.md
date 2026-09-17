@@ -66,6 +66,9 @@ PRがない作業ブランチへのpushでは実行せず、mainへのpushでは
 
 ## iOS E2Eの診断ログと時間制限
 
+macOS での Android 仮想端末の構成と全件実行コマンドは
+[ローカル Android E2E 環境](android_local_e2e.md)を参照。
+
 両E2Eスクリプトは `integration_test/` と `e2e/` の `*_test.dart` を
 再帰検出し、全ファイルのmainをgroupとして登録する入口を
 `integration_test/ci_all_suites.dart` に自動生成する（生成物はGit対象外）。追加ファイルも自動で対象となる。

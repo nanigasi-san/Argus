@@ -1,12 +1,16 @@
 require 'minitest/autorun'
 require 'tmpdir'
+require 'digest'
 require_relative 'release_support'
 
 class ReleaseSupportTest < Minitest::Test
   Build = Struct.new(:id, :version, :processing_state)
   Item = Struct.new(:app_store_version)
-  Version = Struct.new(:id, :version_string, :app_version_state, :release_type, :build) do
+  Detail = Struct.new(:contact_first_name, :contact_last_name, :contact_phone, :contact_email,
+                      :demo_account_required, :demo_account_name, :demo_account_password)
+  Version = Struct.new(:id, :version_string, :app_version_state, :release_type, :build, :detail) do
     def get_build; build; end
+    def fetch_app_store_review_detail; detail; end
   end
   Submission = Struct.new(:id, :state)
 
@@ -19,6 +23,7 @@ class ReleaseSupportTest < Minitest::Test
     def submissions; fake_submissions || []; end
     def review_items(submission); fake_items.fetch(submission.id, []); end
     def get_ready_review_submission(platform:); nil; end
+    def get_edit_app_store_version(platform:); target_version; end
   end
 
   def setup
@@ -95,5 +100,70 @@ class ReleaseSupportTest < Minitest::Test
     verified
     @apple.fake_versions = [Version.new('version', '0.9.0', 'WAITING_FOR_REVIEW', 'AFTER_APPROVAL', Build.new('other', '1012', 'VALID'))]
     assert_raises(RuntimeError) { @apple.preflight }
+  end
+
+  def test_retry_with_empty_review_detail_inherits_previous_contact_and_login
+    previous = Version.new('old', '0.8.0', 'READY_FOR_DISTRIBUTION', nil, nil,
+                           Detail.new('First', 'Last', 'Phone', 'Email', true, 'User', 'Password'))
+    target = Version.new('new', '0.9.0', 'PREPARE_FOR_SUBMISSION')
+    @apple.fake_versions = [previous, target]
+    information = @apple.existing_review_information(target)
+    assert_equal 'Email', information[:email_address]
+    assert_equal 'User', information[:demo_user]
+    assert_equal 'Password', information[:demo_password]
+  end
+
+  def test_incomplete_target_review_contact_is_not_overwritten
+    previous = Version.new('old', '0.8.0', nil, nil, nil,
+                           Detail.new('First', 'Last', 'Phone', 'Email', false))
+    target = Version.new('new', '0.9.0', nil, nil, nil,
+                         Detail.new('First', 'Last', nil, 'Email', false))
+    @apple.fake_versions = [previous, target]
+    assert_raises(RuntimeError) { @apple.existing_review_information(target) }
+  end
+
+  def test_new_upload_uses_only_verified_ipa_and_waits_for_exact_build
+    ipa = File.join(@directory, 'build/ios/ipa/ARGUS.ipa')
+    FileUtils.mkdir_p(File.dirname(ipa))
+    File.write(ipa, 'verified IPA')
+    @apple.receipt.update('ipa_sha256' => Digest::SHA256.file(ipa).hexdigest, 'status' => 'built')
+    @apple.upload({ key_id: 'key' }, lambda do |**options|
+      assert_equal ipa, options[:ipa]
+      assert_equal true, options[:skip_submission]
+      assert_equal true, options[:skip_waiting_for_build_processing]
+      assert_equal 'uploading', @apple.receipt.data['status']
+      @apple.fake_build = Build.new('build', '1011', 'VALID')
+    end)
+    assert_equal 'processed', @apple.receipt.data['status']
+    assert_equal 'build', @apple.receipt.data['build_id']
+  end
+
+  def test_new_submission_sets_exact_build_notes_and_automatic_release
+    verified
+    notes = File.join(@directory, 'docs/app_store/releases/0.9.0')
+    FileUtils.mkdir_p(notes)
+    File.write(File.join(notes, 'ja-JP.txt'), '更新内容')
+    File.write(File.join(notes, 'review_notes.md'), '審査メモ')
+    previous = Version.new('old', '0.8.0', 'READY_FOR_DISTRIBUTION', nil, nil,
+                           Detail.new('First', 'Last', 'Phone', 'Email', false))
+    @apple.fake_versions = [previous]
+    calls = 0
+    @apple.submit({}, lambda do |**options|
+      calls += 1
+      assert_equal '0.9.0', options[:app_version]
+      assert_equal '1011', options[:build_number]
+      assert_equal({ 'ja' => '更新内容' }, options[:release_notes])
+      assert_equal "ARGUS 0.9.0 (1011)\n\n審査メモ", options[:app_review_information][:notes]
+      assert_equal true, options[:submit_for_review]
+      assert_equal true, options[:automatic_release]
+      assert_equal false, options[:phased_release]
+      assert_equal false, options[:reset_ratings]
+      version = Version.new('new', '0.9.0', 'WAITING_FOR_REVIEW', 'AFTER_APPROVAL', @apple.fake_build)
+      @apple.fake_versions << version
+      @apple.fake_submissions = [Submission.new('submission', 'WAITING_FOR_REVIEW')]
+      @apple.fake_items['submission'] = [Item.new(version)]
+    end)
+    assert_equal 1, calls
+    assert_equal 'submitted', @apple.receipt.data['status']
   end
 end

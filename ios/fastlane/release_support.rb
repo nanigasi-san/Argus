@@ -215,9 +215,15 @@ module ArgusRelease
     end
 
     def existing_review_information(version)
-      source = version || versions.max_by { |candidate| Gem::Version.new(candidate.version_string) }
-      raise 'No existing review contact information; configure it in App Store Connect' unless source
-      detail = source.fetch_app_store_review_detail
+      # A failed deliver attempt can leave a new version without review details.
+      # Use the latest previous version only when the target has no detail at all.
+      detail = version&.fetch_app_store_review_detail
+      unless detail
+        source = versions.reject { |candidate| candidate.id == version&.id }
+                         .max_by { |candidate| Gem::Version.new(candidate.version_string) }
+        raise 'No existing review contact information; configure it in App Store Connect' unless source
+        detail = source.fetch_app_store_review_detail
+      end
       raise 'Existing review detail missing; configure it in App Store Connect' unless detail
       fields = { first_name: :contact_first_name, last_name: :contact_last_name,
                  phone_number: :contact_phone, email_address: :contact_email }

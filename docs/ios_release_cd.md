@@ -58,7 +58,7 @@ git push origin v0.9.0
 ```
 
 既存 `v0.8.0` は削除・移動・再 push しない。
-現在の0.8.0は審査待ちなので、次のversionの配信は既存提出が完了してから行う。
+2026-09-18 のレビュー時点では0.8.0は審査中（`IN_REVIEW`）なので、次のversionの配信は既存提出が完了してから行う。
 審査中の他version、別versionの下書き、対象不明の提出項目があると workflow は停止する。
 
 ## 実装と検証条件
@@ -87,9 +87,27 @@ git push origin v0.9.0
   TestFlight グループ配布やテスター通知は行わない。
 - deliver は対象 version/build を明示し、更新内容と審査メモを設定して審査提出する。
   審査連絡先は App Store Connect の既存情報を引き継ぐ。説明・スクリーンショット・プライバシー回答を生成しない。
+  再実行時に対象versionの審査情報がまだ作成されていなければ、直前versionから引き継ぐ。
+  対象versionに情報があるが不完全な場合は、担当者による確認を求めて停止する。
   fastlane の公開 CI ログへ連絡先が表示されないよう、引き継ぐ値を GitHub の mask に登録する。
 - 成功後に対象 build と submission、審査状態、自動公開方式を API で読み直す。
   秘密鍵、JWT、審査連絡先は receipt に入れない。終了時は一時 keychain と秘密ファイルを削除する。
+  keychain の検索パス復元が失敗しても残りの削除を続け、後片付けの失敗を job に報告する。
+
+## テストに Ruby と Python を使う理由
+
+アプリとアプリのテストは引き続き Dart / Flutter を使用する。
+Ruby と Python は配信のための補助処理に使用する。
+
+| 言語 | 対象と理由 |
+| --- | --- |
+| Ruby | fastlane が Ruby 製のため、Apple API 操作・upload・審査提出・再実行処理を同じ言語で実装・検証する |
+| Python | 既存 CI と同じ標準ライブラリ中心の補助スクリプト。タグ・採番・CI チェック・署名 profile・IPA の plist と配信証跡を検証する |
+| Dart | アプリの unit / widget テストと、Android・iOS で動く全 E2E |
+
+Ruby の回帰テストでは新規 upload と新規審査提出、既存 build の再利用、
+誤った build・他versionの提出を拒否する処理を Apple API の代替モデルで確認する。
+これは実 App Store への upload を伴うテストではない。
 
 ## 再実行
 
@@ -127,16 +145,24 @@ GitHub の Environment Secret の表示では値は確認できないため、�
 ## この変更で実行した確認
 
 - 新しい iOS Release workflow: `actionlint` 成功。
-- Python の CI/署名/gate 回帰テスト: 34件成功。
-- Ruby の配信・再実行回帰テスト: 8件成功、12 assertions。
+- Python の CI/署名/gate 回帰テスト: 35件成功。
+- Ruby の配信・再実行回帰テスト: 12件成功、32 assertions（ローカル Ruby 4.0.5。CI は指定した Ruby 3.3 で実行）。
 - 固定版 fastlane の lane 読み込み成功。
 - export した p12 の証明書 fingerprint と有効期限を確認し、profile の証明書と一致。
 - 前回配布した0.8.0の IPA が今回の署名・番号・entitlement 検証処理を通ることを確認。
 - 発行した API キーで ARGUS の既存version/build と提出物を読み取り確認。新規 upload・審査提出は実行していない。
-- 実 API に対する読み取り preflight で、審査待ちの0.8.0が次versionの配信を止めることと、既存審査連絡先を引き継げることを確認。
-- Android 全件 E2E コマンドは `emulator-5554` 不在で開始できなかった。
-  検出ファイルは `compass_navigation_test.dart`、`core_monitoring_e2e_test.dart`、`ui_smoke_test.dart`。
-  端末/API level は取得不能、`SIMULATOR_GPS` 任意モードは未実行。AGENTS.md に従い PR は未提出。
+- 実 API に対する読み取り preflight で、0.8.0の審査待ち・審査中が次versionの配信を止めることと、既存審査連絡先を引き継げることを確認。
+- `flutter analyze`: 成功。
+- Android 全件 E2E: `bash scripts/run_android_e2e.sh emulator-5554` 成功。
+  Pixel 7 Pro / API 36 / Google APIs / arm64-v8a、Flutter 3.44.1。
+  `integration_test/` と `e2e/` の存在する全対象を再帰検出した結果、次の3ファイル・14シナリオを実行。
+  `e2e/` は現時点で存在しない。`SIMULATOR_GPS` 任意モードは未実行。
+  - `integration_test/compass_navigation_test.dart`: 1件成功。
+  - `integration_test/core_monitoring_e2e_test.dart`: 8件成功。
+  - `integration_test/ui_smoke_test.dart`: 5件成功。
+  ログ、ファイルごとの実行件数、スクリーンショットをローカルの `build/e2e/` と
+  `build/integration_test/screenshots/` に保存した。環境の再利用は
+  [macOS の Android E2E 環境](android_local_e2e.md)を参照。
 
 クリーンな hosted runner での署名・API upload・審査提出は、実装のマージと次の実リリースで確認する。
 導入前の公式資料と実運用記事の照合は [調査と設計](ios_release_automation.md) に記載した。

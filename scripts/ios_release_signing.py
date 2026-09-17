@@ -147,16 +147,26 @@ def verify(ipa):
 
 def cleanup():
     directory = signing_dir()
+    errors = []
+
+    def attempt(*args):
+        try:
+            run(*args)
+        except RuntimeError as error:
+            errors.append(str(error))
+
     keychains = directory / 'original-keychains.json'
     if keychains.exists():
-        run('security', 'list-keychains', '-d', 'user', '-s', *json.loads(keychains.read_text()))
+        attempt('security', 'list-keychains', '-d', 'user', '-s', *json.loads(keychains.read_text()))
     keychain = directory / 'release.keychain-db'
     if keychain.exists():
-        run('security', 'delete-keychain', str(keychain))
+        attempt('security', 'delete-keychain', str(keychain))
     profile_record = directory / 'installed-profile.txt'
     if profile_record.exists():
         Path(profile_record.read_text()).unlink(missing_ok=True)
     shutil.rmtree(directory, ignore_errors=True)
+    if errors:
+        raise RuntimeError('Signing cleanup failed: ' + '; '.join(errors))
 
 
 def summary():
