@@ -69,8 +69,13 @@ def install():
 
 def verify():
     aab = ROOT / 'app-release.aab'
-    # jarsigner validates the JAR signature; expected signer is checked against the upload key.
-    result = subprocess.run(['jarsigner', '-J-Duser.language=en', '-verify', str(aab)], capture_output=True, text=True)
+    # Trust the configured upload certificate explicitly so normal self-signed
+    # Android keys pass strict verification without ignoring warning exit codes.
+    # Unsigned entries, invalid signatures and unrelated signing aliases fail.
+    key = Path(os.environ['RUNNER_TEMP']) / 'argus-release.jks'
+    result = subprocess.run(['jarsigner', '-J-Duser.language=en', '-verify', '-strict',
+                             '-keystore', str(key), '-storepass:env', 'ANDROID_STORE_PASSWORD',
+                             str(aab), os.environ['ANDROID_KEY_ALIAS']], capture_output=True, text=True)
     if result.returncode or 'jar verified.' not in result.stdout:
         raise ValueError('AAB JAR signature is invalid or absent')
     env = dict(os.environ, LC_ALL='C')
@@ -82,7 +87,7 @@ def verify():
             raise ValueError('Cannot identify one AAB signing certificate')
         return matches[0]
     actual = fingerprint(['-printcert', '-jarfile', str(aab)])
-    wanted = fingerprint(['-list', '-v', '-keystore', str(Path(os.environ['RUNNER_TEMP']) / 'argus-release.jks'),
+    wanted = fingerprint(['-list', '-v', '-keystore', str(key),
                           '-alias', os.environ['ANDROID_KEY_ALIAS'], '-storepass:env', 'ANDROID_STORE_PASSWORD'])
     if actual != wanted:
         raise ValueError('AAB is not signed by the configured upload key')
@@ -211,7 +216,8 @@ def publish(play=None):
         raise ValueError('Play release differs from the requested production release')
     play.request(f'edits/{edit}:validate', 'POST', {})
     save(data, status='committing')
-    play.request(f'edits/{edit}:commit?changesNotSentForReview=false', 'POST', {})
+    # Never cancel a review already in progress, including changes on other tracks.
+    play.request(f'edits/{edit}:commit?changesNotSentForReview=false&changesInReviewBehavior=ERROR_IF_IN_REVIEW', 'POST', {})
     save(data, status='production_committed', publication='Check Play Console review / managed publishing status')
     print('Production release committed; Google review and managed publishing may delay availability')
 

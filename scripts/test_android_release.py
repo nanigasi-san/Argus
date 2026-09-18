@@ -3,18 +3,22 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import subprocess
 import unittest
+import zipfile
 from unittest.mock import patch
 import android_release as release
 
 
 class FakePlay:
-    def __init__(self, bundles=None, releases=None, fail_commit=False):
+    def __init__(self, bundles=None, releases=None, fail_commit=False, in_review=False):
         self.bundles = bundles or []
         self.track = {'track': 'production', 'releases': releases or []}
         self.calls = []
         self.valid_edit = False
         self.fail_commit = fail_commit
+        self.in_review = in_review
+        self.review_cancelled = False
 
     def request(self, path, method='GET', data=None, binary=None):
         self.calls.append((path, method))
@@ -40,6 +44,10 @@ class FakePlay:
         if ':validate' in path:
             return {}
         if ':commit' in path:
+            if self.in_review:
+                if 'changesInReviewBehavior=ERROR_IF_IN_REVIEW' in path:
+                    raise release.PlayError(400)
+                self.review_cancelled = True
             self.valid_edit = False
             if self.fail_commit:
                 self.fail_commit = False
@@ -75,7 +83,61 @@ class AndroidReleaseTests(unittest.TestCase):
         self.assertEqual(play.track['releases'][0]['status'], 'completed')
         self.assertEqual(play.track['releases'][0]['versionCodes'], ['1011'])
         self.assertEqual(release.receipt()['status'], 'production_committed')
-        self.assertEqual(play.calls[-2:], [('edits/edit:validate','POST'), ('edits/edit:commit?changesNotSentForReview=false','POST')])
+        self.assertEqual(play.calls[-2:], [('edits/edit:validate','POST'), ('edits/edit:commit?changesNotSentForReview=false&changesInReviewBehavior=ERROR_IF_IN_REVIEW','POST')])
+
+    def test_existing_review_is_not_cancelled_and_retry_can_resume(self):
+        play = FakePlay(in_review=True)
+        with self.assertRaises(release.PlayError):
+            release.publish(play)
+        self.assertFalse(play.review_cancelled)
+        self.assertTrue(play.valid_edit)
+        self.assertEqual(release.receipt()['status'], 'committing')
+        play.in_review = False
+        release.publish(play)
+        self.assertEqual(release.receipt()['status'], 'production_committed')
+        self.assertEqual(sum('uploadType' in path for path, _ in play.calls), 1)
+
+    def signed_archive(self):
+        self.env_for_signing = patch.dict(os.environ, {
+            'RUNNER_TEMP': self.temporary.name, 'ANDROID_KEY_ALIAS': 'test-upload',
+            'ANDROID_STORE_PASSWORD': 'temporary-test-password'})
+        self.env_for_signing.start()
+        self.addCleanup(self.env_for_signing.stop)
+        key = Path(self.temporary.name) / 'argus-release.jks'
+        subprocess.run(['keytool', '-genkeypair', '-alias', 'test-upload', '-keyalg', 'RSA',
+                        '-keystore', str(key), '-storepass:env', 'ANDROID_STORE_PASSWORD',
+                        '-dname', 'CN=LocalCDVerification', '-validity', '365'],
+                       check=True, capture_output=True)
+        with zipfile.ZipFile(self.aab, 'w') as archive:
+            archive.writestr('base/assets/payload.txt', 'signed content')
+        subprocess.run(['jarsigner', '-keystore', str(key), '-storepass:env',
+                        'ANDROID_STORE_PASSWORD', str(self.aab), 'test-upload'],
+                       check=True, capture_output=True)
+
+    def test_real_self_signed_upload_certificate_is_accepted(self):
+        self.signed_archive()
+        release.verify()
+        self.assertEqual(release.receipt()['aab_sha256'], hashlib.sha256(self.aab.read_bytes()).hexdigest())
+
+    def test_real_unsigned_entry_appended_after_signing_is_rejected(self):
+        self.signed_archive()
+        with zipfile.ZipFile(self.aab, 'a') as archive:
+            archive.writestr('base/assets/unsigned.txt', 'not signed')
+        with self.assertRaises(ValueError):
+            release.verify()
+        self.assertEqual(release.receipt()['aab_sha256'], self.digest)
+
+    def test_real_modified_signed_entry_is_rejected(self):
+        self.signed_archive()
+        with zipfile.ZipFile(self.aab) as archive:
+            entries = {entry.filename: archive.read(entry) for entry in archive.infolist()}
+        entries['base/assets/payload.txt'] = b'tampered content'
+        with zipfile.ZipFile(self.aab, 'w') as archive:
+            for name, content in entries.items():
+                archive.writestr(name, content)
+        with self.assertRaises(ValueError):
+            release.verify()
+        self.assertEqual(release.receipt()['aab_sha256'], self.digest)
 
     def test_commit_response_loss_resumes_without_upload_or_second_commit(self):
         play = FakePlay(fail_commit=True)

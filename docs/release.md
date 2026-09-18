@@ -20,6 +20,8 @@ main に未反映、CI 未完了・失敗、必要設定・更新内容の欠落
 ## 自動化の到達点
 
 API は production に `completed` を指定し、`changesNotSentForReview=false` で commit する。
+`changesInReviewBehavior=ERROR_IF_IN_REVIEW` を指定し、既存の審査がある場合は取り消さずに停止する。
+審査完了後に同じ workflow を再実行すると、元の AAB と有効な edit を再利用して再開する。
 Google の審査・公開は非同期であり、CD の成功は「公開要求の commit 完了」を意味する。
 審査通過やユーザーへの配信完了を意味しない。
 「管理対象の公開（Managed publishing）」が無効なら、必要な審査の承認後に通常は自動公開される。

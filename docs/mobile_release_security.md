@@ -34,6 +34,8 @@ workflow 内の検査で防げるとは扱わない。API キー・署名秘密�
 | iOS が未知の同番号 build を採用 | 成功した upload または既知 Apple build ID の証跡を要求。結果不明なら停止 |
 | iOS 下書きの設定不一致を提出後に検出 | メタデータ保存と提出を分離し、提出直前に build・公開方式・段階的公開・更新内容・審査情報を読み直す |
 | Android の同時配信が競合 | アプリ単位で直列化、cancel-in-progress false |
+| Android が既存の審査を取り消す | commit に ERROR_IF_IN_REVIEW を指定し、他の track を含め審査中なら停止 |
+| Android が署名後の未署名ファイル追加を見逃す | jarsigner の strict 検証で未署名エントリーを拒否し、自己署名の upload 証明書は fingerprint で照合 |
 | 必須 Secrets 欠落でも成功 | 開始時の必須検証、配信ビルドの debug 署名禁止、AAB 署名 fingerprint 確認 |
 | Android の再実行が重複 upload | 元の AAB と receipt を復元し、Google の同番号 AAB SHA-256 を照合。edit / commit 状態に応じて再開 |
 
