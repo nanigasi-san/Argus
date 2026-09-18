@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: ["*"]
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
@@ -33,6 +36,17 @@ jobs:
 
       - name: Test CI command watchdog
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
+
+      - name: Set up Ruby for release regression checks
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+          working-directory: ios
+
+      - name: Test iOS release retry and submission safeguards
+        working-directory: ios
+        run: bundle exec ruby fastlane/test_release_support.rb
 
       - name: Analyze code
         run: flutter analyze
@@ -89,7 +103,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload coverage reports to Codecov
-        if: always()
+        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: codecov/codecov-action@v5
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
