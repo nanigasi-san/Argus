@@ -47,7 +47,8 @@ class FakePlay:
             if self.in_review:
                 if 'changesInReviewBehavior=ERROR_IF_IN_REVIEW' in path:
                     raise release.PlayError(400)
-                self.review_cancelled = True
+                if 'changesInReviewBehavior=CANCEL_IN_REVIEW_AND_SUBMIT' in path:
+                    self.review_cancelled = True
             self.valid_edit = False
             if self.fail_commit:
                 self.fail_commit = False
@@ -83,17 +84,13 @@ class AndroidReleaseTests(unittest.TestCase):
         self.assertEqual(play.track['releases'][0]['status'], 'completed')
         self.assertEqual(play.track['releases'][0]['versionCodes'], ['1011'])
         self.assertEqual(release.receipt()['status'], 'production_committed')
-        self.assertEqual(play.calls[-2:], [('edits/edit:validate','POST'), ('edits/edit:commit?changesNotSentForReview=false&changesInReviewBehavior=ERROR_IF_IN_REVIEW','POST')])
+        self.assertEqual(play.calls[-2:], [('edits/edit:validate','POST'), ('edits/edit:commit?changesNotSentForReview=false&changesInReviewBehavior=CANCEL_IN_REVIEW_AND_SUBMIT','POST')])
 
-    def test_existing_review_is_not_cancelled_and_retry_can_resume(self):
+    def test_existing_review_is_cancelled_and_latest_release_is_submitted(self):
         play = FakePlay(in_review=True)
-        with self.assertRaises(release.PlayError):
-            release.publish(play)
-        self.assertFalse(play.review_cancelled)
-        self.assertTrue(play.valid_edit)
-        self.assertEqual(release.receipt()['status'], 'committing')
-        play.in_review = False
         release.publish(play)
+        self.assertTrue(play.review_cancelled)
+        self.assertFalse(play.valid_edit)
         self.assertEqual(release.receipt()['status'], 'production_committed')
         self.assertEqual(sum('uploadType' in path for path, _ in play.calls), 1)
 
