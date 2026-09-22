@@ -216,8 +216,9 @@ def publish(play=None):
         raise ValueError('Play release differs from the requested production release')
     play.request(f'edits/{edit}:validate', 'POST', {})
     save(data, status='committing')
-    # Never cancel a review already in progress, including changes on other tracks.
-    play.request(f'edits/{edit}:commit?changesNotSentForReview=false&changesInReviewBehavior=ERROR_IF_IN_REVIEW', 'POST', {})
+    # Latest-wins release policy: cancel changes already in review and submit this
+    # fully validated production edit instead.
+    play.request(f'edits/{edit}:commit?changesNotSentForReview=false&changesInReviewBehavior=CANCEL_IN_REVIEW_AND_SUBMIT', 'POST', {})
     save(data, status='production_committed', publication='Check Play Console review / managed publishing status')
     print('Production release committed; Google review and managed publishing may delay availability')
 
