@@ -48,7 +48,7 @@ Connect IQ SDK ManagerでSDKと `fr55` のデバイス定義を導入する。
 
 1. 55をデータ通信可能なUSBケーブルでPCにつなぐ。
 2. エクスプローラーに時計の保存領域が出たら、`GARMIN/GarminDevice.xml` 等で55であることを確認する。
-3. `garmin/bin/LinkPoc.prg` を時計の **`GARMIN/APPS/LinkPoc.prg`** へコピーする。
+3. `garmin/bin/LinkPoc.prg` を時計の **`GARMIN/APPS/LINKPOC.PRG`** へコピーする。
 4. 時計を安全に取り外し、USBケーブルを抜く。
 5. 時計のRunのデータ画面に **Link PoC** を追加し、一度表示する。`READY` 表示でバックグラウンド受信登録済み。
 6. Garmin Connectで時計とのBluetooth接続を確認する。
@@ -115,6 +115,13 @@ ACKには `data` を含めず、`saved`, `receiver`, `error` を追加する。
 
 実施結果は [VALIDATION.md](VALIDATION.md) に記録する。
 PoCの単体検証はARGUS全件E2Eの代わりにはならない。PR提出時にはルートAGENTS.mdに従って全件E2Eを実施する。
+
+MacBookでAndroidアプリを再ビルドする場合は、JDK 17以上とAndroid SDK 36を用意し、
+`android/` で `./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug` を実行する。
+APKは `android/app/build/outputs/apk/debug/app-debug.apk` にできる。接続したスマホの
+シリアルを `adb devices -l` で確認し、`adb -s <シリアル> install -r <APKのパス>` で導入する。
+既に55へコピーしたPRGはGit対象外なので、時計側コードを変えて再転送する場合は
+Mac側のConnect IQ SDKと開発鍵で `fr55` 向けにビルドする。
 
 公式資料: [Android SDK](https://github.com/garmin/connectiq-android-sdk)、
 [Background](https://developer.garmin.com/connect-iq/api-docs/Toybox/Background.html)、
