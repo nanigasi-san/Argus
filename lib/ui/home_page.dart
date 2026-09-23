@@ -13,6 +13,7 @@ import 'compass_navigation_card.dart';
 import 'monitoring_permission_card.dart';
 import 'qr_generator_page.dart';
 import 'qr_scanner_page.dart';
+import 'garmin_transfer_page.dart';
 import 'settings_page.dart';
 
 enum _LoadFileAction {
@@ -824,6 +825,7 @@ class _OverflowMenu extends StatelessWidget {
       itemBuilder: (context) => const [
         PopupMenuItem(value: 1, child: Text('設定')),
         PopupMenuItem(value: 2, child: Text('QRコードを生成')),
+        PopupMenuItem(value: 3, child: Text('GARMINに送る')),
       ],
       onSelected: (value) {
         if (value == 1) {
@@ -832,6 +834,10 @@ class _OverflowMenu extends StatelessWidget {
           );
         } else if (value == 2) {
           _showQrGenerationNotice(context);
+        } else if (value == 3) {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const GarminTransferPage()),
+          );
         }
       },
     );
