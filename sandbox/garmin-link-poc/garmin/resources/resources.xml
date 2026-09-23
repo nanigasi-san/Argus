@@ -1,0 +1,4 @@
+<resources>
+    <string id="AppName">Link PoC</string>
+    <bitmap id="LauncherIcon" filename="icon.svg"/>
+</resources>
