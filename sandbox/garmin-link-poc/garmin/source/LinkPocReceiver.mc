@@ -10,24 +10,48 @@ class LinkPocReceiver extends System.ServiceDelegate {
 
     function onPhoneAppMessage(message) {
         var data = message.data;
+        var expected = null;
         if (!(data instanceof Lang.Dictionary)) { Background.exit(null); return; }
         try {
-            if (!LinkPocProtocol.valid(data)) {
+            // Perform cheap structural checks before writing. The expensive
+            // printable/checksum pass is done once, on the Storage read-back.
+            if (!LinkPocProtocol.validEnvelope(data)) {
                 reply(LinkPocProtocol.ack(data, false, "invalid-payload"));
                 return;
             }
-            Application.Storage.setValue("last", data);
-            var stored = Application.Storage.getValue("last");
-            if (!LinkPocProtocol.valid(stored) || !stored["requestId"].equals(data["requestId"])
-                || stored["armedUntil"] != data["armedUntil"] || !stored["data"].equals(data["data"])) {
-                reply(LinkPocProtocol.ack(data, false, "readback-failed"));
+            // Keep only the small fields needed for read-back comparison so the
+            // incoming payload can be released before Storage allocates a copy.
+            expected = {
+                "requestId" => data["requestId"], "courseId" => data["courseId"],
+                "bytes" => data["bytes"], "vertexCount" => data["vertexCount"],
+                "checksum" => data["checksum"], "armedUntil" => data["armedUntil"]
+            };
+            Application.Storage.setValue("pending", data);
+            data = null;
+            message = null;
+            var stored = Application.Storage.getValue("pending");
+            if (!LinkPocProtocol.valid(stored)
+                || !stored["requestId"].equals(expected["requestId"])
+                || stored["armedUntil"] != expected["armedUntil"]
+                || !stored["checksum"].equals(expected["checksum"])) {
+                Application.Storage.deleteValue("pending");
+                reply(LinkPocProtocol.ack(expected, false, "readback-failed"));
                 return;
             }
-            // ACK is formed from the data read back from persistent storage.
+            // Promote the validated Storage read-back without recalculating its
+            // checksum, then ACK from that same validated value.
+            Application.Storage.setValue("last", stored);
+            Application.Storage.deleteValue("pending");
             reply(LinkPocProtocol.ack(stored, true, ""));
         } catch (e) {
             System.println("Link PoC receiver failed: " + e.toString());
-            reply(LinkPocProtocol.ack(data, false, "storage-or-receiver-error"));
+            if (expected != null) {
+                reply(LinkPocProtocol.ack(expected, false, "storage-or-receiver-error"));
+            } else if (data != null) {
+                reply(LinkPocProtocol.ack(data, false, "storage-or-receiver-error"));
+            } else {
+                Background.exit(null);
+            }
         }
     }
 

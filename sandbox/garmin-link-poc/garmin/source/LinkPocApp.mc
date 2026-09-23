@@ -4,11 +4,16 @@ import Toybox.WatchUi;
 
 (:background)
 class LinkPocApp extends Application.AppBase {
-    function initialize() { AppBase.initialize(); }
+    function initialize() {
+        AppBase.initialize();
+        // Event registration belongs to the application lifecycle, not view
+        // creation. This keeps phone-message delivery active after Run exits.
+        if (!Background.getPhoneAppMessageEventRegistered()) {
+            Background.registerForPhoneAppMessageEvent();
+        }
+    }
 
     function getInitialView() {
-        // Open this data field once to enable reception when it is not displayed.
-        Background.registerForPhoneAppMessageEvent();
         return [new LinkPocField()];
     }
 
@@ -17,18 +22,24 @@ class LinkPocApp extends Application.AppBase {
 
 class LinkPocField extends WatchUi.SimpleDataField {
     var _lastId = null;
+    var _display = "READY";
+
     function initialize() {
         SimpleDataField.initialize();
         label = "LINK POC";
-        value = "READY";
         reload();
     }
-    function compute(info) { reload(); }
+
+    function compute(info) {
+        reload();
+        return _display;
+    }
+
     function reload() {
         var stored = Application.Storage.getValue("last");
         if (stored != null && stored["requestId"] != _lastId) {
             _lastId = stored["requestId"];
-            value = stored["bytes"].toString() + " B OK";
+            _display = stored["bytes"].toString() + " B OK";
         }
     }
 }

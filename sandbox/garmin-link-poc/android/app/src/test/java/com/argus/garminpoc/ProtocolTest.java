@@ -48,4 +48,8 @@ public class ProtocolTest {
         assertTrue(Protocol.isMatchingAck(request, response));
     }
     @Test(expected = IllegalArgumentException.class) public void rejectsUnsupportedSize() { Protocol.request(8192, 1700000000); }
+
+    @Test public void kotlinRuntimeRequiredByGarminSdkIsAvailable() throws Exception {
+        assertNotNull(Class.forName("kotlin.jvm.internal.Intrinsics"));
+    }
 }

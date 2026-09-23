@@ -18,5 +18,8 @@ android {
 
 dependencies {
     implementation("com.garmin.connectiq:ciq-companion-app-sdk:2.4.0@aar")
+    // SDK 2.4.0 contains Kotlin message-conversion code, but its published POM
+    // does not declare the Kotlin runtime as a transitive dependency.
+    implementation("org.jetbrains.kotlin:kotlin-stdlib:1.9.24")
     testImplementation("junit:junit:4.13.2")
 }

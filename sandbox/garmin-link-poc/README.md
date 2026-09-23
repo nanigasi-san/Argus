@@ -20,6 +20,8 @@ ARGUS本体と異なるアプリID・時計UUID・保存領域を使う。位置
 必要なもの: JDK 17以上、Android SDK platform 36、ADB。
 アプリの最低OSはAndroid 8.1 / API 27。PoCはtarget SDK 34でビルドし、
 Play Store公開用の設定にはしていない。Garmin Companion SDKはMaven Centralの2.4.0を固定使用する。
+SDK内のACK変換処理がKotlin製で、公開POMには推移依存が定義されていないため、
+Kotlin標準ライブラリ1.9.24も明示的に同梱する。
 
 ```powershell
 cd sandbox/garmin-link-poc
@@ -76,7 +78,9 @@ WindowsがUSBデバイスをコード28で認識する場合は、保存領域�
 - `type=ack`, `v=1`, `receiver=background`, `saved=true`
 - `requestId`, `courseId`, `bytes`, `vertexCount`, `armedUntil`, `checksum` の一致
 
-待ち時間は送信開始から30秒。古い送信のACKは無視する。
+待ち時間は各送信開始から30秒。古い送信のACKは無視し、時計側に残ったACKを
+受信した場合はバックグラウンドサービスの終了を1.5秒待ってから、同じ
+`requestId` の要求を1回だけ自動再送する。
 タイムアウト・切断・不一致は成功にせず、再送可能にする。
 画面回転やプロセス終了で待機が失われた場合も完了扱いにはしない。
 これはRAM上の送信状態を使うPoCで、終了したアプリへのACKを後から復元する機能はない。
@@ -95,8 +99,11 @@ WindowsがUSBデバイスをコード28で認識する場合は、保存領域�
 `checksum` はデータ本体のAdler-32を符号なし10進文字列で表現する。
 これは転送・保存の破損検出用で、認証や暗号化の仕組みではない。
 
-時計は型・サイズ・試験用形式・チェックサムを確認して `Application.Storage` の `last` に保存。
-その値を読み戻して再検証した後に、読み戻した値からACKを作成する。
+時計は軽量な型・サイズ・試験用形式の検査後、まず `Application.Storage` の `pending` に保存する。
+その値を読み戻し、印字可能ASCIIとチェックサムを1回だけ検証してから `last` へ確定する。
+Forerunner 55の小さいバックグラウンドメモリと30秒Watchdogに収めるため、
+チェックサムは32文字ずつ処理し、受信payloadを解放してから読み戻す。
+ACKは検証済みの読み戻し値から作成する。
 ACKには `data` を含めず、`saved`, `receiver`, `error` を追加する。
 
 ## 検証
@@ -109,6 +116,8 @@ ACKには `data` を含めず、`saved`, `receiver`, `error` を追加する。
 ./build-watch.ps1 -TestBuild
 # 起動済みConnect IQ simulatorに対して実行
 & '<SDK>/bin/monkeydo.bat' '<絶対パス>/garmin/bin/LinkPoc.prg' fr55 /t
+# macOS / Linuxでは末尾を `-t` にする
+'<SDK>/bin/monkeydo' '<絶対パス>/garmin/bin/LinkPoc.prg' fr55 -t
 # 実機へ転送する前に通常ビルドへ戻す
 ./build-watch.ps1
 ```

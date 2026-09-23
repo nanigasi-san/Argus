@@ -34,6 +34,7 @@ public final class MainActivity extends Activity {
     private Map<String, Object> pending;
     private long sentAt;
     private Runnable timeout;
+    private boolean retriedAfterStaleAck;
     private TextView status, detail, deviceInfo, appInfo, logView;
     private Spinner devicePicker, sizePicker;
     private Button refresh, send;
@@ -237,15 +238,25 @@ public final class MainActivity extends Activity {
         pending = Protocol.request(bytes, System.currentTimeMillis() / 1000);
         final Map<String, Object> request = pending;
         sentAt = SystemClock.elapsedRealtime();
+        retriedAfterStaleAck = false;
         state("送信中", bytes + " Bのテストデータを送っています。", false);
         log("SEND " + bytes + " B / " + request.get("requestId") + " / checksum=" + request.get("checksum"));
         updateButtons();
+        transmit(request, false);
+    }
+
+    private void transmit(Map<String, Object> request, boolean retry) {
+        if (retry) {
+            log("RETRY / 古いACKを受信したため同じrequestIdで再送します。");
+            state("再送信中", "古いACKを破棄し、同じ要求を1回だけ再送しています。", false);
+        }
+        if (timeout != null) handler.removeCallbacks(timeout);
         timeout = () -> { if (pending == request) failPending("ACKが30秒以内に届きませんでした。保存結果は未確認です。再送できます。"); };
         handler.postDelayed(timeout, 30000);
         try {
             sdk.sendMessage(device, app, request, (d, a, result) -> ui(() -> {
                 if (pending != request) return;
-                log("SDK送信結果: " + result);
+                log((retry ? "SDK再送結果: " : "SDK送信結果: ") + result);
                 if (result == ConnectIQ.IQMessageStatus.SUCCESS) {
                     state("時計の保存ACK待ち", "送信は受け付けられました。時計での保存・照合結果を待っています。", false);
                 } else failPending("送信エラー: " + result);
@@ -260,8 +271,23 @@ public final class MainActivity extends Activity {
         }
         if (!(message instanceof Map<?, ?>)) { log("未知の受信形式を無視しました。"); return; }
         Map<?, ?> ack = (Map<?, ?>) message;
-        if (pending == null || !pending.get("requestId").equals(ack.get("requestId"))) {
-            log("待機中の送信に一致しないメッセージを無視しました。"); return;
+        if (pending == null) {
+            log("待機中の送信がないため、古いACKを無視しました。");
+            return;
+        }
+        if (!pending.get("requestId").equals(ack.get("requestId"))) {
+            log("古いACKを無視しました。 expected=" + pending.get("requestId")
+                + " / actual=" + ack.get("requestId"));
+            if (!retriedAfterStaleAck) {
+                retriedAfterStaleAck = true;
+                final Map<String, Object> request = pending;
+                // Let the watch finish transmitting the queued ACK and exit its
+                // background service before asking it to process the retry.
+                handler.postDelayed(() -> {
+                    if (pending == request) transmit(request, true);
+                }, 1500);
+            }
+            return;
         }
         if (!Protocol.isMatchingAck(pending, ack)) {
             failPending("ACK照合失敗: " + (ack.get("error") == null ? "内容が一致しません" : ack.get("error")));
