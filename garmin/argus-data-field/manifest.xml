@@ -1,11 +1,12 @@
 <iq:manifest xmlns:iq="http://www.garmin.com/xml/connectiq" version="3">
     <iq:application id="a86f7de8169f4a3e8c38763cdd2e4d55" type="datafield"
         name="@Strings.AppName" entry="ArgusApp" launcherIcon="@Drawables.LauncherIcon"
-        minApiLevel="3.2.0" version="0.1.0">
+        minApiLevel="3.2.0" version="0.2.0">
         <iq:products><iq:product id="fr55"/></iq:products>
         <iq:permissions>
             <iq:uses-permission id="Background"/>
             <iq:uses-permission id="Communications"/>
+            <iq:uses-permission id="Positioning"/>
         </iq:permissions>
         <iq:languages><iq:language>eng</iq:language></iq:languages>
         <iq:barrels/>

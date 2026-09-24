@@ -25,7 +25,7 @@ class ArgusReceiver extends System.ServiceDelegate {
             data = null;
             message = null;
             var stored = Application.Storage.getValue("pending");
-            if (!ArgusProtocol.valid(stored)
+            if (!(stored instanceof Lang.Dictionary) || !ArgusProtocol.valid(stored)
                 || !stored["requestId"].equals(expected["requestId"])
                 || stored["armedUntil"] != expected["armedUntil"]
                 || !stored["checksum"].equals(expected["checksum"])) {
