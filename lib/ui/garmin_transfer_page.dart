@@ -22,6 +22,7 @@ class _GarminTransferPageState extends State<GarminTransferPage> {
   bool _loadingDevices = false;
   bool _sending = false;
   String? _error;
+  String? _notificationWarning;
   GarminTransferResult? _result;
 
   @override
@@ -77,15 +78,38 @@ class _GarminTransferPageState extends State<GarminTransferPage> {
     setState(() {
       _sending = true;
       _error = null;
+      _notificationWarning = null;
       _result = null;
     });
     try {
+      if (!controller.monitoringPermissionState.notificationGranted) {
+        try {
+          await controller.requestNotificationPermission();
+        } catch (_) {
+          // Notification setup must not prevent a course transfer.
+        }
+      }
       final payload = GarminCourseEncoder().encode(
         controller.geoModel,
         fileName: controller.geoJsonFileName ?? 'argus.geojson',
       );
       final result = await widget.client.sendCourse(device, payload);
       if (mounted) setState(() => _result = result);
+      if (controller.monitoringPermissionState.notificationGranted) {
+        try {
+          await controller.notifier.notifyGarminTransferComplete(
+            deviceName: result.deviceName,
+            fileName: payload.displayName,
+          );
+        } catch (_) {
+          if (mounted) {
+            setState(
+                () => _notificationWarning = '転送は完了しましたが、スマホ通知を表示できませんでした。');
+          }
+        }
+      } else if (mounted) {
+        setState(() => _notificationWarning = '通知権限がないため、スマホの送信完了通知は表示されません。');
+      }
     } on FormatException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } on PlatformException catch (e) {
@@ -121,6 +145,10 @@ class _GarminTransferPageState extends State<GarminTransferPage> {
             const Text(
                 'GARMINのRun中はData Fieldに受信結果が短く表示されます。Run外では次回開いたときにファイル名を確認してください。',
                 textAlign: TextAlign.center),
+            if (_notificationWarning != null) ...[
+              const SizedBox(height: 12),
+              Text(_notificationWarning!, textAlign: TextAlign.center),
+            ],
           ] else ...[
             const Text('送信する境界データを選択してください。'),
             const SizedBox(height: 16),
