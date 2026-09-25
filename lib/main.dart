@@ -7,7 +7,7 @@ import 'package:upgrader/upgrader.dart';
 
 import 'app_controller.dart';
 import 'theme/app_theme.dart';
-import 'ui/home_page.dart';
+import 'ui/usage_mode_selection_page.dart';
 
 // coverage:ignore-start
 Future<void> main() async {
@@ -68,12 +68,12 @@ class _ArgusAppState extends State<ArgusApp> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final home = widget.upgrader == null
-        ? const HomePage()
+        ? const UsageModeSelectionPage()
         : UpgradeAlert(
             upgrader: widget.upgrader!,
             showIgnore: false,
             showReleaseNotes: false,
-            child: const HomePage(),
+            child: const UsageModeSelectionPage(),
           );
     return ChangeNotifierProvider.value(
       value: widget.controller,

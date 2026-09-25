@@ -629,6 +629,12 @@ stateDiagram-v2
 
 ## 9. 画面仕様
 
+### 9.0 利用方法の選択
+
+- 起動時は `UsageModeSelectionPage` を表示し、B2案のラジオ式二択で「スマホで利用」を初期選択する。選択は保存しないため、次のコールドスタートでも選択画面を表示する。
+- 「次へ」でスマホを選んだ場合は従来の `HomePage`、GARMINを選んだ場合は既存の `GarminTransferPage` を開く。後者はARGUSからGARMINへの境界データ送信に用いる。戻る操作で選択画面へ戻れる。
+- 監視と転送は同じ `AppController` を利用する。従来のHomePageメニューにある「GARMINに送る」も残す。
+
 ### 9.1 HomePage
 
 - **AppBar**: タイトル ARGUS（中央寄せ）、右上オーバーフローメニューから Settings へ遷移。

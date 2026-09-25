@@ -42,6 +42,9 @@ void main() {
   Future<void> boot(WidgetTester tester) async {
     await tester.pumpWidget(ArgusApp(controller: harness.controller));
     await tester.pumpAndSettle();
+    expect(find.text('スマホで利用'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('usageModeNextButton')));
+    await tester.pumpAndSettle();
     expect(find.byType(HomePage), findsOneWidget);
     expect(harness.controller.snapshot.status, LocationStateStatus.waitGeoJson);
     expect(find.text('WAIT GEOJSON'), findsOneWidget);

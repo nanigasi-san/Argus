@@ -134,7 +134,7 @@ OSの権限ダイアログや実際の通知・警告音の動作はこのE2Eの
 ## Core Monitoring E2E
 
 `core_monitoring_e2e_test.dart` は、各シナリオを1つの `AppController` と
-`ArgusApp` / `HomePage` で最後まで通します。
+起動時に「スマホで利用」を選択してから、`ArgusApp` / `HomePage` で最後まで通します。UI smokeでは「GARMINだけで利用（試験機能）」から既存の転送画面へ進むことも確認します。
 
 | シナリオ | 確認する連携 |
 | --- | --- |
