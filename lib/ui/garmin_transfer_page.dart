@@ -111,14 +111,15 @@ class _GarminTransferPageState extends State<GarminTransferPage> {
                 style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
             Text(
-                '${_result!.deviceName}\n保存・照合済み / ACK受信\n${_result!.elapsedMs} ms',
+                '${_result!.deviceName}\n${controller.geoJsonFileName ?? 'GeoJSON'}\n保存・照合済み / ACK受信\n${_result!.elapsedMs} ms',
                 textAlign: TextAlign.center),
             const SizedBox(height: 24),
             FilledButton(
                 onPressed: () => Navigator.pop(context),
                 child: const Text('完了')),
             const SizedBox(height: 8),
-            const Text('GARMINのData Fieldで保存した地点数を確認できます。',
+            const Text(
+                'GARMINのRun中はData Fieldに受信結果が短く表示されます。Run外では次回開いたときにファイル名を確認してください。',
                 textAlign: TextAlign.center),
           ] else ...[
             const Text('送信する境界データを選択してください。'),

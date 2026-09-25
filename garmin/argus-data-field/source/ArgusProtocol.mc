@@ -25,6 +25,8 @@ module ArgusProtocol {
         if (!(data["type"] instanceof Lang.String) || !data["type"].equals("argus-course") || data["v"] != 1) { return false; }
         if (!(data["requestId"] instanceof Lang.String) || data["requestId"].length() > 64) { return false; }
         if (!(data["courseId"] instanceof Lang.String) || data["courseId"].length() > 64) { return false; }
+        if (data["displayName"] != null && (!(data["displayName"] instanceof Lang.String)
+            || data["displayName"].length() == 0 || data["displayName"].length() > 64)) { return false; }
         if (data["vertexCount"] < 3 || data["vertexCount"] > 100) { return false; }
         if (data["bytes"] < 1 || data["bytes"] > 2048) { return false; }
         if (!(data["data"] instanceof Lang.String) || data["data"].length() != data["bytes"]) { return false; }
@@ -43,6 +45,7 @@ module ArgusProtocol {
         return {
             "type" => "ack", "v" => 1, "receiver" => "background",
             "requestId" => data["requestId"], "courseId" => data["courseId"],
+            "displayName" => data["displayName"],
             "saved" => saved, "bytes" => data["bytes"],
             "vertexCount" => data["vertexCount"], "checksum" => data["checksum"],
             "armedUntil" => data["armedUntil"], "error" => error

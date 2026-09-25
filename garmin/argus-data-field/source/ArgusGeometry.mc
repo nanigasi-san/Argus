@@ -94,8 +94,8 @@ class ArgusGeometry {
         for (var i = 0; i < _xs.size(); i++) {
             var ax = _xs[previous];
             var ay = _ys[previous];
-            var dx = _xs[i] - ax;
-            var dy = _ys[i] - ay;
+            var dx = (_xs[i] - ax) * 1.0;
+            var dy = (_ys[i] - ay) * 1.0;
             var lengthSquared = dx * dx + dy * dy;
             var t = 0.0;
             if (lengthSquared > 0) {

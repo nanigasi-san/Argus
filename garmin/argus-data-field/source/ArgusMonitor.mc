@@ -9,7 +9,7 @@ class ArgusMonitor {
     var _candidateSince = -1;
     var _direction = "N";
     var _distance = 0;
-    var _alertPending = false;
+    var _lastAlert = -1;
 
     function initialize(geometry) { _geometry = geometry; }
 
@@ -17,10 +17,11 @@ class ArgusMonitor {
     function distance() { return _distance; }
     function direction() { return _direction; }
 
-    function takeAlert() {
-        var pending = _alertPending;
-        _alertPending = false;
-        return pending;
+    function alertDue(nowSeconds) {
+        if (!_state.equals("OUT")) { return false; }
+        if (_lastAlert >= 0 && nowSeconds - _lastAlert < 5) { return false; }
+        _lastAlert = nowSeconds;
+        return true;
     }
 
     function reset() {
@@ -29,7 +30,7 @@ class ArgusMonitor {
         _outsideCount = 0;
         _insideCount = 0;
         _candidateSince = -1;
-        _alertPending = false;
+        _lastAlert = -1;
     }
 
     function update(x, y, nowSeconds) {
@@ -48,7 +49,7 @@ class ArgusMonitor {
             _candidateSince = -1;
             if (_state.equals("OUT")) {
                 _insideCount++;
-                if (_insideCount >= 2) { _state = "IN"; }
+                if (_insideCount >= 2) { _state = "IN"; _lastAlert = -1; }
             } else {
                 _state = "IN";
                 _insideCount = 0;
@@ -64,7 +65,6 @@ class ArgusMonitor {
         _outsideCount++;
         if (_outsideCount >= 2 && nowSeconds - _candidateSince >= 2) {
             _state = "OUT";
-            _alertPending = true;
         } else {
             _state = "CANDIDATE";
         }

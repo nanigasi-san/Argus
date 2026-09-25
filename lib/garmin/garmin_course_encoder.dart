@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
 import '../geo/geo_model.dart';
@@ -43,12 +44,23 @@ class GarminCourseEncoder {
       throw const FormatException('Garmin用データが2KBを超えています。頂点を簡略化してください。');
     }
     final normalizedName = fileName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    final baseName = fileName.split(RegExp(r'[/\\]')).last.trim();
+    final nameCharacters = (baseName.isEmpty ? 'ARGUS' : baseName).runes;
+    final displayBuffer = StringBuffer();
+    for (final character in nameCharacters) {
+      final next =
+          '${displayBuffer.toString()}${String.fromCharCode(character)}';
+      if (utf8.encode(next).length > 48) break;
+      displayBuffer.writeCharCode(character);
+    }
+    final displayName = displayBuffer.toString();
     final courseId = '${normalizedName}_${_checksum(data)}';
     final expiry = armedUntil ?? DateTime.now().add(const Duration(hours: 12));
     return GarminCoursePayload(
       courseId: courseId.length <= 64
           ? courseId
           : courseId.substring(courseId.length - 64),
+      displayName: displayName,
       armedUntil: expiry.millisecondsSinceEpoch ~/ 1000,
       vertexCount: points.length,
       originLatE7: (originLat * 1e7).round(),

@@ -211,6 +211,7 @@ public final class GarminBridge implements MethodChannel.MethodCallHandler {
                 || !"background".equals(ack.get("receiver"))
                 || !numberEquals(1, ack.get("v"))
                 || !pendingRequest.get("courseId").equals(ack.get("courseId"))
+                || !pendingRequest.get("displayName").equals(ack.get("displayName"))
                 || !pendingRequest.get("checksum").equals(ack.get("checksum"))
                 || !numberEquals(pendingRequest.get("bytes"), ack.get("bytes"))
                 || !numberEquals(pendingRequest.get("vertexCount"), ack.get("vertexCount"))

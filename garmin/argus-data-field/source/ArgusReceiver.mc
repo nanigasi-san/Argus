@@ -3,6 +3,7 @@ import Toybox.Background;
 import Toybox.Communications;
 import Toybox.Lang;
 import Toybox.System;
+import Toybox.Time;
 
 (:background)
 class ArgusReceiver extends System.ServiceDelegate {
@@ -18,9 +19,11 @@ class ArgusReceiver extends System.ServiceDelegate {
             }
             expected = {
                 "requestId" => data["requestId"], "courseId" => data["courseId"],
+                "displayName" => data["displayName"],
                 "bytes" => data["bytes"], "vertexCount" => data["vertexCount"],
                 "checksum" => data["checksum"], "armedUntil" => data["armedUntil"]
             };
+            data["receivedAt"] = Time.now().value();
             Application.Storage.setValue("pending", data);
             data = null;
             message = null;
@@ -28,13 +31,23 @@ class ArgusReceiver extends System.ServiceDelegate {
             if (!(stored instanceof Lang.Dictionary) || !ArgusProtocol.valid(stored)
                 || !stored["requestId"].equals(expected["requestId"])
                 || stored["armedUntil"] != expected["armedUntil"]
-                || !stored["checksum"].equals(expected["checksum"])) {
+                || !stored["checksum"].equals(expected["checksum"])
+                || (expected["displayName"] != null
+                    && !stored["displayName"].equals(expected["displayName"]))) {
                 Application.Storage.deleteValue("pending");
                 reply(ArgusProtocol.ack(expected, false, "readback-failed")); return;
             }
             Application.Storage.setValue("course", stored);
+            var saved = Application.Storage.getValue("course");
+            if (!(saved instanceof Lang.Dictionary) || !ArgusProtocol.valid(saved)
+                || !saved["requestId"].equals(expected["requestId"])
+                || (expected["displayName"] != null
+                    && !saved["displayName"].equals(expected["displayName"]))) {
+                Application.Storage.deleteValue("pending");
+                reply(ArgusProtocol.ack(expected, false, "course-readback-failed")); return;
+            }
             Application.Storage.deleteValue("pending");
-            reply(ArgusProtocol.ack(stored, true, ""));
+            reply(ArgusProtocol.ack(saved, true, ""));
         } catch (e) {
             System.println("ARGUS receiver failed: " + e.toString());
             if (expected != null) { reply(ArgusProtocol.ack(expected, false, "storage-error")); }

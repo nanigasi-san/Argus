@@ -1,6 +1,7 @@
 class GarminCoursePayload {
   const GarminCoursePayload({
     required this.courseId,
+    required this.displayName,
     required this.armedUntil,
     required this.vertexCount,
     required this.originLatE7,
@@ -10,6 +11,7 @@ class GarminCoursePayload {
   });
 
   final String courseId;
+  final String displayName;
   final int armedUntil;
   final int vertexCount;
   final int originLatE7;
@@ -23,6 +25,7 @@ class GarminCoursePayload {
         'type': 'argus-course',
         'v': 1,
         'courseId': courseId,
+        'displayName': displayName,
         'armedUntil': armedUntil,
         'vertexCount': vertexCount,
         'originLatE7': originLatE7,
