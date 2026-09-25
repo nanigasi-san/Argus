@@ -324,7 +324,7 @@ void main() {
       await notifier.updateBadge(LocationStateStatus.near);
 
       expect(notifications.initializeCount, 1);
-      expect(notifications.ensureChannelCount, 2);
+      expect(notifications.ensureChannelCount, 1);
       expect(notifications.lastInitializationSettings?.iOS, isNotNull);
       expect(
         notifications.lastInitializationSettings?.iOS?.requestAlertPermission,
@@ -338,7 +338,7 @@ void main() {
         notifications.lastInitializationSettings?.iOS?.requestSoundPermission,
         isFalse,
       );
-      final channel = notifications.channels.first;
+      final channel = notifications.lastChannel!;
       expect(channel.id, 'argus_alerts_visual_v2');
       expect(channel.name, 'ARGUS警告');
       expect(channel.description, 'ジオフェンスの安全エリアから離れたときに通知します。');
@@ -346,40 +346,8 @@ void main() {
       expect(channel.playSound, isFalse);
       expect(channel.enableVibration, isFalse);
       expect(channel.sound, isNull);
-      final garminChannel = notifications.channels.last;
-      expect(garminChannel.id, 'argus_garmin_transfer_v1');
-      expect(garminChannel.name, 'GARMINへの転送');
-      expect(garminChannel.importance, Importance.high);
-      expect(notifications.calls,
-          ['initialize', 'ensureAndroidChannel', 'ensureAndroidChannel']);
+      expect(notifications.calls, ['initialize', 'ensureAndroidChannel']);
       expect(notifier.badgeState.value, LocationStateStatus.near);
-    });
-
-    test(
-        'GARMIN transfer notification uses its own channel without alarm playback',
-        () async {
-      final notifications = FakeLocalNotificationsClient();
-      final alarm = FakeAlarmPlayer();
-      final vibration = FakeVibrationPlayer();
-      final notifier = Notifier(
-        notificationsClient: notifications,
-        alarmPlayer: alarm,
-        vibrationPlayer: vibration,
-      );
-
-      await notifier.notifyGarminTransferComplete(
-        deviceName: 'ForeAthlete 55',
-        fileName: '千葉大.geojson',
-      );
-
-      expect(notifications.shownIds, [1002]);
-      final shown = notifications.showCalls.single;
-      expect(shown.title, 'GARMINへの送信完了');
-      expect(shown.body, 'ForeAthlete 55に千葉大.geojsonを保存しました。');
-      expect(shown.details.android?.channelId, 'argus_garmin_transfer_v1');
-      expect(shown.details.android?.importance, Importance.high);
-      expect(alarm.playCount, 0);
-      expect(vibration.startCount, 0);
     });
 
     test('notifyOuter uses audible time-sensitive iOS notification', () async {

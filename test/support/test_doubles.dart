@@ -163,7 +163,6 @@ class RecordingAlarmVolumeClient implements AlarmVolumeClient {
 
 AppController buildTestController({
   bool hasGeoJson = false,
-  Notifier? notifier,
   StateSnapshot? snapshot,
   bool? developerMode,
   MonitoringPermissionState? permissionState,
@@ -181,12 +180,11 @@ AppController buildTestController({
     locationService: FakeLocationService(),
     fileManager: fileManager,
     logger: FakeEventLogger(),
-    notifier: notifier ??
-        Notifier(
-          notificationsClient: FakeLocalNotificationsClient(),
-          alarmPlayer: FakeAlarmPlayer(),
-          vibrationPlayer: FakeVibrationPlayer(),
-        ),
+    notifier: Notifier(
+      notificationsClient: FakeLocalNotificationsClient(),
+      alarmPlayer: FakeAlarmPlayer(),
+      vibrationPlayer: FakeVibrationPlayer(),
+    ),
     permissionCoordinator: permissionCoordinator,
     qrImageAnalyzer: qrImageAnalyzer,
     alarmVolumeClient: alarmVolumeClient,

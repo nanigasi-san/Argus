@@ -24,7 +24,6 @@ docs/app_store/review_recordings/
 /bin/internal/bootstrap.bat
 /bin/internal/bootstrap.sh
 /bin/mingit/
-garmin/**/bin/
 /dev/benchmarks/mega_gallery/
 /dev/bots/.recipe_deps
 /dev/bots/android_tools/
