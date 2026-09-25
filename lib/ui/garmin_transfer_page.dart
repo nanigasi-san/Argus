@@ -22,6 +22,7 @@ class _GarminTransferPageState extends State<GarminTransferPage>
   static const _unsupportedMessage = 'この端末ではGARMINへの送信を利用できません。';
   List<GarminDevice> _devices = const [];
   GarminDevice? _selected;
+  String? _selectedDeviceId;
   bool _loadingDevices = false;
   bool _sending = false;
   bool _waitingForAck = false;
@@ -73,7 +74,11 @@ class _GarminTransferPageState extends State<GarminTransferPage>
       if (!mounted) return;
       setState(() {
         _devices = devices;
-        _selected = devices.where((d) => d.connected).firstOrNull;
+        // Never silently switch to a different watch after a selection is lost.
+        _selected = _selectedDeviceId == null
+            ? devices.where((d) => d.connected).firstOrNull
+            : devices.where((d) => d.id == _selectedDeviceId).firstOrNull;
+        _selectedDeviceId ??= _selected?.id;
       });
     } on PlatformException catch (e) {
       if (mounted) setState(() => _error = e.message ?? 'GARMINを検索できませんでした。');
@@ -245,20 +250,30 @@ class _GarminTransferPageState extends State<GarminTransferPage>
                     ? '共有されたGARMINがありません。Garmin Connectで時計を選んでください。'
                     : '接続済みのGARMINが見つかりません。Garmin Connectを確認してください。')
               else
-                DropdownButtonFormField<GarminDevice>(
-                  initialValue: _selected,
+                DropdownButtonFormField<String>(
+                  key: ValueKey(_selected?.id),
+                  initialValue: _selected?.id,
                   decoration:
                       const InputDecoration(border: OutlineInputBorder()),
                   items: _devices
                       .map((d) => DropdownMenuItem(
-                          value: d,
+                          value: d.id,
                           child: Text(
                               '${d.name}${d.connected ? ' · 接続済み' : ' · 未接続'}')))
                       .toList(),
                   onChanged: _sending
                       ? null
-                      : (value) => setState(() => _selected = value),
+                      : (value) => setState(() {
+                            _selectedDeviceId = value;
+                            _selected = _devices
+                                .where((d) => d.id == value)
+                                .firstOrNull;
+                          }),
                 ),
+              if (_selected == null && _selectedDeviceId != null) ...[
+                const SizedBox(height: 8),
+                const Text('選択したGARMINが見つかりません。送信先を選び直してください。'),
+              ],
               const SizedBox(height: 20),
               if (_waitingForAck) ...[
                 const Card(

@@ -60,6 +60,7 @@ class ArgusField extends WatchUi.DataField {
             _detail = "";
         } else if (info.currentLocation == null || info.currentLocationAccuracy == null
             || info.currentLocationAccuracy < Position.QUALITY_USABLE) {
+            _monitor.onGpsUnavailable();
             _status = _monitor.state().equals("OUT") ? "OUT" : "GPS WAIT";
             _detail = _monitor.state().equals("OUT") ? "GPS WAIT" : "";
             if (_monitor.alertDue(now)) { alertOut(); }

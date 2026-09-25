@@ -34,6 +34,16 @@ class ArgusMonitor {
         _lastAlert = -1;
     }
 
+    function onGpsUnavailable() {
+        // A candidate needs consecutive usable fixes; OUT remains active so
+        // its alert can continue while the current position is unavailable.
+        if (_state.equals("CANDIDATE")) { _state = "ARMED"; }
+        _lastCheck = -1;
+        _outsideCount = 0;
+        _insideCount = 0;
+        _candidateSince = -1;
+    }
+
     function update(x, y, nowSeconds) {
         var interval = (_state.equals("CANDIDATE") || _state.equals("OUT")) ? 2 : 10;
         if (_lastCheck >= 0 && nowSeconds - _lastCheck < interval) { return; }

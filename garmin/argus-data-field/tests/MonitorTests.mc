@@ -43,6 +43,39 @@ function monitorConfirmsAndClearsOutside(logger) {
 }
 
 (:test)
+function gpsWaitBreaksOutsideCandidate(logger) {
+    var monitor = new ArgusMonitor(new ArgusGeometry(squareCourse()));
+    monitor.update(300, 0, 1000);
+    Test.assertEqual(monitor.state(), "CANDIDATE");
+    monitor.onGpsUnavailable();
+    Test.assertEqual(monitor.state(), "ARMED");
+    monitor.update(300, 0, 2000);
+    Test.assertEqual(monitor.state(), "CANDIDATE");
+    Test.assert(!monitor.alertDue(2000));
+    monitor.update(300, 0, 2002);
+    Test.assertEqual(monitor.state(), "OUT");
+    return true;
+}
+
+(:test)
+function gpsWaitKeepsOutButBreaksReturnCandidate(logger) {
+    var monitor = new ArgusMonitor(new ArgusGeometry(squareCourse()));
+    monitor.update(300, 0, 1000);
+    monitor.update(300, 0, 1002);
+    Test.assertEqual(monitor.state(), "OUT");
+    monitor.update(0, 0, 1004);
+    Test.assertEqual(monitor.state(), "OUT");
+    monitor.onGpsUnavailable();
+    Test.assertEqual(monitor.state(), "OUT");
+    Test.assert(monitor.alertDue(1006));
+    monitor.update(0, 0, 2000);
+    Test.assertEqual(monitor.state(), "OUT");
+    monitor.update(0, 0, 2002);
+    Test.assertEqual(monitor.state(), "IN");
+    return true;
+}
+
+(:test)
 function geometryHandlesTenKilometreCourse(logger) {
     var course = {"data" => "AGW1|-5000,-5000;5000,-5000;5000,5000;-5000,5000",
         "vertexCount" => 4, "originLatE7" => 350000000,

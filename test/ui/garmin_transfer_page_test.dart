@@ -20,6 +20,7 @@ class _PendingGarminClient extends GarminTransferClient {
   final Completer<GarminTransferResult> completion =
       Completer<GarminTransferResult>();
   int sendCount = 0;
+  String? sentDeviceId;
 
   @override
   Future<List<GarminDevice>> getDevices() async => const [
@@ -30,8 +31,20 @@ class _PendingGarminClient extends GarminTransferClient {
   Future<GarminTransferResult> sendCourse(
       GarminDevice device, GarminCoursePayload payload) {
     sendCount += 1;
+    sentDeviceId = device.id;
     return completion.future;
   }
+}
+
+class _MultipleGarminClient extends _PendingGarminClient {
+  bool secondVisible = true;
+
+  @override
+  Future<List<GarminDevice>> getDevices() async => [
+        const GarminDevice(id: 'watch-1', name: 'Watch 1', connected: true),
+        if (secondVisible)
+          const GarminDevice(id: 'watch-2', name: 'Watch 2', connected: true),
+      ];
 }
 
 class _UnsupportedGarminClient extends GarminTransferClient {
@@ -68,6 +81,7 @@ Future<void> _startTransfer(
   _PendingGarminClient client,
   FakeLocalNotificationsClient notifications, {
   bool notificationDenied = false,
+  bool startSending = true,
 }) async {
   final controller = buildTestController(
     hasGeoJson: true,
@@ -97,6 +111,7 @@ Future<void> _startTransfer(
     ),
   );
   await tester.pumpAndSettle();
+  if (!startSending) return;
   await tester.ensureVisible(find.text('GARMINに送信'));
   await tester.pumpAndSettle();
   await tester.tap(find.text('GARMINに送信'));
@@ -104,7 +119,67 @@ Future<void> _startTransfer(
   expect(client.sendCount, 1);
 }
 
+Future<void> _selectSecondWatch(WidgetTester tester) async {
+  await tester.ensureVisible(find.byType(DropdownButtonFormField<String>));
+  await tester.tap(find.byType(DropdownButtonFormField<String>));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Watch 2 · 接続済み').last);
+  await tester.pumpAndSettle();
+}
+
 void main() {
+  testWidgets('keeps the selected watch after refresh and app resume',
+      (tester) async {
+    final client = _MultipleGarminClient();
+    await _startTransfer(tester, client, FakeLocalNotificationsClient(),
+        startSending: false);
+    await _selectSecondWatch(tester);
+
+    await tester.tap(find.text('再検索'));
+    await tester.pumpAndSettle();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('GARMINに送信'));
+    await tester.tap(find.text('GARMINに送信'));
+    await tester.pump();
+    expect(client.sentDeviceId, 'watch-2');
+    client.completion.complete(
+      const GarminTransferResult(deviceName: 'Watch 2', elapsedMs: 50),
+    );
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('does not switch to another watch when selection disappears',
+      (tester) async {
+    final client = _MultipleGarminClient();
+    await _startTransfer(tester, client, FakeLocalNotificationsClient(),
+        startSending: false);
+    await _selectSecondWatch(tester);
+
+    client.secondVisible = false;
+    await tester.tap(find.text('再検索'));
+    await tester.pumpAndSettle();
+    final sendButton = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'GARMINに送信'),
+    );
+    expect(sendButton.onPressed, isNull);
+    expect(find.text('選択したGARMINが見つかりません。送信先を選び直してください。'), findsOneWidget);
+    expect(client.sendCount, 0);
+
+    client.secondVisible = true;
+    await tester.tap(find.text('再検索'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('GARMINに送信'));
+    await tester.tap(find.text('GARMINに送信'));
+    await tester.pump();
+    expect(client.sentDeviceId, 'watch-2');
+    client.completion.complete(
+      const GarminTransferResult(deviceName: 'Watch 2', elapsedMs: 50),
+    );
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('explains when Garmin transfer is unavailable on this platform',
       (tester) async {
     final controller = buildTestController(hasGeoJson: false);
