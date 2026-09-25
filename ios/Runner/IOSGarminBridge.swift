@@ -9,7 +9,7 @@ final class IOSGarminBridge: NSObject, IQDeviceEventDelegate, IQAppMessageDelega
   private static let appID = "a86f7de8-169f-4a3e-8c38-763cdd2e4d55"
   private static let cachedDevicesKey = "argus.garmin.authorizedDevices.v1"
 
-  private let sdk = ConnectIQ.sharedInstance()
+  private let sdk = ConnectIQ.sharedInstance()!
   private var initialized = false
   private var channel: FlutterMethodChannel?
   private var devices: [String: IQDevice] = [:]
@@ -62,7 +62,7 @@ final class IOSGarminBridge: NSObject, IQDeviceEventDelegate, IQAppMessageDelega
         ] as [String: Any]
       })
     case "selectDevices":
-      sdk.showConnectIQDeviceSelection()
+      sdk.showDeviceSelection()
       result(nil)
     case "sendCourse":
       sendCourse(call, result: result)
@@ -75,13 +75,13 @@ final class IOSGarminBridge: NSObject, IQDeviceEventDelegate, IQAppMessageDelega
     if pendingResult != nil {
       fail("device_selection_changed", "GARMINの共有設定が変わりました。再送してください。")
     }
-    sdk.unregisterForAllDeviceEvents(self)
+    sdk.unregister(forAllDeviceEvents: self)
     readyDevices.removeAll()
     devices.removeAll()
     // A new selection revokes every device that was authorized previously.
     for device in selected {
       devices[device.uuid.uuidString] = device
-      sdk.registerForDeviceEvents(device, delegate: self)
+      sdk.register(forDeviceEvents: device, delegate: self)
     }
     let values: [[String: String]] = selected.map { device in
       [
@@ -96,11 +96,11 @@ final class IOSGarminBridge: NSObject, IQDeviceEventDelegate, IQAppMessageDelega
 
   private func restoreDevices() {
     let values = UserDefaults.standard.array(forKey: Self.cachedDevicesKey) as? [[String: String]] ?? []
-    let restored: [IQDevice] = values.compactMap { value in
-      guard let id = value["id"], let uuid = NSUUID(uuidString: id),
+    let restored: [IQDevice] = values.compactMap { value -> IQDevice? in
+      guard let id = value["id"], let uuid = UUID(uuidString: id),
             let model = value["model"], let name = value["name"] else { return nil }
-      return IQDevice.device(
-        withId: uuid, modelName: model, friendlyName: name,
+      return IQDevice(
+        id: uuid, modelName: model, friendlyName: name,
         partNumber: value["partNumber"] ?? ""
       )
     }
@@ -141,12 +141,13 @@ final class IOSGarminBridge: NSObject, IQDeviceEventDelegate, IQAppMessageDelega
       result(FlutterError(code: "device_disconnected", message: "選択したGARMINが接続されていません。", details: nil))
       return
     }
-    guard let uuid = NSUUID(uuidString: Self.appID) else {
+    guard let uuid = UUID(uuidString: Self.appID) else {
       result(FlutterError(code: "app_id", message: "Data Field IDが不正です。", details: nil))
       return
     }
-    request["requestId"] = UUID().uuidString
-    let app = IQApp.app(withUUID: uuid, storeUuid: uuid, device: device)
+    let requestId = UUID().uuidString
+    request["requestId"] = requestId
+    let app = IQApp(uuid: uuid, store: uuid, device: device)
     pendingResult = result
     pendingRequest = request
     pendingDevice = device
@@ -156,7 +157,7 @@ final class IOSGarminBridge: NSObject, IQDeviceEventDelegate, IQAppMessageDelega
     sdk.getAppStatus(app) { [weak self] status in
       DispatchQueue.main.async {
         guard let self = self, self.pendingResult != nil,
-              self.pendingRequest?["requestId"] as? String == request["requestId"] as? String else { return }
+              self.pendingRequest?["requestId"] as? String == requestId else { return }
         guard let status = status else {
           self.fail("app_query_timeout", "GARMINのData Field状態を取得できませんでした。再検索してください。")
           return
@@ -165,11 +166,12 @@ final class IOSGarminBridge: NSObject, IQDeviceEventDelegate, IQAppMessageDelega
           self.fail("app_not_installed", "ARGUS Data FieldがGARMINにインストールされていません。")
           return
         }
-        self.sdk.registerForAppMessages(app, delegate: self)
-        self.scheduleTimeout(seconds: 30, code: "ack_timeout", message: "保存・照合ACKが30秒以内に届きませんでした。再送してください。")
-        self.sdk.sendMessage(request, toApp: app, progress: { _, _ in }, completion: { [weak self] sendResult in
+        self.sdk.register(forAppMessages: app, delegate: self)
+        self.scheduleTimeout(seconds: 60, code: "ack_timeout", message: "保存・照合ACKが60秒以内に届きませんでした。再送してください。")
+        self.sdk.sendMessage(request, to: app, progress: { _, _ in }, completion: { [weak self] sendResult in
           DispatchQueue.main.async {
-            guard let self = self, self.pendingResult != nil else { return }
+            guard let self = self, self.pendingResult != nil,
+                  self.pendingRequest?["requestId"] as? String == requestId else { return }
             // Delivery alone is not success. Only a matching storage ACK completes a transfer.
             if sendResult.rawValue != 0 {
               self.fail("send_failed", "GARMINへの送信に失敗しました: \(NSStringFromSendMessageResult(sendResult))")
@@ -180,7 +182,7 @@ final class IOSGarminBridge: NSObject, IQDeviceEventDelegate, IQAppMessageDelega
     }
   }
 
-  func receivedMessage(_ message: Any, fromApp app: IQApp) {
+  func receivedMessage(_ message: Any, from app: IQApp) {
     DispatchQueue.main.async { self.receive(message, from: app) }
   }
 
@@ -237,7 +239,7 @@ final class IOSGarminBridge: NSObject, IQDeviceEventDelegate, IQAppMessageDelega
   private func clearTransfer() {
     timeout?.cancel()
     timeout = nil
-    if let app = pendingApp { sdk.unregisterForAppMessages(app, delegate: self) }
+    if let app = pendingApp { sdk.unregister(forAppMessages: app, delegate: self) }
     pendingResult = nil
     pendingRequest = nil
     pendingDevice = nil

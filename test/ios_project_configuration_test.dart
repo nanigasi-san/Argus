@@ -26,7 +26,14 @@ void main() {
       expect(infoPlist,
           contains('<key>UIApplicationSupportsMultipleScenes</key>'));
       expect(infoPlist, contains('<false/>'));
-      expect(infoPlist, contains('<string>FlutterSceneDelegate</string>'));
+      expect(
+          infoPlist,
+          contains(
+              r'<string>$(PRODUCT_MODULE_NAME).GarminSceneDelegate</string>'));
+      final appDelegate =
+          File('ios/Runner/AppDelegate.swift').readAsStringSync();
+      expect(appDelegate,
+          contains('class GarminSceneDelegate: FlutterSceneDelegate'));
       expect(infoPlist, contains('<string>Main</string>'));
       expect(infoPlist, isNot(contains('<string>armv7</string>')));
     });
@@ -155,6 +162,20 @@ void main() {
       expect(project, isNot(contains('com.argus.argus')));
       expect(project, isNot(contains('IPHONEOS_DEPLOYMENT_TARGET = 13.0;')));
       expect(frameworkInfo, contains('<string>15.0</string>'));
+    });
+
+    test('keeps iOS Debug separate from the installed release app', () {
+      final project =
+          File('ios/Runner.xcodeproj/project.pbxproj').readAsStringSync();
+      final infoPlist = File('ios/Runner/Info.plist').readAsStringSync();
+
+      expect(
+          project,
+          contains(
+              'PRODUCT_BUNDLE_IDENTIFIER = com.argus.orienteering.debug;'));
+      expect(project, contains('ARGUS_DISPLAY_NAME = "ARGUS Dev";'));
+      expect(project, contains('ARGUS_DISPLAY_NAME = ARGUS;'));
+      expect(infoPlist, contains(r'<string>$(ARGUS_DISPLAY_NAME)</string>'));
     });
 
     test('uses the 0.7.0 release version and update-check dependencies', () {

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -54,8 +55,9 @@ class _GarminTransferPageState extends State<GarminTransferPage>
     try {
       await widget.client.selectDevices();
     } on PlatformException catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() => _error = e.message ?? 'GARMINの選択画面を開けませんでした。');
+      }
     } on MissingPluginException {
       if (mounted) setState(() => _error = _unsupportedMessage);
     }

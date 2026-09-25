@@ -33,8 +33,9 @@ monkeyc -f garmin/argus-data-field/monkey.jungle -d fr55 \
 初回はRunのデータ画面にARGUSを追加して一度表示し、バックグラウンド受信を登録する。
 その後Runを終了しても転送できる。スマホ側はGarmin ConnectとのBluetooth接続が必要。
 
-送信するGeoJSON/QRはスマホ内で読み込み、GARMINへの送信とACKはGarmin Connectを
-介したBluetooth通信で行う。ARGUSの転送処理はクラウドAPIを呼ばないため、
+送信するGeoJSON/QRはスマホ内で読み込む。AndroidではGarmin Connectを介した
+Bluetooth通信、iPhoneではConnect IQ Companion SDKのBLE通信で送信とACKを行う。
+ARGUSの転送処理はクラウドAPIを呼ばないため、
 ペアリングとData Fieldのインストールが済んでいれば、送信時のインターネット接続は不要。
 ただしBluetooth、Garmin Connectアプリ、両アプリの事前インストールは必要。
 
