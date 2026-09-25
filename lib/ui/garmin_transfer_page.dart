@@ -23,6 +23,7 @@ class _GarminTransferPageState extends State<GarminTransferPage>
   GarminDevice? _selected;
   bool _loadingDevices = false;
   bool _sending = false;
+  bool _waitingForAck = false;
   String? _error;
   String? _notificationWarning;
   GarminTransferResult? _result;
@@ -124,8 +125,14 @@ class _GarminTransferPageState extends State<GarminTransferPage>
         controller.geoModel,
         fileName: controller.geoJsonFileName ?? 'argus.geojson',
       );
+      if (mounted) setState(() => _waitingForAck = true);
       final result = await widget.client.sendCourse(device, payload);
-      if (mounted) setState(() => _result = result);
+      if (mounted) {
+        setState(() {
+          _waitingForAck = false;
+          _result = result;
+        });
+      }
       if (controller.monitoringPermissionState.notificationGranted) {
         try {
           await controller.notifier.notifyGarminTransferComplete(
@@ -148,7 +155,12 @@ class _GarminTransferPageState extends State<GarminTransferPage>
     } on MissingPluginException {
       if (mounted) setState(() => _error = _unsupportedMessage);
     } finally {
-      if (mounted) setState(() => _sending = false);
+      if (mounted) {
+        setState(() {
+          _sending = false;
+          _waitingForAck = false;
+        });
+      }
     }
   }
 
@@ -246,6 +258,30 @@ class _GarminTransferPageState extends State<GarminTransferPage>
                       : (value) => setState(() => _selected = value),
                 ),
               const SizedBox(height: 20),
+              if (_waitingForAck) ...[
+                const Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Row(children: [
+                      CircularProgressIndicator(
+                          key: Key('garmin-ack-progress')),
+                      SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('GARMINのACKを待機中',
+                                style: TextStyle(fontWeight: FontWeight.bold)),
+                            SizedBox(height: 4),
+                            Text('保存・照合の確認中です。通信開始から最大60秒待ちます。'),
+                          ],
+                        ),
+                      ),
+                    ]),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
               FilledButton.icon(
                 onPressed:
                     _sending || _selected?.connected != true ? null : _send,

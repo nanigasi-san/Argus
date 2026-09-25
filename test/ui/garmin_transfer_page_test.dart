@@ -128,6 +128,12 @@ void main() {
     final notifications = FakeLocalNotificationsClient();
     await _startTransfer(tester, client, notifications);
     expect(notifications.shownIds, isEmpty);
+    expect(find.text('GARMINのACKを待機中'), findsOneWidget);
+    expect(find.byKey(const Key('garmin-ack-progress')), findsOneWidget);
+    expect(find.text('保存・照合の確認中です。通信開始から最大60秒待ちます。'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 10));
+    expect(find.text('GARMINのACKを待機中'), findsOneWidget);
+    expect(notifications.shownIds, isEmpty);
 
     client.completion.complete(
       const GarminTransferResult(deviceName: 'ForeAthlete 55', elapsedMs: 50),
@@ -135,6 +141,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('GARMINへ転送しました'), findsOneWidget);
+    expect(find.text('GARMINのACKを待機中'), findsNothing);
+    expect(find.byKey(const Key('garmin-ack-progress')), findsNothing);
     expect(notifications.shownIds, [1002]);
     expect(notifications.showCalls.single.body,
         'ForeAthlete 55にargus.geojsonを保存しました。');
@@ -152,6 +160,8 @@ void main() {
 
     expect(notifications.shownIds, isEmpty);
     expect(find.text('ACKを受信できませんでした。'), findsOneWidget);
+    expect(find.text('GARMINのACKを待機中'), findsNothing);
+    expect(find.byKey(const Key('garmin-ack-progress')), findsNothing);
   });
 
   testWidgets(

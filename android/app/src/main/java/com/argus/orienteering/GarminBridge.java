@@ -22,6 +22,7 @@ import io.flutter.plugin.common.MethodChannel;
 /** Connect IQ transport. A transfer succeeds only after a matching storage ACK. */
 public final class GarminBridge implements MethodChannel.MethodCallHandler {
     private static final String APP_ID = "a86f7de8169f4a3e8c38763cdd2e4d55";
+    private static final long ACK_TIMEOUT_MS = 60_000L;
     private final Activity activity;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final MethodChannel channel;
@@ -38,6 +39,7 @@ public final class GarminBridge implements MethodChannel.MethodCallHandler {
     private Runnable appQueryTimeout;
     private Runnable sdkTimeout;
     private boolean retried;
+    private int sdkGeneration;
 
     public GarminBridge(Activity activity, BinaryMessenger messenger) {
         this.activity = activity;
@@ -58,14 +60,20 @@ public final class GarminBridge implements MethodChannel.MethodCallHandler {
 
     private void initialize() {
         if (closed || sdk != null) return;
+        final int generation = ++sdkGeneration;
         try {
             sdk = ConnectIQ.getInstance(activity, ConnectIQ.IQConnectType.WIRELESS);
-            sdkTimeout = () -> failDeviceWaiters("sdk_timeout", "Garmin Connectの応答がありません。アプリを開いて再検索してください。");
+            sdkTimeout = () -> {
+                if (closed || generation != sdkGeneration) return;
+                clearSdkTimeout();
+                releaseSdk();
+                failDeviceWaiters("sdk_timeout", "Garmin Connectの応答がありません。アプリを開いて再検索してください。");
+            };
             handler.postDelayed(sdkTimeout, 15000);
             sdk.initialize(activity, false, new ConnectIQ.ConnectIQListener() {
                 @Override public void onSdkReady() {
                     handler.post(() -> {
-                        if (closed) return;
+                        if (closed || generation != sdkGeneration) return;
                         clearSdkTimeout();
                         ready = true;
                         flushDeviceWaiters();
@@ -73,6 +81,7 @@ public final class GarminBridge implements MethodChannel.MethodCallHandler {
                 }
                 @Override public void onInitializeError(ConnectIQ.IQSdkErrorStatus error) {
                     handler.post(() -> {
+                        if (closed || generation != sdkGeneration) return;
                         clearSdkTimeout();
                         ready = false;
                         releaseSdk();
@@ -81,8 +90,11 @@ public final class GarminBridge implements MethodChannel.MethodCallHandler {
                 }
                 @Override public void onSdkShutDown() {
                     handler.post(() -> {
+                        if (closed || generation != sdkGeneration) return;
+                        clearSdkTimeout();
                         ready = false;
                         sdk = null;
+                        sdkGeneration++;
                         failDeviceWaiters("sdk_shutdown", "Garmin Connectとの接続が切れました。");
                         failTransfer("sdk_shutdown", "Garmin Connectとの接続が切れました。");
                     });
@@ -133,6 +145,7 @@ public final class GarminBridge implements MethodChannel.MethodCallHandler {
                 result.error("device_disconnected", "選択したGARMINが接続されていません。", null); return;
             }
             args.put("requestId", UUID.randomUUID().toString());
+            final String requestId = (String) args.get("requestId");
             pendingResult = result;
             pendingRequest = args;
             pendingDevice = selected;
@@ -143,10 +156,15 @@ public final class GarminBridge implements MethodChannel.MethodCallHandler {
             handler.postDelayed(appQueryTimeout, 15000);
             sdk.getApplicationInfo(APP_ID, target, new ConnectIQ.IQApplicationInfoListener() {
                 @Override public void onApplicationInfoReceived(IQApp app) {
-                    handler.post(() -> { clearAppQueryTimeout(); prepareAndSend(target, app); });
+                    handler.post(() -> {
+                        if (!isCurrentRequest(requestId)) return;
+                        clearAppQueryTimeout();
+                        prepareAndSend(target, app);
+                    });
                 }
                 @Override public void onApplicationNotInstalled(String id) {
                     handler.post(() -> {
+                        if (!isCurrentRequest(requestId)) return;
                         clearAppQueryTimeout();
                         failTransfer("app_not_installed", "ARGUS Data FieldがGARMINにインストールされていません。");
                     });
@@ -163,9 +181,11 @@ public final class GarminBridge implements MethodChannel.MethodCallHandler {
             failTransfer("app_not_installed", "ARGUS Data FieldがGARMINにインストールされていません。"); return;
         }
         try {
+            final String requestId = (String) pendingRequest.get("requestId");
             pendingApp = app;
             sdk.unregisterAllForEvents();
             sdk.registerForAppEvents(device, app, (d, a, messages, status) -> handler.post(() -> {
+                if (!isCurrentRequest(requestId)) return;
                 if (status != ConnectIQ.IQMessageStatus.SUCCESS) {
                     failTransfer("ack_receive", "ACKの受信に失敗しました: " + status); return;
                 }
@@ -179,12 +199,14 @@ public final class GarminBridge implements MethodChannel.MethodCallHandler {
 
     private void transmit(boolean retry) {
         if (pendingResult == null) return;
-        if (timeout != null) handler.removeCallbacks(timeout);
-        timeout = () -> failTransfer("ack_timeout", "保存・照合ACKが30秒以内に届きませんでした。再送してください。");
-        handler.postDelayed(timeout, 30000);
+        if (!retry) {
+            timeout = () -> failTransfer("ack_timeout", "保存・照合ACKが60秒以内に届きませんでした。再送してください。");
+            handler.postDelayed(timeout, ACK_TIMEOUT_MS);
+        }
         try {
+            final String requestId = (String) pendingRequest.get("requestId");
             sdk.sendMessage(pendingDevice, pendingApp, pendingRequest, (d, a, status) -> handler.post(() -> {
-                if (pendingResult != null && status != ConnectIQ.IQMessageStatus.SUCCESS) {
+                if (isCurrentRequest(requestId) && status != ConnectIQ.IQMessageStatus.SUCCESS) {
                     failTransfer("send_failed", "GARMINへの送信に失敗しました: " + status);
                 }
             }));
@@ -203,7 +225,10 @@ public final class GarminBridge implements MethodChannel.MethodCallHandler {
         if (!pendingRequest.get("requestId").equals(ack.get("requestId"))) {
             if (!retried) {
                 retried = true;
-                handler.postDelayed(() -> transmit(true), 1500);
+                final String requestId = (String) pendingRequest.get("requestId");
+                handler.postDelayed(() -> {
+                    if (isCurrentRequest(requestId)) transmit(true);
+                }, 1500);
             }
             return;
         }
@@ -229,6 +254,10 @@ public final class GarminBridge implements MethodChannel.MethodCallHandler {
     private boolean numberEquals(Object a, Object b) {
         return a instanceof Number && b instanceof Number
                 && ((Number) a).doubleValue() == ((Number) b).doubleValue();
+    }
+
+    private boolean isCurrentRequest(String requestId) {
+        return pendingRequest != null && requestId.equals(pendingRequest.get("requestId"));
     }
 
     private void failDeviceWaiters(String code, String text) {
@@ -264,12 +293,17 @@ public final class GarminBridge implements MethodChannel.MethodCallHandler {
     }
 
     private void releaseSdk() {
+        sdkGeneration++;
+        ready = false;
         if (sdk == null) return;
-        try {
-            sdk.unregisterAllForEvents();
-            sdk.shutdown(activity);
-        } catch (Exception ignored) { }
+        ConnectIQ currentSdk = sdk;
         sdk = null;
+        try {
+            currentSdk.unregisterAllForEvents();
+        } catch (Exception ignored) { }
+        try {
+            currentSdk.shutdown(activity);
+        } catch (Exception ignored) { }
     }
 
     private String message(Exception e) {
