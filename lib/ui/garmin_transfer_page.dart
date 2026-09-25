@@ -17,6 +17,7 @@ class GarminTransferPage extends StatefulWidget {
 }
 
 class _GarminTransferPageState extends State<GarminTransferPage> {
+  static const _unsupportedMessage = 'GARMINへの送信は現在Android版のみ対応しています。';
   List<GarminDevice> _devices = const [];
   GarminDevice? _selected;
   bool _loadingDevices = false;
@@ -45,6 +46,8 @@ class _GarminTransferPageState extends State<GarminTransferPage> {
       });
     } on PlatformException catch (e) {
       if (mounted) setState(() => _error = e.message ?? 'GARMINを検索できませんでした。');
+    } on MissingPluginException {
+      if (mounted) setState(() => _error = _unsupportedMessage);
     } finally {
       if (mounted) setState(() => _loadingDevices = false);
     }
@@ -114,6 +117,8 @@ class _GarminTransferPageState extends State<GarminTransferPage> {
       if (mounted) setState(() => _error = e.message);
     } on PlatformException catch (e) {
       if (mounted) setState(() => _error = e.message ?? 'GARMINへの転送に失敗しました。');
+    } on MissingPluginException {
+      if (mounted) setState(() => _error = _unsupportedMessage);
     } finally {
       if (mounted) setState(() => _sending = false);
     }

@@ -34,6 +34,14 @@ class _PendingGarminClient extends GarminTransferClient {
   }
 }
 
+class _UnsupportedGarminClient extends GarminTransferClient {
+  const _UnsupportedGarminClient();
+
+  @override
+  Future<List<GarminDevice>> getDevices() async =>
+      throw MissingPluginException();
+}
+
 const _deniedNotifications = MonitoringPermissionState(
   notificationStatus: PermissionStatus.denied,
   locationWhenInUseStatus: PermissionStatus.granted,
@@ -49,8 +57,8 @@ class _DeniedPermissionCoordinator extends PermissionCoordinator {
 
 class _FailingNotifications extends FakeLocalNotificationsClient {
   @override
-  Future<void> show(int id, String? title, String? body,
-      NotificationDetails details) async {
+  Future<void> show(
+      int id, String? title, String? body, NotificationDetails details) async {
     throw PlatformException(code: 'notification_failed');
   }
 }
@@ -97,6 +105,23 @@ Future<void> _startTransfer(
 }
 
 void main() {
+  testWidgets('explains when Garmin transfer is unavailable on this platform',
+      (tester) async {
+    final controller = buildTestController(hasGeoJson: false);
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: controller,
+        child: const MaterialApp(
+          home: GarminTransferPage(client: _UnsupportedGarminClient()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('GARMINへの送信は現在Android版のみ対応しています。'), findsOneWidget);
+  });
+
   testWidgets('shows a phone notification only after a successful storage ACK',
       (tester) async {
     final client = _PendingGarminClient();
@@ -147,7 +172,8 @@ void main() {
     expect(find.text('通知権限がないため、スマホの送信完了通知は表示されません。'), findsOneWidget);
   });
 
-  testWidgets('notification failure does not turn a successful transfer into an error',
+  testWidgets(
+      'notification failure does not turn a successful transfer into an error',
       (tester) async {
     final client = _PendingGarminClient();
     final notifications = _FailingNotifications();
