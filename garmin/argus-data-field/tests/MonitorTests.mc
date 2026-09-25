@@ -32,8 +32,8 @@ function monitorConfirmsAndClearsOutside(logger) {
     Test.assertEqual(monitor.state(), "OUT");
     Test.assertEqual(monitor.direction(), "W");
     Test.assert(monitor.alertDue(1002));
-    Test.assert(!monitor.alertDue(1004));
-    Test.assert(monitor.alertDue(1007));
+    Test.assert(!monitor.alertDue(1005));
+    Test.assert(monitor.alertDue(1006));
     monitor.update(0, 0, 1008);
     Test.assertEqual(monitor.state(), "OUT");
     monitor.update(0, 0, 1010);

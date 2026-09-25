@@ -5,6 +5,7 @@ import Toybox.Background;
 import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.Position;
+import Toybox.System;
 import Toybox.Time;
 import Toybox.WatchUi;
 
@@ -162,14 +163,20 @@ class ArgusField extends WatchUi.DataField {
         try {
             if (Attention has :vibrate) {
                 Attention.vibrate([
-                    new Attention.VibeProfile(100, 500),
-                    new Attention.VibeProfile(0, 250),
-                    new Attention.VibeProfile(100, 500)
+                    new Attention.VibeProfile(100, 3000)
                 ]);
             }
-        } catch (e) { }
+        } catch (e) {
+            System.println("ARGUS vibration failed: " + e.toString());
+        }
         try {
-            if (Attention has :playTone) { Attention.playTone(Attention.TONE_ALERT_HI); }
-        } catch (e) { }
+            if (Attention has :ToneProfile) {
+                Attention.playTone({:toneProfile => [new Attention.ToneProfile(2500, 3000)]});
+            } else if (Attention has :playTone) {
+                Attention.playTone(Attention.TONE_ALERT_HI);
+            }
+        } catch (e) {
+            System.println("ARGUS tone failed: " + e.toString());
+        }
     }
 }

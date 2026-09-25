@@ -19,7 +19,8 @@ class ArgusMonitor {
 
     function alertDue(nowSeconds) {
         if (!_state.equals("OUT")) { return false; }
-        if (_lastAlert >= 0 && nowSeconds - _lastAlert < 5) { return false; }
+        // A three-second alert followed by a one-second break while OUT.
+        if (_lastAlert >= 0 && nowSeconds - _lastAlert < 4) { return false; }
         _lastAlert = nowSeconds;
         return true;
     }
