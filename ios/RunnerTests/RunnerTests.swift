@@ -31,7 +31,9 @@ class RunnerTests: XCTestCase {
     let scene = appScenes?.first
 
     XCTAssertEqual(scene?["UISceneClassName"] as? String, "UIWindowScene")
-    XCTAssertEqual(scene?["UISceneDelegateClassName"] as? String, "FlutterSceneDelegate")
+    let delegateName = scene?["UISceneDelegateClassName"] as? String
+    XCTAssertTrue(delegateName?.hasSuffix(".GarminSceneDelegate") == true)
+    XCTAssertNotNil(delegateName.flatMap(NSClassFromString))
     XCTAssertEqual(scene?["UISceneStoryboardFile"] as? String, "Main")
   }
 

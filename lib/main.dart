@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:upgrader/upgrader.dart';
@@ -15,10 +16,12 @@ Future<void> main() async {
   runApp(
     ArgusApp(
       controller: controller,
-      upgrader: Upgrader(
-        countryCode: 'JP',
-        languageCode: 'ja',
-      ),
+      upgrader: kDebugMode
+          ? null
+          : Upgrader(
+              countryCode: 'JP',
+              languageCode: 'ja',
+            ),
     ),
   );
 }

@@ -24,9 +24,10 @@ def run_build():
     # Complete each preparation step before starting the next one.
     subprocess.run(["flutter", "build", "ios", "--simulator", "--debug",
                     "--config-only", "--target=lib/main.dart"], check=True)
-    # Xcode builds Runner and every test bundle in one output tree.
+    # Target one simulator architecture; generic builds can fail Flutter's
+    # framework verification with Xcode 27 even when both slices are present.
     subprocess.run(["xcodebuild", "build-for-testing", *arguments,
-                    "-destination", "generic/platform=iOS Simulator"], check=True)
+                    "-destination", f"platform=iOS Simulator,id={device}"], check=True)
     build_seconds = time.monotonic() - started
     ios_simulator.boot(device, REPORT)
     tests_started = time.monotonic()

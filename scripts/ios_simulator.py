@@ -30,11 +30,19 @@ def boot(device, report):
                    check=True, timeout=420)
     # Complete device startup before asking Launch Services to open the GUI.
     # The first GUI launch can exceed 30 seconds on a cold CI runner.
-    subprocess.run(["open", "-a", "Simulator", "--args", "-CurrentDeviceUDID", device],
-                   check=True, timeout=120)
+    gui_opened = True
+    try:
+        subprocess.run(["open", "-a", "Simulator", "--args", "-CurrentDeviceUDID", device],
+                       check=True, timeout=120)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+        # Xcode 27 can provide a working CoreSimulator without a standalone
+        # Simulator.app. The booted device still supports XCTest and screenshots.
+        gui_opened = False
+        print("[simulator] GUI unavailable; continuing with booted device", flush=True)
     elapsed = time.monotonic() - started
     Path(report, "simulator-boot.json").write_text(json.dumps({
         "device": device, "seconds": elapsed, "ready": True,
+        "guiOpened": gui_opened,
     }, indent=2) + "\n", encoding="utf-8")
     print(f"[simulator] Ready after {elapsed:.1f}s", flush=True)
     # Preserve the boot diagnostic without serializing it ahead of the build.

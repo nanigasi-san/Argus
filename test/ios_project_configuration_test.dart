@@ -157,25 +157,17 @@ void main() {
         project,
         contains('PRODUCT_BUNDLE_IDENTIFIER = com.argus.orienteering;'),
       );
+      expect(
+        RegExp(r'PRODUCT_BUNDLE_IDENTIFIER = com\.argus\.orienteering;')
+            .allMatches(project),
+        hasLength(3),
+      );
+      expect(project, isNot(contains('com.argus.orienteering.debug')));
       expect(project, contains('TARGETED_DEVICE_FAMILY = 1;'));
       expect(project, isNot(contains('TARGETED_DEVICE_FAMILY = "1,2";')));
       expect(project, isNot(contains('com.argus.argus')));
       expect(project, isNot(contains('IPHONEOS_DEPLOYMENT_TARGET = 13.0;')));
       expect(frameworkInfo, contains('<string>15.0</string>'));
-    });
-
-    test('keeps iOS Debug separate from the installed release app', () {
-      final project =
-          File('ios/Runner.xcodeproj/project.pbxproj').readAsStringSync();
-      final infoPlist = File('ios/Runner/Info.plist').readAsStringSync();
-
-      expect(
-          project,
-          contains(
-              'PRODUCT_BUNDLE_IDENTIFIER = com.argus.orienteering.debug;'));
-      expect(project, contains('ARGUS_DISPLAY_NAME = "ARGUS Dev";'));
-      expect(project, contains('ARGUS_DISPLAY_NAME = ARGUS;'));
-      expect(infoPlist, contains(r'<string>$(ARGUS_DISPLAY_NAME)</string>'));
     });
 
     test('uses the 0.7.0 release version and update-check dependencies', () {
