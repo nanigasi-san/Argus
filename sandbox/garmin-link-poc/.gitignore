@@ -1,0 +1,14 @@
+**/build/
+**/.gradle/
+**/local.properties
+**/*.der
+**/*.pem
+**/*.prg
+**/*.prg.debug.xml
+**/bin/
+artifacts/
+.local/
+# Keep this independent project's Gradle wrapper despite the repository-wide ignore rules.
+!android/gradlew
+!android/gradlew.bat
+!android/gradle/wrapper/gradle-wrapper.jar
