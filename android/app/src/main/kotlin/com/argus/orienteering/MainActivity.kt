@@ -16,8 +16,6 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
-    private var garminBridge: GarminBridge? = null
-
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ALARM_CHANNEL)
@@ -59,7 +57,6 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
-        garminBridge = GarminBridge(this, flutterEngine.dartExecutor.binaryMessenger)
     }
 
     override fun onStop() {
@@ -70,8 +67,6 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
-        garminBridge?.close()
-        garminBridge = null
         NativeAlarmPlayer.stop(applicationContext)
         super.onDestroy()
     }

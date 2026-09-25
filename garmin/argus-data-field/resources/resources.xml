@@ -1,4 +1,0 @@
-<resources>
-    <string id="AppName">ARGUS</string>
-    <bitmap id="LauncherIcon" filename="icon.svg" />
-</resources>
