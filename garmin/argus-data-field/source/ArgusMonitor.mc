@@ -52,8 +52,9 @@ class ArgusMonitor {
         var nearest = null;
         if (!inside) {
             nearest = _geometry.nearest(x, y);
-            // A small inner buffer suppresses noisy fixes on the boundary.
-            if (nearest[0] <= 10.0) { inside = true; }
+            // No default distance margin: any positive distance outside
+            // starts a candidate, still requiring two usable GPS fixes.
+            if (nearest[0] <= 0.0) { inside = true; }
         }
         if (inside) {
             _outsideCount = 0;

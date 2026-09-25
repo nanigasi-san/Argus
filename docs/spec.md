@@ -617,7 +617,7 @@ stateDiagram-v2
 
 | 項目                  | キー                    | 型               | デフォルト                              | 説明                                                                       |
 | --------------------- | ----------------------- | ---------------- | --------------------------------------- | -------------------------------------------------------------------------- |
-| Inner buffer          | `inner_buffer_m`        | double           | 30.0                                    | エリア境界との距離バッファ（メートル）。この距離未満で `near` 状態になる。 |
+| Inner buffer          | `inner_buffer_m`        | double           | 0.0                                     | エリア境界との距離バッファ（メートル）。この距離未満で `near` 状態になる。既存の保存済み値も更新時に一度だけ0mへ移行し、他の設定値は維持する。 |
 | Leave confirm samples | `leave_confirm_samples` | int              | 3                                       | OUTER 確定に必要な連続サンプル数。                                         |
 | Leave confirm seconds | `leave_confirm_seconds` | int              | 10                                      | OUTER 確定に必要な経過秒数。                                               |
 | GPS bad threshold     | `gps_accuracy_bad_m`    | double           | 40.0                                    | 位置精度がこの値を超えると `gpsBad` 状態になる（メートル）。               |

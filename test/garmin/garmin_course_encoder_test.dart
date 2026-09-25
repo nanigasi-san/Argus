@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:argus/garmin/garmin_course_encoder.dart';
 import 'package:argus/geo/geo_model.dart';
@@ -76,5 +77,34 @@ void main() {
       ),
       throwsFormatException,
     );
+  });
+
+  test('encodes a 100-vertex ten-kilometre square within the byte limit', () {
+    const originLat = 35.0;
+    const originLon = 140.0;
+    final metresPerLon = 111320 * math.cos(originLat * math.pi / 180);
+    final xy = <(int, int)>[
+      for (var i = 0; i < 25; i++) (-5000 + 400 * i, -5000),
+      for (var i = 0; i < 25; i++) (5000, -5000 + 400 * i),
+      for (var i = 0; i < 25; i++) (5000 - 400 * i, 5000),
+      for (var i = 0; i < 25; i++) (-5000, 5000 - 400 * i),
+    ];
+    final model = GeoModel([
+      GeoPolygon(
+        points: [
+          for (final (x, y) in xy)
+            LatLng(originLat + y / 110540, originLon + x / metresPerLon),
+        ],
+      ),
+    ]);
+
+    final payload = GarminCourseEncoder().encode(
+      model,
+      fileName: 'ten-kilometre.geojson',
+    );
+
+    expect(payload.vertexCount, 100);
+    expect(payload.bytes, 1088);
+    expect(payload.bytes, lessThanOrEqualTo(2048));
   });
 }

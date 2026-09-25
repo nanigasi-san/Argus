@@ -90,11 +90,15 @@ function geometryHandlesTenKilometreCourse(logger) {
 }
 
 (:test)
-function monitorBuffersBoundaryAndRejectsBadCourse(logger) {
+function monitorHasNoOutsideMarginAndRejectsBadCourse(logger) {
     var geometry = new ArgusGeometry(squareCourse());
     var monitor = new ArgusMonitor(geometry);
-    monitor.update(105, 0, 1000);
+    monitor.update(95, 0, 1000);
     Test.assertEqual(monitor.state(), "IN");
+    monitor.update(105, 0, 1010);
+    Test.assertEqual(monitor.state(), "CANDIDATE");
+    monitor.update(105, 0, 1012);
+    Test.assertEqual(monitor.state(), "OUT");
     var bad = squareCourse();
     bad["vertexCount"] = 6;
     Test.assert(!(new ArgusGeometry(bad)).isValid());

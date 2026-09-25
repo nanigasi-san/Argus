@@ -9,7 +9,7 @@ Connect IQ Background で受信し、Storageへ保存、読み戻しとAdler-32�
 日本語表示にはGARMIN本体の言語設定を日本語にする必要がある。英語設定の標準フォントでは
 日本語の方角や日本語ファイル名を描画できない。
 
-境界外10mを超える測位を2回（2秒以上）確認したとき、音とバイブを同時に3秒鳴らし、
+境界外の測位を2回（2秒以上）確認したとき、音とバイブを同時に3秒鳴らし、
 OUTが続く間は1秒休んで繰り返す。ForeAthlete 55で非対応の振動パターンは使わず、
 単一の振動プロファイルを使う。音・振動APIの失敗はConnect IQログに記録する。
 再入域も2回確認して解除する。通常は10秒ごと、範囲外候補・範囲外では2秒ごとに
@@ -32,6 +32,8 @@ monkeyc -f garmin/argus-data-field/monkey.jungle -d fr55 \
 
 初回はRunのデータ画面にARGUSを追加して一度表示し、バックグラウンド受信を登録する。
 その後Runを終了しても転送できる。スマホ側はGarmin ConnectとのBluetooth接続が必要。
+
+座標表現、100頂点時のサイズ、チェックサムとACKの詳細は[Garmin転送データ形式](../../docs/garmin_data_format.md)を参照。
 
 送信するGeoJSON/QRはスマホ内で読み込む。AndroidではGarmin Connectを介した
 Bluetooth通信、iPhoneではConnect IQ Companion SDKのBLE通信で送信とACKを行う。

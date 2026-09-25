@@ -67,9 +67,10 @@ void main() {
 
   testWidgets('valid settings values are normalized and saved', (tester) async {
     final controller = _RecordingSettingsController();
+    final originalVolume = controller.config!.alarmVolume;
 
     await _pumpSettings(tester, controller);
-    await _enterFieldText(tester, const Key('innerBufferField'), '45.5');
+    await _enterFieldText(tester, const Key('innerBufferField'), '0');
     await _enterFieldText(tester, const Key('pollingIntervalField'), '2');
     await _enterFieldText(tester, const Key('gpsAccuracyField'), '55.5');
     await _enterFieldText(tester, const Key('leaveConfirmSamplesField'), '4');
@@ -78,7 +79,8 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
 
     expect(controller.updateConfigCalls, 1);
-    expect(controller.savedConfig?.innerBufferM, 45.5);
+    expect(controller.savedConfig?.innerBufferM, 0);
+    expect(controller.savedConfig?.alarmVolume, originalVolume);
     expect(controller.savedConfig?.effectiveFastSampleIntervalS, 2);
     expect(controller.savedConfig?.gpsAccuracyBadMeters, 55.5);
     expect(controller.savedConfig?.leaveConfirmSamples, 4);

@@ -86,6 +86,19 @@ class FileManager {
       final file = await getConfigFile();
       final raw = await file.readAsString();
       final decoded = jsonDecode(raw) as Map<String, dynamic>;
+      final version = (decoded['config_version'] as num?)?.toInt() ?? 1;
+      if (version < AppConfig.currentConfigVersion) {
+        // Existing users also start with zero boundary margin after this
+        // update. Preserve every other setting and migrate only once.
+        decoded['inner_buffer_m'] = AppConfig.defaultInnerBufferM;
+        decoded['config_version'] = AppConfig.currentConfigVersion;
+        try {
+          await file.writeAsString(jsonEncode(decoded));
+        } catch (_) {
+          // Continue with the migrated values in memory even if persistence
+          // fails; other user settings must not fall back to defaults.
+        }
+      }
       return AppConfig.fromJson(decoded).normalized();
     } catch (_) {
       return (await _loadDefaultConfig()).normalized();
