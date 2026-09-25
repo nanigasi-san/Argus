@@ -28,6 +28,14 @@ class GarminTransferClient {
       : _channel = channel ?? const MethodChannel('argus/garmin');
   final MethodChannel _channel;
 
+  void setDeviceChangeHandler(void Function()? handler) {
+    _channel.setMethodCallHandler(handler == null
+        ? null
+        : (call) async {
+            if (call.method == 'devicesChanged') handler();
+          });
+  }
+
   Future<List<GarminDevice>> getDevices() async {
     final raw =
         await _channel.invokeListMethod<Object?>('getDevices') ?? const [];
@@ -35,6 +43,9 @@ class GarminTransferClient {
         .map((item) => GarminDevice.fromMap(item as Map<Object?, Object?>))
         .toList(growable: false);
   }
+
+  /// On iOS this opens Garmin Connect so the user can authorize paired watches.
+  Future<void> selectDevices() => _channel.invokeMethod<void>('selectDevices');
 
   Future<GarminTransferResult> sendCourse(
       GarminDevice device, GarminCoursePayload payload) async {

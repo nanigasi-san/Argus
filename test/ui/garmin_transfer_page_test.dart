@@ -119,7 +119,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('GARMINへの送信は現在Android版のみ対応しています。'), findsOneWidget);
+    expect(find.text('この端末ではGARMINへの送信を利用できません。'), findsOneWidget);
   });
 
   testWidgets('shows a phone notification only after a successful storage ACK',

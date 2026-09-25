@@ -1,5 +1,7 @@
 # Garminランニング系・fēnix対応の差分調査（2026-09-25）
 
+この文書は実装前の調査記録。現在の登録機種と検証状況は[対応機種ガイド](garmin_supported_devices.md)を参照。
+
 対象はForerunner/ForeAthleteなどのランニング向け腕時計とfēnixのうち、**Forerunner 55と同じConnect IQ API 3.4以上の機種**。API 3.3以下やEdge、Venu、ハンディGPSは今回の対象外。現行のARGUS Data Fieldは `fr55` のみをmanifestに登録し、技術上はConnect IQ API 3.2以上、Android側Garmin Connect、通常Runのデータ画面を前提とする。**追加機種でのビルド成功は動作保証ではない。**
 
 ## 結論と候補

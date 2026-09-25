@@ -85,29 +85,38 @@ class ArgusField extends WatchUi.DataField {
         var width = dc.getWidth();
         var height = dc.getHeight();
         var center = width / 2;
-        dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
+        var background = getBackgroundColor();
+        var foreground = background == Graphics.COLOR_WHITE
+            ? Graphics.COLOR_BLACK : Graphics.COLOR_WHITE;
+        var safeWidth = getObscurityFlags() == 0 ? width * 0.88 : width * 0.70;
+        dc.setColor(foreground, background);
         dc.clear();
-        if (height < 75) {
-            dc.drawText(center, 1, Graphics.FONT_TINY, _status,
+        if (height < 48) {
+            dc.drawText(center, height / 2, Graphics.FONT_XTINY,
+                fitText(dc, _status, Graphics.FONT_XTINY, safeWidth),
+                Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+            return;
+        }
+        if (height < 95) {
+            dc.drawText(center, height * 0.27, Graphics.FONT_TINY,
+                fitText(dc, _status, Graphics.FONT_TINY, safeWidth),
                 Graphics.TEXT_JUSTIFY_CENTER);
-            dc.drawText(center, height / 2, Graphics.FONT_XTINY, _detail,
+            dc.drawText(center, height * 0.62, Graphics.FONT_XTINY,
+                fitText(dc, _detail, Graphics.FONT_XTINY, safeWidth),
                 Graphics.TEXT_JUSTIFY_CENTER);
             return;
         }
-        dc.drawText(center, height * 0.13, Graphics.FONT_TINY,
-            fitText(dc, _courseName, Graphics.FONT_TINY, width * 0.72),
+        dc.drawText(center, height * 0.12, Graphics.FONT_XTINY,
+            fitText(dc, _courseName, Graphics.FONT_XTINY, safeWidth),
             Graphics.TEXT_JUSTIFY_CENTER);
-        var statusFont = height >= 150 ? Graphics.FONT_LARGE : Graphics.FONT_MEDIUM;
-        dc.drawText(center, height * 0.36, statusFont,
-            fitText(dc, _status, statusFont, width * 0.82),
+        var statusFont = height >= 145 ? Graphics.FONT_LARGE : Graphics.FONT_MEDIUM;
+        dc.drawText(center, height * 0.38, statusFont,
+            fitText(dc, _status, statusFont, safeWidth),
             Graphics.TEXT_JUSTIFY_CENTER);
-        dc.drawText(center, height * 0.66, Graphics.FONT_MEDIUM,
-            fitText(dc, _detail, Graphics.FONT_MEDIUM, width * 0.82),
+        var detailFont = height >= 145 ? Graphics.FONT_MEDIUM : Graphics.FONT_TINY;
+        dc.drawText(center, height * 0.70, detailFont,
+            fitText(dc, _detail, detailFont, safeWidth),
             Graphics.TEXT_JUSTIFY_CENTER);
-        if (height >= 150) {
-            dc.drawText(center, height * 0.89, Graphics.FONT_XTINY, "ARGUS",
-                Graphics.TEXT_JUSTIFY_CENTER);
-        }
     }
 
     function fitText(dc, value, font, maxWidth) {

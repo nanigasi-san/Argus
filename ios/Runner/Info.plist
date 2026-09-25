@@ -14,6 +14,19 @@
   <string>ARGUS</string>
   <key>CFBundleDisplayName</key>
   <string>ARGUS</string>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLSchemes</key>
+      <array><string>argus-ciq-a86f7de8</string></array>
+    </dict>
+  </array>
+  <key>LSApplicationQueriesSchemes</key>
+  <array><string>gcm-ciq</string></array>
+  <key>NSBluetoothAlwaysUsageDescription</key>
+  <string>GARMINへの境界データ送信と保存確認のため、Bluetoothを使用します。</string>
+  <key>NSBluetoothPeripheralUsageDescription</key>
+  <string>GARMINへの境界データ送信と保存確認のため、Bluetoothを使用します。</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
@@ -53,10 +66,10 @@
         <dict>
           <key>UISceneClassName</key>
           <string>UIWindowScene</string>
+          <key>UISceneDelegateClassName</key>
+          <string>$(PRODUCT_MODULE_NAME).GarminSceneDelegate</string>
           <key>UISceneConfigurationName</key>
           <string>flutter</string>
-          <key>UISceneDelegateClassName</key>
-          <string>FlutterSceneDelegate</string>
           <key>UISceneStoryboardFile</key>
           <string>Main</string>
         </dict>

@@ -16,8 +16,9 @@ class GarminTransferPage extends StatefulWidget {
   State<GarminTransferPage> createState() => _GarminTransferPageState();
 }
 
-class _GarminTransferPageState extends State<GarminTransferPage> {
-  static const _unsupportedMessage = 'GARMINへの送信は現在Android版のみ対応しています。';
+class _GarminTransferPageState extends State<GarminTransferPage>
+    with WidgetsBindingObserver {
+  static const _unsupportedMessage = 'この端末ではGARMINへの送信を利用できません。';
   List<GarminDevice> _devices = const [];
   GarminDevice? _selected;
   bool _loadingDevices = false;
@@ -29,7 +30,34 @@ class _GarminTransferPageState extends State<GarminTransferPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    widget.client.setDeviceChangeHandler(() {
+      if (mounted && !_sending) _refreshDevices();
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _refreshDevices());
+  }
+
+  @override
+  void dispose() {
+    widget.client.setDeviceChangeHandler(null);
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refreshDevices();
+  }
+
+  Future<void> _selectDevices() async {
+    try {
+      await widget.client.selectDevices();
+    } on PlatformException catch (e) {
+      if (mounted)
+        setState(() => _error = e.message ?? 'GARMINの選択画面を開けませんでした。');
+    } on MissingPluginException {
+      if (mounted) setState(() => _error = _unsupportedMessage);
+    }
   }
 
   Future<void> _refreshDevices() async {
@@ -187,10 +215,21 @@ class _GarminTransferPageState extends State<GarminTransferPage> {
                         _loadingDevices || _sending ? null : _refreshDevices,
                     child: const Text('再検索')),
               ]),
+              if (defaultTargetPlatform == TargetPlatform.iOS) ...[
+                const Text('初回はGarmin Connectで、ARGUSに共有する時計を選んでください。'),
+                const SizedBox(height: 8),
+                OutlinedButton(
+                  onPressed: _sending ? null : _selectDevices,
+                  child: const Text('Garmin Connectで時計を選ぶ'),
+                ),
+                const SizedBox(height: 8),
+              ],
               if (_loadingDevices)
                 const Center(child: CircularProgressIndicator())
               else if (_devices.isEmpty)
-                const Text('接続済みのGARMINが見つかりません。Garmin Connectを確認してください。')
+                Text(defaultTargetPlatform == TargetPlatform.iOS
+                    ? '共有されたGARMINがありません。Garmin Connectで時計を選んでください。'
+                    : '接続済みのGARMINが見つかりません。Garmin Connectを確認してください。')
               else
                 DropdownButtonFormField<GarminDevice>(
                   initialValue: _selected,
@@ -221,6 +260,14 @@ class _GarminTransferPageState extends State<GarminTransferPage> {
               ),
               const SizedBox(height: 8),
               const Text('Runを開始する前に転送してください。ACK受信後にのみ完了します。',
+                  textAlign: TextAlign.center),
+              const SizedBox(height: 8),
+              const Text(
+                  '初回は時計にARGUS Data Fieldをインストールし、Runのデータ画面へ追加して一度表示してください。',
+                  textAlign: TextAlign.center),
+              const SizedBox(height: 8),
+              const Text(
+                  '対象: Forerunner 55・165・255・265・945 LTE・955・965、fēnix 6・7・8',
                   textAlign: TextAlign.center),
             ],
             if (_error != null) ...[
