@@ -39,6 +39,16 @@ class ArgusField extends WatchUi.DataField {
         reload();
     }
 
+    function onTimerStart() {
+        reload();
+        var info = Activity.getActivityInfo();
+        var runStart = info != null && info.startTime != null
+            ? info.startTime.value() : null;
+        claimRun(runStart);
+    }
+
+    function onTimerReset() { retireUsedCourse(); }
+
     // Activity.Info arrives every second, including when another Run page is visible.
     function compute(info) {
         var now = Time.now().value();
@@ -53,6 +63,15 @@ class ArgusField extends WatchUi.DataField {
             _status = "EXPIRED";
             _detail = "";
             return;
+        }
+        if (info != null && info.timerState == Activity.TIMER_STATE_OFF
+            && hasRunClaim()) {
+            retireUsedCourse();
+            return;
+        }
+        if (info != null && info.timerState == Activity.TIMER_STATE_ON) {
+            var runStart = info.startTime != null ? info.startTime.value() : null;
+            if (!claimRun(runStart)) { return; }
         }
         if (info == null || info.timerState != Activity.TIMER_STATE_ON) {
             _monitor.reset();
@@ -142,10 +161,86 @@ class ArgusField extends WatchUi.DataField {
     function detail() { return _detail; }
     function courseName() { return _courseName; }
 
+    function hasRunClaim() {
+        var claim = Application.Storage.getValue("courseRun");
+        return claim instanceof Lang.Dictionary && _lastId != null
+            && claim["requestId"] instanceof Lang.String
+            && claim["requestId"].equals(_lastId);
+    }
+
+    function claimRun(runStart) {
+        if (_geometry == null || Time.now().value() >= _armedUntil) { return false; }
+        var claim = Application.Storage.getValue("courseRun");
+        if (claim instanceof Lang.Dictionary && _lastId != null
+            && claim["requestId"] instanceof Lang.String
+            && claim["requestId"].equals(_lastId)) {
+            var previousStart = claim["startTime"];
+            if (previousStart != null && runStart != null
+                && previousStart != runStart) {
+                // The reset event was missed; never arm an old course in a new Run.
+                retireUsedCourse();
+                return false;
+            }
+            if (previousStart == null && runStart != null) {
+                Application.Storage.setValue("courseRun",
+                    {"requestId" => _lastId, "startTime" => runStart});
+            }
+            return true;
+        }
+        // Another field instance may already have retired this course.
+        var stored = Application.Storage.getValue("course");
+        if (!(stored instanceof Lang.Dictionary)
+            || !(stored["requestId"] instanceof Lang.String)
+            || !stored["requestId"].equals(_lastId)) {
+            clearLoadedCourse();
+            return false;
+        }
+        Application.Storage.setValue("courseRun",
+            {"requestId" => _lastId, "startTime" => runStart});
+        return true;
+    }
+
+    function retireUsedCourse() {
+        var claim = Application.Storage.getValue("courseRun");
+        if (!(claim instanceof Lang.Dictionary)
+            || !(claim["requestId"] instanceof Lang.String)
+            || _lastId == null || !claim["requestId"].equals(_lastId)) {
+            reload();
+            return;
+        }
+        var stored = Application.Storage.getValue("course");
+        if (stored instanceof Lang.Dictionary
+            && stored["requestId"] instanceof Lang.String
+            && stored["requestId"].equals(claim["requestId"])) {
+            Application.Storage.deleteValue("course");
+        }
+        Application.Storage.deleteValue("courseRun");
+        clearLoadedCourse();
+    }
+
+    function clearLoadedCourse() {
+        _lastId = null;
+        _lastReload = -1;
+        _geometry = null;
+        _monitor = null;
+        _armedUntil = 0;
+        _receivedUntil = -1;
+        _courseName = "ARGUS";
+        _vertexCount = 0;
+        _status = "READY";
+        _detail = "";
+    }
+
     function reload() {
         _lastReload = Time.now().value();
         var stored = Application.Storage.getValue("course");
-        if (!(stored instanceof Lang.Dictionary) || stored["requestId"] == null) { return; }
+        if (!(stored instanceof Lang.Dictionary) || stored["requestId"] == null) {
+            if (_geometry != null) {
+                clearLoadedCourse();
+                _lastReload = Time.now().value();
+            }
+            return;
+        }
         if (_lastId != null && stored["requestId"].equals(_lastId)) { return; }
         var candidate = new ArgusGeometry(stored);
         if (!candidate.isValid()) {

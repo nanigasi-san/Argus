@@ -129,3 +129,106 @@ function fieldUsesJapaneseReturnDirection(logger) {
     Test.assertEqual(field.directionJa("E"), "東");
     return true;
 }
+
+(:test)
+function courseIsDiscardedAfterOneRunButNotBeforeIt(logger) {
+    var course = squareCourse();
+    course["requestId"] = "one-run-test";
+    course["armedUntil"] = Time.now().value() + 3600;
+    Application.Storage.setValue("course", course);
+    var field = new ArgusField();
+    field.compute(null);
+    Test.assertEqual(field.status(), "ARMED");
+    Test.assert(Application.Storage.getValue("course") != null);
+    field.onTimerReset();
+    Test.assert(Application.Storage.getValue("course") != null);
+    Test.assert(field.claimRun(null));
+    Test.assert(field.claimRun(1000));
+    Test.assertEqual(Application.Storage.getValue("courseRun")["startTime"], 1000);
+    // A stopped/paused timer is not the end of the activity.
+    field.compute(null);
+    Test.assert(Application.Storage.getValue("course") != null);
+    field.onTimerReset();
+    Test.assert(Application.Storage.getValue("course") == null);
+    Test.assert(Application.Storage.getValue("courseRun") == null);
+    Test.assertEqual(field.status(), "READY");
+    return true;
+}
+
+(:test)
+function oldCourseCannotBeReusedIfResetWasMissed(logger) {
+    var course = squareCourse();
+    course["requestId"] = "missed-reset-test";
+    course["armedUntil"] = Time.now().value() + 3600;
+    Application.Storage.setValue("course", course);
+    var firstField = new ArgusField();
+    Test.assert(firstField.claimRun(1000));
+    var reloadedField = new ArgusField();
+    Test.assert(reloadedField.claimRun(1000));
+    Test.assert(!reloadedField.claimRun(2000));
+    Test.assert(Application.Storage.getValue("course") == null);
+    Test.assert(Application.Storage.getValue("courseRun") == null);
+    return true;
+}
+
+(:test)
+function endingOldRunDoesNotDiscardNewTransfer(logger) {
+    var oldCourse = squareCourse();
+    oldCourse["requestId"] = "old-run-test";
+    oldCourse["armedUntil"] = Time.now().value() + 3600;
+    Application.Storage.setValue("course", oldCourse);
+    var field = new ArgusField();
+    Test.assert(field.claimRun(1000));
+    var newCourse = squareCourse();
+    newCourse["requestId"] = "new-transfer-test";
+    newCourse["armedUntil"] = Time.now().value() + 3600;
+    Application.Storage.setValue("course", newCourse);
+    field.onTimerReset();
+    Test.assertEqual(Application.Storage.getValue("course")["requestId"],
+        "new-transfer-test");
+    Test.assert(Application.Storage.getValue("courseRun") == null);
+    Application.Storage.deleteValue("course");
+    return true;
+}
+
+(:test)
+function twoFieldsCannotReviveDiscardedCourse(logger) {
+    var course = squareCourse();
+    course["requestId"] = "two-fields-test";
+    course["armedUntil"] = Time.now().value() + 3600;
+    Application.Storage.setValue("course", course);
+    var firstField = new ArgusField();
+    var secondField = new ArgusField();
+    Test.assert(firstField.claimRun(1000));
+    Test.assert(secondField.claimRun(1000));
+    firstField.onTimerReset();
+    secondField.onTimerReset();
+    Test.assertEqual(secondField.status(), "READY");
+    Test.assert(!secondField.claimRun(2000));
+    Test.assert(Application.Storage.getValue("course") == null);
+    return true;
+}
+
+(:test)
+function oldFieldCannotDiscardAnotherRunClaim(logger) {
+    var oldCourse = squareCourse();
+    oldCourse["requestId"] = "old-field-test";
+    oldCourse["armedUntil"] = Time.now().value() + 3600;
+    Application.Storage.setValue("course", oldCourse);
+    var oldField = new ArgusField();
+    Test.assert(oldField.claimRun(1000));
+    var newCourse = squareCourse();
+    newCourse["requestId"] = "new-field-test";
+    newCourse["armedUntil"] = Time.now().value() + 3600;
+    Application.Storage.setValue("course", newCourse);
+    var newField = new ArgusField();
+    Test.assert(newField.claimRun(2000));
+    oldField.onTimerReset();
+    Test.assertEqual(Application.Storage.getValue("course")["requestId"],
+        "new-field-test");
+    Test.assertEqual(Application.Storage.getValue("courseRun")["requestId"],
+        "new-field-test");
+    newField.onTimerReset();
+    Test.assert(Application.Storage.getValue("course") == null);
+    return true;
+}

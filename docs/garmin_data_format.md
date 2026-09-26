@@ -21,4 +21,6 @@ ARGUSはGeoJSONやQRから復元した境界をスマホ上で変換し、GARMIN
 
 GARMINのBackground受信処理は形式・長さ・チェックサムを確認し、`pending` に一時保存して読み戻した後、`course` として永続保存し再度読み戻す。成功時だけ保存結果を含むACKを返す。スマホは `requestId`、`courseId`、ファイル名、チェックサム、バイト数、頂点数、有効期限が一致するACKを受けて初めて転送完了とする。ACK待機の上限は60秒。通信開始には事前のペアリングとGarmin Connectが必要だが、ARGUSの転送処理自体はクラウドAPIを呼ばない。
 
+保存した`course`は次に開始したRunの1回だけ使用する。タイマー停止・一時停止では保持し、Run終了時に削除する。終了イベントを取り逃した場合は、保存したRun開始時刻と次のRun開始時刻を比較して古い`course`を削除する。未使用でも転送から12時間経過したデータは監視しない。
+
 実装: [エンコーダ](../lib/garmin/garmin_course_encoder.dart)、[転送payload](../lib/garmin/garmin_course_payload.dart)、[GARMIN受信処理](../garmin/argus-data-field/source/ArgusReceiver.mc)、[形式・チェックサム検証](../garmin/argus-data-field/source/ArgusProtocol.mc)。
