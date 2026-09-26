@@ -134,7 +134,7 @@ OSの権限ダイアログや実際の通知・警告音の動作はこのE2Eの
 ## Core Monitoring E2E
 
 `core_monitoring_e2e_test.dart` は、各シナリオを1つの `AppController` と
-`ArgusApp` / `HomePage` で最後まで通します。
+起動時に「スマホで利用」を選択してから、`ArgusApp` / `HomePage` で最後まで通します。UI smokeでは「GARMINだけで利用（試験機能）」から既存の転送画面へ進むことも確認します。
 
 | シナリオ | 確認する連携 |
 | --- | --- |
@@ -144,7 +144,7 @@ OSの権限ダイアログや実際の通知・警告音の動作はこのE2Eの
 | STOP → 再START（判定待ち） | UIの長押し終了、購読解除、停止中の位置を無視、ヒステリシスをリセット |
 | STOP → 再START（警告中） | 警告停止、再開後に旧警告が残らない、購読が1つだけで位置を処理 |
 | 権限不足 → 開示画面 → 更新 → START | 開示だけでは開始不可、権限granted後のUI更新から監視可能 |
-| 設定変更 | Settingsで30 m → 50 mへ保存、監視を自動再開、同一座標がINNER → NEAR、設定ファイルにも保存 |
+| 設定変更 | Settingsで初期値0 m → 50 mへ保存、監視を自動再開、同一座標がINNER → NEAR、設定ファイルにも保存 |
 | OUTER中のスヌーズ | UI操作で音・振動だけ停止、OUTER維持、復帰時にスヌーズと通知を解除 |
 
 本物の `AppController` / `StateMachine` / `Notifier` のロジックを使います。

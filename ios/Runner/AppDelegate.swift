@@ -9,13 +9,13 @@ import UserNotifications
   private let alarmPlayer = IOSAlarmPlayer()
   private let vibrationPlayer = IOSVibrationPlayer()
   private var alarmChannel: FlutterMethodChannel?
+  private let garminBridge = IOSGarminBridge()
 
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     UNUserNotificationCenter.current().delegate = self
-
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
@@ -30,6 +30,21 @@ import UserNotifications
       self?.handleAlarmMethodCall(call, result: result)
     }
     alarmChannel = channel
+
+    garminBridge.attach(messenger: engineBridge.applicationRegistrar.messenger())
+  }
+
+  override func application(
+    _ app: UIApplication,
+    open url: URL,
+    options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+  ) -> Bool {
+    if handleGarminCallback(url) { return true }
+    return super.application(app, open: url, options: options)
+  }
+
+  func handleGarminCallback(_ url: URL) -> Bool {
+    garminBridge.handleDeviceSelection(url)
   }
 
   override func applicationWillTerminate(_ application: UIApplication) {
@@ -87,6 +102,30 @@ import UserNotifications
     default:
       result(FlutterMethodNotImplemented)
     }
+  }
+}
+
+class GarminSceneDelegate: FlutterSceneDelegate {
+  override func scene(
+    _ scene: UIScene,
+    willConnectTo session: UISceneSession,
+    options connectionOptions: UIScene.ConnectionOptions
+  ) {
+    super.scene(scene, willConnectTo: session, options: connectionOptions)
+    for context in connectionOptions.urlContexts {
+      if (UIApplication.shared.delegate as? AppDelegate)?.handleGarminCallback(context.url) == true {
+        break
+      }
+    }
+  }
+
+  override func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+    for context in URLContexts {
+      if (UIApplication.shared.delegate as? AppDelegate)?.handleGarminCallback(context.url) == true {
+        return
+      }
+    }
+    super.scene(scene, openURLContexts: URLContexts)
   }
 }
 

@@ -30,6 +30,7 @@ void main() {
     expect(config.sampleIntervalS, {'fast': 2, 'slow': 5});
     expect(config.alarmVolume, 0.8);
     expect(config.toJson(), <String, dynamic>{
+      'config_version': AppConfig.currentConfigVersion,
       'inner_buffer_m': 12.5,
       'leave_confirm_samples': 4,
       'leave_confirm_seconds': 8,
@@ -69,10 +70,16 @@ void main() {
     expect(config.alarmVolume, AppConfig.maxAlarmVolume);
   });
 
+  test('zero-metre boundary buffer is valid and the fallback default', () {
+    expect(AppConfig.fromJson(const {}).innerBufferM, 0);
+    expect(AppConfig.fromJson(const {'inner_buffer_m': 0}).innerBufferM, 0);
+    expect(AppConfig.minInnerBufferM, 0);
+  });
+
   test('loadDefault reads bundled config asset', () async {
     final config = await AppConfig.loadDefault();
 
-    expect(config.innerBufferM, greaterThan(0));
+    expect(config.innerBufferM, 0);
     expect(config.leaveConfirmSamples, greaterThan(0));
     expect(config.leaveConfirmSeconds, greaterThan(0));
     expect(config.sampleIntervalS, isNotEmpty);

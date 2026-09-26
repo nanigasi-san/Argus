@@ -131,6 +131,38 @@ void main() {
     expect(config.leaveConfirmSamples, defaultConfig.leaveConfirmSamples);
   });
 
+  test('readConfig migrates only the saved boundary buffer to zero once',
+      () async {
+    final file = File('${tempDir.path}/config.json');
+    final legacy = defaultConfig.toJson()..remove('config_version');
+    legacy['inner_buffer_m'] = 30.0;
+    await file.writeAsString(jsonEncode(legacy));
+    final manager = FileManager(
+      documentsDirectoryProvider: () async => tempDir,
+      defaultConfigLoader: () async => defaultConfig,
+    );
+
+    final migrated = await manager.readConfig();
+    expect(migrated.innerBufferM, 0);
+    expect(migrated.leaveConfirmSamples, defaultConfig.leaveConfirmSamples);
+    expect(migrated.gpsAccuracyBadMeters, defaultConfig.gpsAccuracyBadMeters);
+    expect(migrated.alarmVolume, defaultConfig.alarmVolume);
+    final saved = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+    expect(saved['config_version'], AppConfig.currentConfigVersion);
+    expect(saved['inner_buffer_m'], 0);
+    expect(saved['alarm_volume'], defaultConfig.alarmVolume);
+
+    await manager.saveConfig(AppConfig(
+      innerBufferM: 12,
+      leaveConfirmSamples: migrated.leaveConfirmSamples,
+      leaveConfirmSeconds: migrated.leaveConfirmSeconds,
+      gpsAccuracyBadMeters: migrated.gpsAccuracyBadMeters,
+      sampleIntervalS: migrated.sampleIntervalS,
+      alarmVolume: migrated.alarmVolume,
+    ));
+    expect((await manager.readConfig()).innerBufferM, 12);
+  });
+
   test('readConfig falls back to default config on invalid JSON', () async {
     final file = File('${tempDir.path}/config.json');
     await file.writeAsString('{invalid');

@@ -2,6 +2,7 @@ import 'package:argus/platform/permission_coordinator.dart';
 import 'package:argus/state_machine/state.dart';
 import 'package:argus/ui/qr_scanner_page.dart';
 import 'package:argus/ui/settings_page.dart';
+import 'package:argus/ui/garmin_transfer_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,6 +18,24 @@ void main() {
   group('Mobile UI smoke', () {
     setUpAll(() async {
       await binding.convertFlutterSurfaceToImage();
+    });
+
+    testWidgets('entry screen opens the existing Garmin transfer flow',
+        (tester) async {
+      final controller = HarnessBuilder.buildController();
+
+      await tester.pumpWidget(HarnessBuilder.buildApp(controller));
+      await tester.pumpAndSettle();
+      expect(find.text('どちらで利用しますか？'), findsOneWidget);
+      await _tryTakeScreenshot(binding, 'usage-mode-selection');
+
+      await tester.tap(find.byKey(const Key('garminModeChoice')));
+      await tester.tap(find.byKey(const Key('usageModeNextButton')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(GarminTransferPage), findsOneWidget);
+      expect(find.text('GARMINに送る'), findsOneWidget);
+      await _tryTakeScreenshot(binding, 'garmin-transfer-entry');
     });
 
     testWidgets(
@@ -39,6 +58,8 @@ void main() {
 
       await tester.pumpWidget(HarnessBuilder.buildApp(controller));
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('usageModeNextButton')));
+      await tester.pumpAndSettle();
 
       expect(find.text('監視開始前に位置情報の設定が必要です'), findsOneWidget);
       expect(find.text('監視開始前に設定する'), findsOneWidget);
@@ -59,6 +80,8 @@ void main() {
       );
 
       await tester.pumpWidget(HarnessBuilder.buildApp(controller));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('usageModeNextButton')));
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('監視開始前に設定する'));
@@ -142,6 +165,8 @@ void main() {
       final controller = HarnessBuilder.buildController(hasGeoJson: true);
 
       await tester.pumpWidget(HarnessBuilder.buildApp(controller));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('usageModeNextButton')));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byType(PopupMenuButton<int>));

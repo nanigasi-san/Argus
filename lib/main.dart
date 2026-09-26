@@ -1,12 +1,13 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:upgrader/upgrader.dart';
 
 import 'app_controller.dart';
 import 'theme/app_theme.dart';
-import 'ui/home_page.dart';
+import 'ui/usage_mode_selection_page.dart';
 
 // coverage:ignore-start
 Future<void> main() async {
@@ -15,10 +16,12 @@ Future<void> main() async {
   runApp(
     ArgusApp(
       controller: controller,
-      upgrader: Upgrader(
-        countryCode: 'JP',
-        languageCode: 'ja',
-      ),
+      upgrader: kDebugMode
+          ? null
+          : Upgrader(
+              countryCode: 'JP',
+              languageCode: 'ja',
+            ),
     ),
   );
 }
@@ -65,12 +68,12 @@ class _ArgusAppState extends State<ArgusApp> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final home = widget.upgrader == null
-        ? const HomePage()
+        ? const UsageModeSelectionPage()
         : UpgradeAlert(
             upgrader: widget.upgrader!,
             showIgnore: false,
             showReleaseNotes: false,
-            child: const HomePage(),
+            child: const UsageModeSelectionPage(),
           );
     return ChangeNotifierProvider.value(
       value: widget.controller,

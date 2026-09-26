@@ -30,7 +30,7 @@ class SimulatorTests(unittest.TestCase):
         self.assertEqual(run.call_count, 1)
         self.assertEqual(run.call_args.kwargs["timeout"], 300)
 
-    def run_boot(self, state="Shutdown", boot_failure=False):
+    def run_boot(self, state="Shutdown", boot_failure=False, gui_failure=False):
         devices = {"devices": {"iOS-26": [{"udid": "device", "state": state}]}}
         commands = []
 
@@ -38,12 +38,16 @@ class SimulatorTests(unittest.TestCase):
             commands.append((command, kwargs))
             if command[:3] == ["xcrun", "simctl", "boot"] and boot_failure:
                 raise subprocess.CalledProcessError(1, command)
+            if command[0] == "open" and gui_failure:
+                raise subprocess.CalledProcessError(1, command)
             return subprocess.CompletedProcess(command, 0, json.dumps(devices))
 
         with tempfile.TemporaryDirectory() as directory, \
                 patch.object(ios_simulator.subprocess, "run", side_effect=execute):
             ios_simulator.boot("device", Path(directory))
             self.assertTrue(json.loads(Path(directory, "simulator-boot.json").read_text())["ready"])
+            if gui_failure:
+                self.assertFalse(json.loads(Path(directory, "simulator-boot.json").read_text())["guiOpened"])
         return commands
 
     def test_cold_boot_requires_bounded_readiness(self):
@@ -72,6 +76,9 @@ class SimulatorTests(unittest.TestCase):
     def test_boot_errors_are_not_ignored(self):
         with self.assertRaises(subprocess.CalledProcessError):
             self.run_boot(boot_failure=True)
+
+    def test_missing_simulator_gui_does_not_block_xctest(self):
+        self.run_boot(gui_failure=True)
 
 
 class SequentialPreparationTests(unittest.TestCase):
@@ -182,7 +189,7 @@ class NativeTests(unittest.TestCase):
         self.assertIn("--target=lib/main.dart", commands[0])
         self.assertEqual(commands[1][:2], ["xcodebuild", "build-for-testing"])
         self.assertEqual(commands[2][:2], ["xcodebuild", "test-without-building"])
-        self.assertIn("generic/platform=iOS Simulator", commands[1])
+        self.assertIn("platform=iOS Simulator,id=device", commands[1])
         for command in commands[1:3]:
             self.assertFalse(any(arg.startswith(("-only-testing", "-skip-testing")) for arg in command))
         self.assertEqual(commands[1][commands[1].index("-derivedDataPath") + 1],

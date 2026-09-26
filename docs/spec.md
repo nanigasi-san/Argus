@@ -617,7 +617,7 @@ stateDiagram-v2
 
 | 項目                  | キー                    | 型               | デフォルト                              | 説明                                                                       |
 | --------------------- | ----------------------- | ---------------- | --------------------------------------- | -------------------------------------------------------------------------- |
-| Inner buffer          | `inner_buffer_m`        | double           | 30.0                                    | エリア境界との距離バッファ（メートル）。この距離未満で `near` 状態になる。 |
+| Inner buffer          | `inner_buffer_m`        | double           | 0.0                                     | エリア境界との距離バッファ（メートル）。この距離未満で `near` 状態になる。既存の保存済み値も更新時に一度だけ0mへ移行し、他の設定値は維持する。 |
 | Leave confirm samples | `leave_confirm_samples` | int              | 3                                       | OUTER 確定に必要な連続サンプル数。                                         |
 | Leave confirm seconds | `leave_confirm_seconds` | int              | 10                                      | OUTER 確定に必要な経過秒数。                                               |
 | GPS bad threshold     | `gps_accuracy_bad_m`    | double           | 40.0                                    | 位置精度がこの値を超えると `gpsBad` 状態になる（メートル）。               |
@@ -628,6 +628,12 @@ stateDiagram-v2
 ---
 
 ## 9. 画面仕様
+
+### 9.0 利用方法の選択
+
+- 起動時は `UsageModeSelectionPage` を表示し、B2案のラジオ式二択で「スマホで利用」を初期選択する。選択は保存しないため、次のコールドスタートでも選択画面を表示する。
+- 「次へ」でスマホを選んだ場合は従来の `HomePage`、GARMINを選んだ場合は既存の `GarminTransferPage` を開く。後者はARGUSからGARMINへの境界データ送信に用いる。戻る操作で選択画面へ戻れる。
+- 監視と転送は同じ `AppController` を利用する。従来のHomePageメニューにある「GARMINに送る」も残す。
 
 ### 9.1 HomePage
 
