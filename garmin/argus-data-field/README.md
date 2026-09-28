@@ -22,7 +22,7 @@ Run外のバックグラウンド受信ではGARMINに即時ポップアップ�
 期限前に開始したRunは、期限をまたいでもそのRunの終了まで監視する。
 未開始の範囲データは期限の約5分後に削除を試みるため、その後は `READY` に戻る。
 時計の電源が切れていたなどで期限イベントを逃した場合は、次の起動・Data Fieldの更新時に削除する。
-転送した範囲の監視は次に開始したRunの1回だけ有効。タイマーの一時停止・再開では保持し、
+転送した範囲の監視は、送信後に進行中のRun、またはRun外で送信した場合は次に開始したRunの1回だけ有効。タイマーの一時停止・再開では保持し、
 Run終了時に監視フラグをOFFにする。ファイル名と範囲データは期限まで残り、Data Fieldには
 `OFF` と表示される。次のRunで監視するにはスマホから再送する。スマホの
 「GARMINの監視を停止」はRUN中にも使え、時計からの停止ACKを確認する。
@@ -47,8 +47,8 @@ monkeyc -f garmin/argus-data-field/monkey.jungle -d fr55 \
 
 送信するGeoJSON/QRはスマホ内で読み込む。AndroidではGarmin Connectを介した
 Bluetooth通信、iPhoneではConnect IQ Companion SDKのBLE通信で送信とACKを行う。
-ARGUSの転送処理はクラウドAPIを呼ばないため、
-ペアリングとData Fieldのインストールが済んでいれば、送信時のインターネット接続は不要。
+ARGUSの転送処理自体はクラウドAPIを呼ばない。
+ただし、Garmin Connectまで含めてインターネットを切った実機送信は未検証のため、完全オフライン転送を動作保証とはしない。
 ただしBluetooth、Garmin Connectアプリ、両アプリの事前インストールは必要。
 
 オフライン実機確認: スマホのWi-Fiとモバイルデータを切り、Bluetoothはオンのまま

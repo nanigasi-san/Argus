@@ -2,6 +2,8 @@
 
 Windows 上で実装、Dart テスト、Android 回帰確認までは完了できます。iOS の最終確認、署名、Archive は macOS と Xcode が必要です。
 
+以下の `gati-ios-version`、0.5.0の実機確認・Archive記録は当時の引き継ぎ手順／証跡であり、現在の開発ブランチや最新リリース番号を示すものではない。現在のiOSリリース手順は [iOS リリース運用](ios_release_cd.md)、全E2E手順は [CIとリリースのワークフロー](ci.md) を参照。
+
 MacBook の初回環境構築は [macbook_ios_setup.md](macbook_ios_setup.md) を先に実施してください。この文書は環境構築後の実機確認とリリース前チェックを扱います。
 
 ## 実装済みのiOS設定
