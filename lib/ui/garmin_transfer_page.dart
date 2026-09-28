@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -25,6 +27,8 @@ class _GarminTransferPageState extends State<GarminTransferPage>
   String? _selectedDeviceId;
   bool _loadingDevices = false;
   bool _sending = false;
+  bool _resetting = false;
+  bool _resetCompleted = false;
   bool _waitingForAck = false;
   String? _error;
   String? _notificationWarning;
@@ -70,7 +74,8 @@ class _GarminTransferPageState extends State<GarminTransferPage>
       _error = null;
     });
     try {
-      final devices = await widget.client.getDevices();
+      final devices =
+          await widget.client.getDevices().timeout(const Duration(seconds: 15));
       if (!mounted) return;
       setState(() {
         _devices = devices;
@@ -82,6 +87,8 @@ class _GarminTransferPageState extends State<GarminTransferPage>
       });
     } on PlatformException catch (e) {
       if (mounted) setState(() => _error = e.message ?? 'GARMINを検索できませんでした。');
+    } on TimeoutException {
+      if (mounted) setState(() => _error = 'GARMINの検索がタイムアウトしました。再検索してください。');
     } on MissingPluginException {
       if (mounted) setState(() => _error = _unsupportedMessage);
     } finally {
@@ -95,6 +102,7 @@ class _GarminTransferPageState extends State<GarminTransferPage>
       setState(() {
         _result = null;
         _error = null;
+        _resetCompleted = false;
       });
     }
   }
@@ -106,6 +114,7 @@ class _GarminTransferPageState extends State<GarminTransferPage>
       setState(() {
         _result = null;
         _error = null;
+        _resetCompleted = false;
       });
     }
   }
@@ -119,6 +128,7 @@ class _GarminTransferPageState extends State<GarminTransferPage>
       _error = null;
       _notificationWarning = null;
       _result = null;
+      _resetCompleted = false;
     });
     try {
       if (!controller.monitoringPermissionState.notificationGranted) {
@@ -171,6 +181,57 @@ class _GarminTransferPageState extends State<GarminTransferPage>
     }
   }
 
+  Future<void> _confirmReset() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('GARMINの監視を停止しますか？'),
+        content: const Text('RUN中でも境界の警告を停止します。再開するには範囲を再送信してください。'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('キャンセル')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('監視を停止')),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) await _reset();
+  }
+
+  Future<void> _reset() async {
+    final device = _selected;
+    if (device == null || !device.connected) return;
+    setState(() {
+      _sending = true;
+      _resetting = true;
+      _waitingForAck = true;
+      _resetCompleted = false;
+      _result = null;
+      _error = null;
+      _notificationWarning = null;
+    });
+    try {
+      await widget.client.resetMonitoring(device);
+      if (mounted) setState(() => _resetCompleted = true);
+    } on PlatformException catch (e) {
+      if (mounted) {
+        setState(() => _error = e.message ?? 'GARMINの監視を停止できませんでした。');
+      }
+    } on MissingPluginException {
+      if (mounted) setState(() => _error = _unsupportedMessage);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _sending = false;
+          _resetting = false;
+          _waitingForAck = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = context.watch<AppController>();
@@ -193,6 +254,14 @@ class _GarminTransferPageState extends State<GarminTransferPage>
             FilledButton(
                 onPressed: () => Navigator.pop(context),
                 child: const Text('完了')),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _sending || _selected?.connected != true
+                  ? null
+                  : _confirmReset,
+              icon: const Icon(Icons.notifications_off_outlined),
+              label: const Text('GARMINの監視を停止'),
+            ),
             const SizedBox(height: 8),
             const Text(
                 'GARMINのRun中はData Fieldに受信結果が短く表示されます。Run外では次回開いたときにファイル名を確認してください。',
@@ -202,6 +271,16 @@ class _GarminTransferPageState extends State<GarminTransferPage>
               Text(_notificationWarning!, textAlign: TextAlign.center),
             ],
           ] else ...[
+            if (_resetCompleted) ...[
+              const Card(
+                child: ListTile(
+                  leading: Icon(Icons.notifications_off_outlined),
+                  title: Text('GARMINの監視を停止しました'),
+                  subtitle: Text('範囲ファイルは期限まで保持されます。再開には再送信してください。'),
+                ),
+              ),
+              const SizedBox(height: 20),
+            ],
             const Text('送信する境界データを選択してください。'),
             const SizedBox(height: 16),
             OutlinedButton.icon(
@@ -224,73 +303,75 @@ class _GarminTransferPageState extends State<GarminTransferPage>
                 title: const Text('境界データを読み込みました'),
                 subtitle: Text(controller.geoJsonFileName ?? 'GeoJSON'),
               )),
-              const SizedBox(height: 12),
-              Row(children: [
-                const Expanded(
-                    child: Text('送信先GARMIN',
-                        style: TextStyle(fontWeight: FontWeight.bold))),
-                TextButton(
-                    onPressed:
-                        _loadingDevices || _sending ? null : _refreshDevices,
-                    child: const Text('再検索')),
-              ]),
-              if (defaultTargetPlatform == TargetPlatform.iOS) ...[
-                const Text('初回はGarmin Connectで、ARGUSに共有する時計を選んでください。'),
-                const SizedBox(height: 8),
-                OutlinedButton(
-                  onPressed: _sending ? null : _selectDevices,
-                  child: const Text('Garmin Connectで時計を選ぶ'),
-                ),
-                const SizedBox(height: 8),
-              ],
-              if (_loadingDevices)
-                const Center(child: CircularProgressIndicator())
-              else if (_devices.isEmpty)
-                Text(defaultTargetPlatform == TargetPlatform.iOS
-                    ? '共有されたGARMINがありません。Garmin Connectで時計を選んでください。'
-                    : '接続済みのGARMINが見つかりません。Garmin Connectを確認してください。')
-              else
-                DropdownButtonFormField<String>(
-                  key: ValueKey(_selected?.id),
-                  initialValue: _selected?.id,
-                  decoration:
-                      const InputDecoration(border: OutlineInputBorder()),
-                  items: _devices
-                      .map((d) => DropdownMenuItem(
-                          value: d.id,
-                          child: Text(
-                              '${d.name}${d.connected ? ' · 接続済み' : ' · 未接続'}')))
-                      .toList(),
-                  onChanged: _sending
-                      ? null
-                      : (value) => setState(() {
-                            _selectedDeviceId = value;
-                            _selected = _devices
-                                .where((d) => d.id == value)
-                                .firstOrNull;
-                          }),
-                ),
-              if (_selected == null && _selectedDeviceId != null) ...[
-                const SizedBox(height: 8),
-                const Text('選択したGARMINが見つかりません。送信先を選び直してください。'),
-              ],
-              const SizedBox(height: 20),
+            ],
+            const SizedBox(height: 12),
+            Row(children: [
+              const Expanded(
+                  child: Text('送信先GARMIN',
+                      style: TextStyle(fontWeight: FontWeight.bold))),
+              TextButton(
+                  onPressed:
+                      _loadingDevices || _sending ? null : _refreshDevices,
+                  child: const Text('再検索')),
+            ]),
+            if (defaultTargetPlatform == TargetPlatform.iOS) ...[
+              const Text('初回はGarmin Connectで、ARGUSに共有する時計を選んでください。'),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: _sending ? null : _selectDevices,
+                child: const Text('Garmin Connectで時計を選ぶ'),
+              ),
+              const SizedBox(height: 8),
+            ],
+            if (_loadingDevices)
+              const Center(child: CircularProgressIndicator())
+            else if (_devices.isEmpty)
+              Text(defaultTargetPlatform == TargetPlatform.iOS
+                  ? '共有されたGARMINがありません。Garmin Connectで時計を選んでください。'
+                  : '接続済みのGARMINが見つかりません。Garmin Connectを確認してください。')
+            else
+              DropdownButtonFormField<String>(
+                key: ValueKey(_selected?.id),
+                initialValue: _selected?.id,
+                decoration: const InputDecoration(border: OutlineInputBorder()),
+                items: _devices
+                    .map((d) => DropdownMenuItem(
+                        value: d.id,
+                        child: Text(
+                            '${d.name}${d.connected ? ' · 接続済み' : ' · 未接続'}')))
+                    .toList(),
+                onChanged: _sending
+                    ? null
+                    : (value) => setState(() {
+                          _selectedDeviceId = value;
+                          _selected =
+                              _devices.where((d) => d.id == value).firstOrNull;
+                        }),
+              ),
+            if (_selected == null && _selectedDeviceId != null) ...[
+              const SizedBox(height: 8),
+              const Text('選択したGARMINが見つかりません。送信先を選び直してください。'),
+            ],
+            const SizedBox(height: 20),
+            if (controller.geoJsonLoaded) ...[
               if (_waitingForAck) ...[
-                const Card(
+                Card(
                   child: Padding(
-                    padding: EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(16),
                     child: Row(children: [
-                      CircularProgressIndicator(
+                      const CircularProgressIndicator(
                           key: Key('garmin-ack-progress')),
-                      SizedBox(width: 16),
+                      const SizedBox(width: 16),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('GARMINのACKを待機中',
+                            const Text('GARMINのACKを待機中',
                                 style: TextStyle(fontWeight: FontWeight.bold)),
-                            SizedBox(height: 4),
-                            Text('保存・照合の確認中です。通信開始から最大60秒待ちます。'),
+                            const SizedBox(height: 4),
+                            Text(_resetting
+                                ? '監視停止の確認中です。通信開始から最大60秒待ちます。'
+                                : '保存・照合の確認中です。通信開始から最大60秒待ちます。'),
                           ],
                         ),
                       ),
@@ -309,7 +390,9 @@ class _GarminTransferPageState extends State<GarminTransferPage>
                     : const Icon(Icons.watch_outlined),
                 label: Padding(
                     padding: const EdgeInsets.all(14),
-                    child: Text(_sending ? '保存・照合ACKを待っています…' : 'GARMINに送信')),
+                    child: Text(_sending
+                        ? (_resetting ? '監視停止ACKを待っています…' : '保存・照合ACKを待っています…')
+                        : 'GARMINに送信')),
               ),
               const SizedBox(height: 8),
               const Text('Runを開始する前に転送してください。ACK受信後にのみ完了します。',
@@ -323,6 +406,23 @@ class _GarminTransferPageState extends State<GarminTransferPage>
                   '対象: Forerunner 55・165・255・265・945 LTE・955・965、fēnix 6・7・8',
                   textAlign: TextAlign.center),
             ],
+            if (_waitingForAck && !controller.geoJsonLoaded) ...[
+              const Center(child: CircularProgressIndicator()),
+              const Text('GARMINの監視停止ACKを待機中', textAlign: TextAlign.center),
+            ],
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: _sending || _selected?.connected != true
+                  ? null
+                  : _confirmReset,
+              icon: const Icon(Icons.notifications_off_outlined),
+              label: const Padding(
+                padding: EdgeInsets.all(14),
+                child: Text('GARMINの監視を停止'),
+              ),
+            ),
+            const Text('RUN中も停止できます。再開するには範囲を再送信してください。',
+                textAlign: TextAlign.center),
             if (_error != null) ...[
               const SizedBox(height: 16),
               Text(_error!,

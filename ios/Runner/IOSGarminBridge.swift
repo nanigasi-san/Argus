@@ -64,8 +64,8 @@ final class IOSGarminBridge: NSObject, IQDeviceEventDelegate, IQAppMessageDelega
     case "selectDevices":
       sdk.showDeviceSelection()
       result(nil)
-    case "sendCourse":
-      sendCourse(call, result: result)
+    case "sendCourse", "resetMonitoring":
+      sendRequest(call, result: result)
     default:
       result(FlutterMethodNotImplemented)
     }
@@ -126,7 +126,7 @@ final class IOSGarminBridge: NSObject, IQDeviceEventDelegate, IQAppMessageDelega
     }
   }
 
-  private func sendCourse(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func sendRequest(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
     guard pendingResult == nil else {
       result(FlutterError(code: "transfer_busy", message: "別の転送を実行中です。", details: nil))
       return
@@ -167,7 +167,7 @@ final class IOSGarminBridge: NSObject, IQDeviceEventDelegate, IQAppMessageDelega
           return
         }
         self.sdk.register(forAppMessages: app, delegate: self)
-        self.scheduleTimeout(seconds: 60, code: "ack_timeout", message: "保存・照合ACKが60秒以内に届きませんでした。再送してください。")
+        self.scheduleTimeout(seconds: 60, code: "ack_timeout", message: "GARMINの確認ACKが60秒以内に届きませんでした。再試行してください。")
         self.sdk.sendMessage(request, to: app, progress: { _, _ in }, completion: { [weak self] sendResult in
           DispatchQueue.main.async {
             guard let self = self, self.pendingResult != nil,
@@ -198,18 +198,21 @@ final class IOSGarminBridge: NSObject, IQDeviceEventDelegate, IQAppMessageDelega
     guard let ack = message as? [String: Any],
           let requestId = ack["requestId"] as? String,
           requestId == request["requestId"] as? String else { return }
-    let matches = (ack["type"] as? String) == "ack"
+    let baseMatches = (ack["type"] as? String) == "ack"
       && (ack["receiver"] as? String) == "background"
-      && (ack["saved"] as? Bool) == true
       && number(ack["v"]) == 1
-      && (ack["courseId"] as? String) == request["courseId"] as? String
-      && (ack["displayName"] as? String) == request["displayName"] as? String
-      && (ack["checksum"] as? String) == request["checksum"] as? String
-      && number(ack["bytes"]) == number(request["bytes"])
-      && number(ack["vertexCount"]) == number(request["vertexCount"])
-      && number(ack["armedUntil"]) == number(request["armedUntil"])
+    let matches = baseMatches && ((request["type"] as? String) == "argus-control"
+      ? (ack["action"] as? String) == "disable" && (ack["disabled"] as? Bool) == true
+      : (ack["saved"] as? Bool) == true
+        && (ack["courseId"] as? String) == request["courseId"] as? String
+        && (ack["displayName"] as? String) == request["displayName"] as? String
+        && (ack["checksum"] as? String) == request["checksum"] as? String
+        && number(ack["bytes"]) == number(request["bytes"])
+        && number(ack["vertexCount"]) == number(request["vertexCount"])
+        && number(ack["armedUntil"]) == number(request["armedUntil"]))
     guard matches else {
-      fail("ack_mismatch", "GARMINの保存・照合結果が一致しません: \(ack["error"] ?? "unknown")")
+      let operation = (request["type"] as? String) == "argus-control" ? "監視停止" : "保存・照合"
+      fail("ack_mismatch", "GARMINの\(operation)結果を確認できません: \(ack["error"] ?? "unknown")")
       return
     }
     let reply = pendingResult

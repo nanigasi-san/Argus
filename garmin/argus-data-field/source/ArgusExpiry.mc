@@ -17,6 +17,7 @@ module ArgusExpiry {
     }
 
     function hasActiveRun(course) {
+        if (course["monitoringEnabled"] == false) { return false; }
         var claim = Application.Storage.getValue("courseRun");
         var claimed = matches(claim, course["requestId"]);
         // A Run may have just started before the Data Field persisted its claim.
@@ -42,6 +43,22 @@ module ArgusExpiry {
             System.println("ARGUS activity check failed: " + e.toString());
         }
         return claimed; // Keep a claimed course if activity info is unavailable.
+    }
+
+    function disableCourse(requestId) {
+        var course = Application.Storage.getValue("course");
+        if (!matches(course, requestId)) { return false; }
+        course["monitoringEnabled"] = false;
+        Application.Storage.setValue("course", course);
+        var saved = Application.Storage.getValue("course");
+        if (!matches(saved, requestId) || saved["monitoringEnabled"] != false) {
+            return false;
+        }
+        var claim = Application.Storage.getValue("courseRun");
+        if (matches(claim, requestId)) {
+            Application.Storage.deleteValue("courseRun");
+        }
+        return true;
     }
 
     function cleanupExpired(nowSeconds) {
@@ -139,13 +156,12 @@ module ArgusExpiry {
             if (matches(current, claim["requestId"])
                 && matches(currentClaim, claim["requestId"])
                 && currentClaim["startTime"] == claim["startTime"]) {
-                Application.Storage.deleteValue("course");
-                Application.Storage.deleteValue("courseRun");
-                var job = Application.Storage.getValue("expiryJob");
-                if (matches(job, claim["requestId"])) {
-                    Application.Storage.deleteValue("expiryJob");
+                if (disableCourse(claim["requestId"])) {
+                    if (nowSeconds >= current["armedUntil"] + CLEANUP_GRACE_SECONDS) {
+                        cleanupExpired(nowSeconds);
+                    }
+                    return true;
                 }
-                return true;
             }
         }
         return cleanupExpired(nowSeconds);

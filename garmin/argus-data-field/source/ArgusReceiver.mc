@@ -12,8 +12,26 @@ class ArgusReceiver extends System.ServiceDelegate {
     function onPhoneAppMessage(message) {
         var data = message.data;
         var expected = null;
+        var control = null;
         if (!(data instanceof Lang.Dictionary)) { Background.exit(null); return; }
         try {
+            if (data["type"] instanceof Lang.String
+                && data["type"].equals("argus-control")) {
+                if (!ArgusProtocol.validDisable(data)) {
+                    reply(ArgusProtocol.disableAck(data, false, "invalid-control")); return;
+                }
+                control = data;
+                var currentCourse = Application.Storage.getValue("course");
+                if (currentCourse instanceof Lang.Dictionary) {
+                    if (!(currentCourse["requestId"] instanceof Lang.String)
+                        || !ArgusExpiry.disableCourse(currentCourse["requestId"])) {
+                        reply(ArgusProtocol.disableAck(data, false, "disable-readback-failed")); return;
+                    }
+                }
+                // A replacement course may have arrived before the old Run claim was updated.
+                Application.Storage.deleteValue("courseRun");
+                reply(ArgusProtocol.disableAck(data, true, "")); return;
+            }
             if (!ArgusProtocol.validEnvelope(data)) {
                 reply(ArgusProtocol.ack(data, false, "invalid-payload")); return;
             }
@@ -21,9 +39,15 @@ class ArgusReceiver extends System.ServiceDelegate {
                 "requestId" => data["requestId"], "courseId" => data["courseId"],
                 "displayName" => data["displayName"],
                 "bytes" => data["bytes"], "vertexCount" => data["vertexCount"],
-                "checksum" => data["checksum"], "armedUntil" => data["armedUntil"]
+                "checksum" => data["checksum"], "armedUntil" => data["armedUntil"],
+                "originLatE7" => data["originLatE7"],
+                "originLonE7" => data["originLonE7"]
             };
+            if (data["armedUntil"] <= Time.now().value()) {
+                reply(ArgusProtocol.ack(expected, false, "expired-payload")); return;
+            }
             data["receivedAt"] = Time.now().value();
+            data["monitoringEnabled"] = true;
             Application.Storage.setValue("pending", data);
             data = null;
             message = null;
@@ -31,6 +55,8 @@ class ArgusReceiver extends System.ServiceDelegate {
             if (!(stored instanceof Lang.Dictionary) || !ArgusProtocol.valid(stored)
                 || !stored["requestId"].equals(expected["requestId"])
                 || stored["armedUntil"] != expected["armedUntil"]
+                || stored["originLatE7"] != expected["originLatE7"]
+                || stored["originLonE7"] != expected["originLonE7"]
                 || !stored["checksum"].equals(expected["checksum"])
                 || (expected["displayName"] != null
                     && !stored["displayName"].equals(expected["displayName"]))) {
@@ -41,6 +67,10 @@ class ArgusReceiver extends System.ServiceDelegate {
             var saved = Application.Storage.getValue("course");
             if (!(saved instanceof Lang.Dictionary) || !ArgusProtocol.valid(saved)
                 || !saved["requestId"].equals(expected["requestId"])
+                || saved["armedUntil"] != expected["armedUntil"]
+                || saved["originLatE7"] != expected["originLatE7"]
+                || saved["originLonE7"] != expected["originLonE7"]
+                || saved["monitoringEnabled"] != true
                 || (expected["displayName"] != null
                     && !saved["displayName"].equals(expected["displayName"]))) {
                 Application.Storage.deleteValue("pending");
@@ -51,7 +81,9 @@ class ArgusReceiver extends System.ServiceDelegate {
             reply(ArgusProtocol.ack(saved, true, ""));
         } catch (e) {
             System.println("ARGUS receiver failed: " + e.toString());
-            if (expected != null) { reply(ArgusProtocol.ack(expected, false, "storage-error")); }
+            if (control != null) {
+                reply(ArgusProtocol.disableAck(control, false, "storage-error"));
+            } else if (expected != null) { reply(ArgusProtocol.ack(expected, false, "storage-error")); }
             else { Background.exit(null); }
         }
     }

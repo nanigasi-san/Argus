@@ -51,8 +51,8 @@ public final class GarminBridge implements MethodChannel.MethodCallHandler {
     @Override public void onMethodCall(MethodCall call, MethodChannel.Result result) {
         if ("getDevices".equals(call.method)) {
             if (ready) returnDevices(result); else { deviceWaiters.add(result); initialize(); }
-        } else if ("sendCourse".equals(call.method)) {
-            sendCourse(call, result);
+        } else if ("sendCourse".equals(call.method) || "resetMonitoring".equals(call.method)) {
+            sendRequest(call, result);
         } else {
             result.notImplemented();
         }
@@ -130,7 +130,7 @@ public final class GarminBridge implements MethodChannel.MethodCallHandler {
     }
 
     @SuppressWarnings("unchecked")
-    private void sendCourse(MethodCall call, MethodChannel.Result result) {
+    private void sendRequest(MethodCall call, MethodChannel.Result result) {
         if (!ready) { result.error("sdk_not_ready", "Garmin Connectを起動して再検索してください。", null); return; }
         if (pendingResult != null) { result.error("transfer_busy", "別の転送を実行中です。", null); return; }
         Map<String, Object> args = new HashMap<>((Map<String, Object>) call.arguments);
@@ -200,7 +200,7 @@ public final class GarminBridge implements MethodChannel.MethodCallHandler {
     private void transmit(boolean retry) {
         if (pendingResult == null) return;
         if (!retry) {
-            timeout = () -> failTransfer("ack_timeout", "保存・照合ACKが60秒以内に届きませんでした。再送してください。");
+            timeout = () -> failTransfer("ack_timeout", "GARMINの確認ACKが60秒以内に届きませんでした。再試行してください。");
             handler.postDelayed(timeout, ACK_TIMEOUT_MS);
         }
         try {
@@ -232,16 +232,25 @@ public final class GarminBridge implements MethodChannel.MethodCallHandler {
             }
             return;
         }
-        if (!"ack".equals(ack.get("type")) || !Boolean.TRUE.equals(ack.get("saved"))
-                || !"background".equals(ack.get("receiver"))
-                || !numberEquals(1, ack.get("v"))
-                || !pendingRequest.get("courseId").equals(ack.get("courseId"))
-                || !pendingRequest.get("displayName").equals(ack.get("displayName"))
-                || !pendingRequest.get("checksum").equals(ack.get("checksum"))
-                || !numberEquals(pendingRequest.get("bytes"), ack.get("bytes"))
-                || !numberEquals(pendingRequest.get("vertexCount"), ack.get("vertexCount"))
-                || !numberEquals(pendingRequest.get("armedUntil"), ack.get("armedUntil"))) {
-            failTransfer("ack_mismatch", "GARMINの保存・照合結果が一致しません: " + ack.get("error")); return;
+        boolean control = "argus-control".equals(pendingRequest.get("type"));
+        boolean valid = "ack".equals(ack.get("type"))
+                && "background".equals(ack.get("receiver"))
+                && numberEquals(1, ack.get("v"));
+        if (control) {
+            valid = valid && "disable".equals(ack.get("action"))
+                    && Boolean.TRUE.equals(ack.get("disabled"));
+        } else {
+            valid = valid && Boolean.TRUE.equals(ack.get("saved"))
+                    && pendingRequest.get("courseId").equals(ack.get("courseId"))
+                    && pendingRequest.get("displayName").equals(ack.get("displayName"))
+                    && pendingRequest.get("checksum").equals(ack.get("checksum"))
+                    && numberEquals(pendingRequest.get("bytes"), ack.get("bytes"))
+                    && numberEquals(pendingRequest.get("vertexCount"), ack.get("vertexCount"))
+                    && numberEquals(pendingRequest.get("armedUntil"), ack.get("armedUntil"));
+        }
+        if (!valid) {
+            failTransfer("ack_mismatch", "GARMINの" + (control ? "監視停止" : "保存・照合")
+                    + "結果を確認できません: " + ack.get("error")); return;
         }
         MethodChannel.Result result = pendingResult;
         Map<String, Object> response = new HashMap<>();

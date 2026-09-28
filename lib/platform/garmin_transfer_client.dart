@@ -50,8 +50,24 @@ class GarminTransferClient {
   Future<GarminTransferResult> sendCourse(
       GarminDevice device, GarminCoursePayload payload) async {
     final args = <String, Object>{'deviceId': device.id, ...payload.toMap()};
-    final raw =
-        await _channel.invokeMapMethod<Object?, Object?>('sendCourse', args);
+    return _send('sendCourse', args, device);
+  }
+
+  Future<GarminTransferResult> resetMonitoring(GarminDevice device) async {
+    return _send(
+        'resetMonitoring',
+        <String, Object>{
+          'deviceId': device.id,
+          'type': 'argus-control',
+          'v': 1,
+          'action': 'disable',
+        },
+        device);
+  }
+
+  Future<GarminTransferResult> _send(
+      String method, Map<String, Object> args, GarminDevice device) async {
+    final raw = await _channel.invokeMapMethod<Object?, Object?>(method, args);
     if (raw == null) {
       throw PlatformException(code: 'empty_result');
     }

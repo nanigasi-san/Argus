@@ -38,6 +38,7 @@ class ArgusField extends WatchUi.DataField {
     var _geometry = null;
     var _monitor = null;
     var _armedUntil = 0;
+    var _monitoringEnabled = true;
     var _receivedUntil = -1;
     var _courseName = "ARGUS";
     var _vertexCount = 0;
@@ -71,6 +72,12 @@ class ArgusField extends WatchUi.DataField {
         if (info != null && info.timerState == Activity.TIMER_STATE_OFF
             && hasRunClaim()) {
             retireUsedCourse();
+            return;
+        }
+        if (!_monitoringEnabled) {
+            _monitor.reset();
+            _status = "OFF";
+            _detail = "";
             return;
         }
         if (info != null && info.timerState == Activity.TIMER_STATE_ON) {
@@ -191,6 +198,20 @@ class ArgusField extends WatchUi.DataField {
 
     function claimRun(runStart) {
         if (_geometry == null) { return false; }
+        var stored = Application.Storage.getValue("course");
+        if (!(stored instanceof Lang.Dictionary)
+            || !(stored["requestId"] instanceof Lang.String)
+            || !stored["requestId"].equals(_lastId)) {
+            clearLoadedCourse();
+            return false;
+        }
+        if (stored["monitoringEnabled"] == false) {
+            _monitoringEnabled = false;
+            _monitor.reset();
+            _status = "OFF";
+            _detail = "";
+            return false;
+        }
         var now = Time.now().value();
         var claim = Application.Storage.getValue("courseRun");
         if (claim instanceof Lang.Dictionary && _lastId != null
@@ -228,13 +249,6 @@ class ArgusField extends WatchUi.DataField {
             return false;
         }
         // Another field instance may already have retired this course.
-        var stored = Application.Storage.getValue("course");
-        if (!(stored instanceof Lang.Dictionary)
-            || !(stored["requestId"] instanceof Lang.String)
-            || !stored["requestId"].equals(_lastId)) {
-            clearLoadedCourse();
-            return false;
-        }
         Application.Storage.setValue("courseRun",
             {"requestId" => _lastId, "startTime" => runStart,
                 "claimedAt" => now});
@@ -249,18 +263,23 @@ class ArgusField extends WatchUi.DataField {
             reload();
             return;
         }
-        var stored = Application.Storage.getValue("course");
-        if (stored instanceof Lang.Dictionary
-            && stored["requestId"] instanceof Lang.String
-            && stored["requestId"].equals(claim["requestId"])) {
-            Application.Storage.deleteValue("course");
+        if (ArgusExpiry.disableCourse(claim["requestId"])) {
+            _monitoringEnabled = false;
+            _monitor.reset();
+            _status = "OFF";
+            _detail = "";
+            if (Time.now().value() >= _armedUntil
+                + ArgusExpiry.CLEANUP_GRACE_SECONDS
+                && ArgusExpiry.cleanupExpired(Time.now().value())) {
+                clearLoadedCourse();
+            }
+        } else {
+            var remainingClaim = Application.Storage.getValue("courseRun");
+            if (ArgusExpiry.matches(remainingClaim, claim["requestId"])) {
+                Application.Storage.deleteValue("courseRun");
+            }
+            reload();
         }
-        Application.Storage.deleteValue("courseRun");
-        var job = Application.Storage.getValue("expiryJob");
-        if (ArgusExpiry.matches(job, claim["requestId"])) {
-            Application.Storage.deleteValue("expiryJob");
-        }
-        clearLoadedCourse();
     }
 
     function clearLoadedCourse() {
@@ -269,6 +288,7 @@ class ArgusField extends WatchUi.DataField {
         _geometry = null;
         _monitor = null;
         _armedUntil = 0;
+        _monitoringEnabled = true;
         _receivedUntil = -1;
         _courseName = "ARGUS";
         _vertexCount = 0;
@@ -286,7 +306,11 @@ class ArgusField extends WatchUi.DataField {
             }
             return;
         }
-        if (_lastId != null && stored["requestId"].equals(_lastId)) { return; }
+        if (_lastId != null && stored["requestId"].equals(_lastId)) {
+            _monitoringEnabled = stored["monitoringEnabled"] != false;
+            if (!_monitoringEnabled) { _monitor.reset(); }
+            return;
+        }
         var candidate = new ArgusGeometry(stored);
         if (!candidate.isValid()) {
             _status = "DATA ERR";
@@ -298,6 +322,7 @@ class ArgusField extends WatchUi.DataField {
         _geometry = candidate;
         _monitor = new ArgusMonitor(candidate);
         _armedUntil = stored["armedUntil"];
+        _monitoringEnabled = stored["monitoringEnabled"] != false;
         _vertexCount = candidate.count();
         _courseName = stored["displayName"] instanceof Lang.String
             ? stored["displayName"] : "ARGUS";

@@ -19,7 +19,10 @@ import '../support/test_doubles.dart';
 class _PendingGarminClient extends GarminTransferClient {
   final Completer<GarminTransferResult> completion =
       Completer<GarminTransferResult>();
+  final Completer<GarminTransferResult> resetCompletion =
+      Completer<GarminTransferResult>();
   int sendCount = 0;
+  int resetCount = 0;
   String? sentDeviceId;
 
   @override
@@ -33,6 +36,13 @@ class _PendingGarminClient extends GarminTransferClient {
     sendCount += 1;
     sentDeviceId = device.id;
     return completion.future;
+  }
+
+  @override
+  Future<GarminTransferResult> resetMonitoring(GarminDevice device) {
+    resetCount += 1;
+    sentDeviceId = device.id;
+    return resetCompletion.future;
   }
 }
 
@@ -237,6 +247,74 @@ void main() {
     expect(find.text('ACKを受信できませんでした。'), findsOneWidget);
     expect(find.text('GARMINのACKを待機中'), findsNothing);
     expect(find.byKey(const Key('garmin-ack-progress')), findsNothing);
+  });
+
+  testWidgets('stops monitoring only after confirmation and watch ACK',
+      (tester) async {
+    final client = _PendingGarminClient();
+    await _startTransfer(tester, client, FakeLocalNotificationsClient(),
+        startSending: false);
+    await tester.scrollUntilVisible(find.text('GARMINの監視を停止'), 200);
+    await tester.tap(find.text('GARMINの監視を停止'));
+    await tester.pumpAndSettle();
+    expect(client.resetCount, 0);
+    await tester.tap(find.text('キャンセル'));
+    await tester.pumpAndSettle();
+    expect(client.resetCount, 0);
+
+    await tester.tap(find.text('GARMINの監視を停止'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('監視を停止'));
+    await tester.pump();
+    expect(client.resetCount, 1);
+    expect(find.text('GARMINのACKを待機中'), findsOneWidget);
+    client.resetCompletion.complete(const GarminTransferResult(
+        deviceName: 'ForeAthlete 55', elapsedMs: 50));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('GARMINの監視を停止しました'), -200);
+    expect(find.text('GARMINの監視を停止しました'), findsOneWidget);
+    expect(find.text('範囲ファイルは期限まで保持されます。再開には再送信してください。'), findsOneWidget);
+  });
+
+  testWidgets('allows reset without loading a GeoJSON file', (tester) async {
+    final client = _PendingGarminClient();
+    final controller = buildTestController(hasGeoJson: false);
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(ChangeNotifierProvider.value(
+      value: controller,
+      child: MaterialApp(home: GarminTransferPage(client: client)),
+    ));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('GARMINの監視を停止'));
+    await tester.tap(find.text('GARMINの監視を停止'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('監視を停止'));
+    await tester.pump();
+    expect(client.resetCount, 1);
+    client.resetCompletion.complete(const GarminTransferResult(
+        deviceName: 'ForeAthlete 55', elapsedMs: 50));
+    await tester.pumpAndSettle();
+    expect(find.text('GARMINの監視を停止しました'), findsOneWidget);
+  });
+
+  testWidgets('can stop monitoring directly from the transfer success screen',
+      (tester) async {
+    final client = _PendingGarminClient();
+    await _startTransfer(tester, client, FakeLocalNotificationsClient());
+    client.completion.complete(const GarminTransferResult(
+        deviceName: 'ForeAthlete 55', elapsedMs: 50));
+    await tester.pumpAndSettle();
+    expect(find.text('GARMINへ転送しました'), findsOneWidget);
+    await tester.tap(find.text('GARMINの監視を停止'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('監視を停止'));
+    await tester.pump();
+    expect(client.resetCount, 1);
+    client.resetCompletion.complete(const GarminTransferResult(
+        deviceName: 'ForeAthlete 55', elapsedMs: 50));
+    await tester.pumpAndSettle();
+    expect(find.text('GARMINの監視を停止しました'), findsOneWidget);
+    expect(find.text('GARMINへ転送しました'), findsNothing);
   });
 
   testWidgets(

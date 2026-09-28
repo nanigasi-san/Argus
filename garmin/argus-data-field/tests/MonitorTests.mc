@@ -132,7 +132,7 @@ function fieldUsesJapaneseReturnDirection(logger) {
 }
 
 (:test)
-function courseIsDiscardedAfterOneRunButNotBeforeIt(logger) {
+function courseIsDisabledAfterOneRunButNotBeforeIt(logger) {
     var course = squareCourse();
     course["requestId"] = "one-run-test";
     course["armedUntil"] = Time.now().value() + 3600;
@@ -150,9 +150,11 @@ function courseIsDiscardedAfterOneRunButNotBeforeIt(logger) {
     field.compute(null);
     Test.assert(Application.Storage.getValue("course") != null);
     field.onTimerReset();
-    Test.assert(Application.Storage.getValue("course") == null);
+    Test.assert(Application.Storage.getValue("course")["monitoringEnabled"] == false);
     Test.assert(Application.Storage.getValue("courseRun") == null);
-    Test.assertEqual(field.status(), "READY");
+    Test.assertEqual(field.status(), "OFF");
+    Test.assert(!field.claimRun(2000));
+    Application.Storage.deleteValue("course");
     return true;
 }
 
@@ -167,8 +169,9 @@ function oldCourseCannotBeReusedIfResetWasMissed(logger) {
     var reloadedField = new ArgusField();
     Test.assert(reloadedField.claimRun(1000));
     Test.assert(!reloadedField.claimRun(2000));
-    Test.assert(Application.Storage.getValue("course") == null);
+    Test.assert(Application.Storage.getValue("course")["monitoringEnabled"] == false);
     Test.assert(Application.Storage.getValue("courseRun") == null);
+    Application.Storage.deleteValue("course");
     return true;
 }
 
@@ -204,9 +207,11 @@ function twoFieldsCannotReviveDiscardedCourse(logger) {
     Test.assert(secondField.claimRun(1000));
     firstField.onTimerReset();
     secondField.onTimerReset();
-    Test.assertEqual(secondField.status(), "READY");
+    secondField.compute(null);
+    Test.assertEqual(secondField.status(), "OFF");
     Test.assert(!secondField.claimRun(2000));
-    Test.assert(Application.Storage.getValue("course") == null);
+    Test.assert(Application.Storage.getValue("course")["monitoringEnabled"] == false);
+    Application.Storage.deleteValue("course");
     return true;
 }
 
@@ -230,7 +235,8 @@ function oldFieldCannotDiscardAnotherRunClaim(logger) {
     Test.assertEqual(Application.Storage.getValue("courseRun")["requestId"],
         "new-field-test");
     newField.onTimerReset();
-    Test.assert(Application.Storage.getValue("course") == null);
+    Test.assert(Application.Storage.getValue("course")["monitoringEnabled"] == false);
+    Application.Storage.deleteValue("course");
     return true;
 }
 
@@ -247,7 +253,8 @@ function runStartedBeforeDeadlineSurvivesExpiry(logger) {
     Test.assertEqual(field.status(), "ARMED");
     Test.assert(Application.Storage.getValue("course") != null);
     field.onTimerReset();
-    Test.assert(Application.Storage.getValue("course") == null);
+    Test.assert(Application.Storage.getValue("course")["monitoringEnabled"] == false);
+    Application.Storage.deleteValue("course");
     return true;
 }
 
@@ -316,7 +323,7 @@ function temporalEventDeletesUnusedExpiredCourse(logger) {
 }
 
 (:test)
-function activityCompletionDiscardsOnlyItsClaimedCourse(logger) {
+function activityCompletionDisablesOnlyItsClaimedCourse(logger) {
     var now = Time.now().value();
     var course = squareCourse();
     course["requestId"] = "completed-run";
@@ -327,9 +334,104 @@ function activityCompletionDiscardsOnlyItsClaimedCourse(logger) {
     Application.Storage.setValue("expiryJob",
         {"requestId" => "completed-run", "armedUntil" => now + 3600});
     Test.assert(ArgusExpiry.onActivityCompleted(now));
+    Test.assert(Application.Storage.getValue("course")["monitoringEnabled"] == false);
+    Test.assert(Application.Storage.getValue("courseRun") == null);
+    Test.assert(Application.Storage.getValue("expiryJob") != null);
+    Application.Storage.deleteValue("course");
+    Application.Storage.deleteValue("expiryJob");
+    return true;
+}
+
+(:test)
+function resetDisablesActiveCourseAndKeepsItsFile(logger) {
+    var now = Time.now().value();
+    var course = squareCourse();
+    course["requestId"] = "active-reset";
+    course["displayName"] = "chiba.geojson";
+    course["armedUntil"] = now + 3600;
+    course["monitoringEnabled"] = true;
+    Application.Storage.setValue("course", course);
+    var field = new ArgusField();
+    Test.assert(field.claimRun(now));
+    Test.assert(ArgusExpiry.disableCourse("active-reset"));
+    Test.assert(Application.Storage.getValue("courseRun") == null);
+    field.reload();
+    field.compute(null);
+    Test.assertEqual(field.status(), "OFF");
+    Test.assertEqual(field.courseName(), "chiba.geojson");
+    Test.assert(!field.claimRun(now));
+    Application.Storage.deleteValue("course");
+    return true;
+}
+
+(:test)
+function disabledCourseExpiresEvenWithAnOldRunClaim(logger) {
+    var now = Time.now().value();
+    var course = squareCourse();
+    course["requestId"] = "disabled-expiry";
+    course["armedUntil"] = now - 301;
+    course["monitoringEnabled"] = false;
+    Application.Storage.setValue("course", course);
+    Application.Storage.setValue("courseRun",
+        {"requestId" => "disabled-expiry", "startTime" => now - 400});
+    Test.assert(ArgusExpiry.cleanupExpired(now));
     Test.assert(Application.Storage.getValue("course") == null);
     Test.assert(Application.Storage.getValue("courseRun") == null);
-    Test.assert(Application.Storage.getValue("expiryJob") == null);
+    return true;
+}
+
+(:test)
+function controlAckRequiresDisableRequest(logger) {
+    var request = {"type" => "argus-control", "v" => 1,
+        "action" => "disable", "requestId" => "reset-test"};
+    Test.assert(ArgusProtocol.validDisable(request));
+    var ack = ArgusProtocol.disableAck(request, true, "");
+    Test.assert(ack["disabled"] == true);
+    Test.assertEqual(ack["requestId"], "reset-test");
+    request["action"] = "enable";
+    Test.assert(!ArgusProtocol.validDisable(request));
+    return true;
+}
+
+(:test)
+function invalidCourseMetadataCannotReceiveSuccessAck(logger) {
+    var course = squareCourse();
+    course["type"] = "argus-course";
+    course["v"] = 1;
+    course["requestId"] = "invalid-meta";
+    course["courseId"] = "invalid-meta";
+    course["displayName"] = "invalid.geojson";
+    course["bytes"] = course["data"].length();
+    course["checksum"] = ArgusProtocol.checksum(course["data"]);
+    course["armedUntil"] = Time.now().value() + 3600;
+    Test.assert(ArgusProtocol.valid(course));
+    course["originLatE7"] = null;
+    Test.assert(!ArgusProtocol.valid(course));
+    course["originLatE7"] = 350000000;
+    course["armedUntil"] = null;
+    Test.assert(!ArgusProtocol.valid(course));
+    course["armedUntil"] = Time.now().value() + 3600;
+    course["data"] = "AGW1|1,2;3,4";
+    course["bytes"] = course["data"].length();
+    course["checksum"] = ArgusProtocol.checksum(course["data"]);
+    Test.assert(!ArgusProtocol.valid(course));
+    return true;
+}
+
+(:test)
+function protocolValidatesHundredVertexCourseOnFr55(logger) {
+    var body = "AGW1|";
+    for (var i = 0; i < 100; i++) {
+        if (i > 0) { body += ";"; }
+        body += i.toString() + "," + (i % 10).toString();
+    }
+    var course = {"type" => "argus-course", "v" => 1,
+        "requestId" => "hundred-vertices", "courseId" => "hundred-vertices",
+        "displayName" => "hundred.geojson", "armedUntil" => Time.now().value() + 3600,
+        "vertexCount" => 100, "originLatE7" => 350000000,
+        "originLonE7" => 1400000000, "bytes" => body.length(),
+        "data" => body, "checksum" => ArgusProtocol.checksum(body)};
+    Test.assert(ArgusProtocol.valid(course));
     return true;
 }
 
