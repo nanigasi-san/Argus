@@ -176,7 +176,7 @@ void main() {
 
     expect(find.text('バックグラウンド位置情報の開示'), findsOneWidget);
     expect(
-      find.textContaining('アプリを閉じているときや使用していないとき'),
+      find.textContaining('画面ロック中や他のアプリ使用中'),
       findsWidgets,
     );
   });

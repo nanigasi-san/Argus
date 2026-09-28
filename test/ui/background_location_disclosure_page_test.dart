@@ -44,6 +44,8 @@ void main() {
 
     await tester.tap(find.text('Open'));
     await tester.pumpAndSettle();
+    expect(find.textContaining('画面ロック中や他のアプリ使用中'), findsWidgets);
+    expect(find.textContaining('アプリを閉じているとき'), findsNothing);
     await tester.tap(find.text('同意して位置情報の設定へ進む'));
     await tester.pumpAndSettle();
 
