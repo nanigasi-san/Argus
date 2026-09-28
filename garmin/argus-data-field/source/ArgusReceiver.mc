@@ -47,6 +47,7 @@ class ArgusReceiver extends System.ServiceDelegate {
                 reply(ArgusProtocol.ack(expected, false, "course-readback-failed")); return;
             }
             Application.Storage.deleteValue("pending");
+            ArgusExpiry.schedule(saved);
             reply(ArgusProtocol.ack(saved, true, ""));
         } catch (e) {
             System.println("ARGUS receiver failed: " + e.toString());
@@ -58,6 +59,18 @@ class ArgusReceiver extends System.ServiceDelegate {
     function reply(response) {
         try { Communications.transmit(response, null, new ArgusAckListener()); }
         catch (e) { Background.exit(null); }
+    }
+
+    function onTemporalEvent() {
+        try { ArgusExpiry.onTemporal(Time.now().value()); }
+        catch (e) { System.println("ARGUS expiry cleanup failed: " + e.toString()); }
+        Background.exit(null);
+    }
+
+    function onActivityCompleted(activity) {
+        try { ArgusExpiry.onActivityCompleted(Time.now().value()); }
+        catch (e) { System.println("ARGUS Run completion failed: " + e.toString()); }
+        Background.exit(null);
     }
 }
 

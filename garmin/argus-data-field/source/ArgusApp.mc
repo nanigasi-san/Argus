@@ -16,6 +16,16 @@ class ArgusApp extends Application.AppBase {
         if (!Background.getPhoneAppMessageEventRegistered()) {
             Background.registerForPhoneAppMessageEvent();
         }
+        if (!Background.getActivityCompletedEventRegistered()) {
+            Background.registerForActivityCompletedEvent();
+        }
+        var stored = Application.Storage.getValue("course");
+        if (stored instanceof Lang.Dictionary
+            && stored["armedUntil"] instanceof Lang.Number
+            && Time.now().value() >= stored["armedUntil"]
+                + ArgusExpiry.CLEANUP_GRACE_SECONDS) {
+            ArgusExpiry.cleanupExpired(Time.now().value());
+        }
     }
 
     function getInitialView() { return [new ArgusField()]; }
@@ -58,12 +68,6 @@ class ArgusField extends WatchUi.DataField {
             _detail = "";
             return;
         }
-        if (now >= _armedUntil) {
-            _monitor.reset();
-            _status = "EXPIRED";
-            _detail = "";
-            return;
-        }
         if (info != null && info.timerState == Activity.TIMER_STATE_OFF
             && hasRunClaim()) {
             retireUsedCourse();
@@ -71,7 +75,24 @@ class ArgusField extends WatchUi.DataField {
         }
         if (info != null && info.timerState == Activity.TIMER_STATE_ON) {
             var runStart = info.startTime != null ? info.startTime.value() : null;
-            if (!claimRun(runStart)) { return; }
+            if (!claimRun(runStart)) {
+                if (now >= _armedUntil + ArgusExpiry.CLEANUP_GRACE_SECONDS
+                    && ArgusExpiry.cleanupExpired(now)) {
+                    clearLoadedCourse();
+                }
+                return;
+            }
+        }
+        // The deadline is for starting a Run, not for stopping an active one.
+        if (now >= _armedUntil && !hasRunClaim()) {
+            _monitor.reset();
+            _status = "EXPIRED";
+            _detail = "";
+            if (now >= _armedUntil + ArgusExpiry.CLEANUP_GRACE_SECONDS
+                && ArgusExpiry.cleanupExpired(now)) {
+                clearLoadedCourse();
+            }
+            return;
         }
         if (info == null || info.timerState != Activity.TIMER_STATE_ON) {
             _monitor.reset();
@@ -169,7 +190,8 @@ class ArgusField extends WatchUi.DataField {
     }
 
     function claimRun(runStart) {
-        if (_geometry == null || Time.now().value() >= _armedUntil) { return false; }
+        if (_geometry == null) { return false; }
+        var now = Time.now().value();
         var claim = Application.Storage.getValue("courseRun");
         if (claim instanceof Lang.Dictionary && _lastId != null
             && claim["requestId"] instanceof Lang.String
@@ -181,11 +203,29 @@ class ArgusField extends WatchUi.DataField {
                 retireUsedCourse();
                 return false;
             }
+            var claimedAt = claim["claimedAt"];
+            if ((runStart != null && runStart >= _armedUntil)
+                || (previousStart == null && runStart == null
+                    && now >= _armedUntil
+                    && !(claimedAt instanceof Lang.Number
+                        && claimedAt < _armedUntil))) {
+                // Do not revive a course in a Run begun after its deadline.
+                retireUsedCourse();
+                return false;
+            }
             if (previousStart == null && runStart != null) {
                 Application.Storage.setValue("courseRun",
-                    {"requestId" => _lastId, "startTime" => runStart});
+                    {"requestId" => _lastId, "startTime" => runStart,
+                        "claimedAt" => claimedAt});
             }
             return true;
+        }
+        if ((runStart != null && runStart >= _armedUntil)
+            || (runStart == null && now >= _armedUntil)) {
+            _monitor.reset();
+            _status = "EXPIRED";
+            _detail = "";
+            return false;
         }
         // Another field instance may already have retired this course.
         var stored = Application.Storage.getValue("course");
@@ -196,7 +236,8 @@ class ArgusField extends WatchUi.DataField {
             return false;
         }
         Application.Storage.setValue("courseRun",
-            {"requestId" => _lastId, "startTime" => runStart});
+            {"requestId" => _lastId, "startTime" => runStart,
+                "claimedAt" => now});
         return true;
     }
 
@@ -215,6 +256,10 @@ class ArgusField extends WatchUi.DataField {
             Application.Storage.deleteValue("course");
         }
         Application.Storage.deleteValue("courseRun");
+        var job = Application.Storage.getValue("expiryJob");
+        if (ArgusExpiry.matches(job, claim["requestId"])) {
+            Application.Storage.deleteValue("expiryJob");
+        }
         clearLoadedCourse();
     }
 
