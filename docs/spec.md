@@ -1,4 +1,4 @@
-﻿# Argus 仕様書 v6（2026-06-17 時点）
+﻿# Argus 仕様書 v6（スマホ・GARMIN連携）
 
 本ドキュメントは Flutter 製アプリ Argus の現行コードをもとに構成・挙動・テスト観点を整理したものです。現在の実装を正とし、仕様変更時は実装・テスト・関連ドキュメントを同時に更新します。
 
@@ -6,7 +6,7 @@
 
 ## 0. 概要
 
-- **目的**: GeoJSON で定義した警戒エリアからの逸脱を端末上で監視し、離脱時に即時アラートを発報する。OUTER状態時には復帰のための距離・方位情報を提供する。
+- **目的**: GeoJSON で定義した警戒エリアからの逸脱を端末上で監視し、エリア外の測位が既定で3サンプルかつ10秒継続してOUTERに確定した時点で警告する。OUTER状態時には復帰のための距離・方位情報を提供する。
 - **利用想定**: 保護対象者の無断外出検知、現場作業者の安全区域逸脱監視、競技エリア監視など。
 - **対応プラットフォーム**: Flutter 3.x / Dart 3.2+。Android 9 以降、iOS 15 以降を想定。
 - **位置取得**: Geolocator を利用し、最短 3 秒間隔・距離フィルタ 0m で継続的に測位。Android では Foreground Service、iOS では常時位置情報を前提。
@@ -18,8 +18,8 @@
 ### 1.1 GeoJSON 読み込み
 
 - **初回起動**: GeoJSON は自動ロードしない。状態は `waitGeoJson` で開始し、ユーザーがファイルまたは QR から読み込む。
-- **ファイルピッカー**: ユーザは FloatingActionButton（「Load GeoJSON」ラベル）またはファイルピッカーで `.geojson` / `.json` を再ロード可能。
-- **QRコード読み込み**: ユーザは FloatingActionButton（「Read QR code」ラベル）でQRコードをスキャンし、GeoJSONを読み込むことが可能。QRコードは `agz1:` または互換用の `gjz1:` スキームで始まる必要がある。読み込んだGeoJSONは一時ファイルとして保存され、アプリ終了時に自動削除される。
+- **ファイルピッカー**: スマホ監視画面の読込ボタン、またはGARMIN転送画面から `.geojson` / `.json` を読み込める。
+- **QRコード読み込み**: スマホ監視画面のQR読込ボタン、またはGARMIN転送画面からスキャンできる。QRコードは `agz1:` または互換用の `gjz1:` スキームで始まる必要がある。読み込んだGeoJSONは一時ファイルとして保存され、アプリ終了時に自動削除される。
 - **ファイル名処理**: 読み込んだファイル名は `.geojson` 拡張子に正規化され、UI に表示される。`agz1` では埋め込まれた元ファイル名を表示し、一時ファイルの実体は `temp_geojson_<timestamp>.geojson` として管理する。
 - **エラー処理**: 読み込み失敗はエラーバナーとログ（レベル ERROR）で通知。`FormatException` とその他の例外を区別して表示。QRコードの形式が無効な場合やデコードに失敗した場合も適切にエラーを表示する。
 
@@ -74,6 +74,7 @@
 
 - **Android**: 位置サービスは Foreground Service として継続。`WAKE_LOCK` / `FOREGROUND_SERVICE_LOCATION` 権限を要求。
 - **iOS**: Info.plist で `location` / `audio` 背景モードを有効化し、Always 許可を促す文言を日本語で表示。
+- **継続条件**: ユーザーが監視を開始した後は、画面ロック中や他のアプリを使用している間もバックグラウンド監視を続ける。アプリ終了時は監視と警報を停止し、次の起動時に自動再開しない。
 
 ### 1.6 通知とアラーム
 
@@ -141,6 +142,7 @@
 - **データ永続化**: 設定はアプリドキュメントディレクトリの `config.json` に保存。存在しない場合はデフォルト設定をロード。ログはメモリのみで保持し、最大 200 件のリングバッファ管理（`AppController._logs`）。
 - **権限**: `PermissionCoordinator` が通知・位置情報（常時）許可を順序立てて確認・要求する。iOSは拒否後に明示操作で設定を開き、Androidは従来の自動設定導線を維持する。
 - **ローカライズ**: 通知文言、位置許可文言、UI 文言は日本語がデフォルト。
+- **更新確認とオフライン起動**: Release版は起動時にストアの更新情報を取得するが、更新情報が取得できなくても利用方法選択画面を表示し、スマホ監視へ進める。Debug版は更新確認を行わない。更新確認は位置監視の開始条件ではない。`upgrader` 13.5.0 の `UpgradeAlert` は子画面を先に描画し、ストア検索層は通信例外を捕捉して更新情報なしとして扱う。
 
 ---
 
@@ -617,17 +619,22 @@ stateDiagram-v2
 
 | 項目                  | キー                    | 型               | デフォルト                              | 説明                                                                       |
 | --------------------- | ----------------------- | ---------------- | --------------------------------------- | -------------------------------------------------------------------------- |
-| Inner buffer          | `inner_buffer_m`        | double           | 30.0                                    | エリア境界との距離バッファ（メートル）。この距離未満で `near` 状態になる。 |
+| Inner buffer          | `inner_buffer_m`        | double           | 0.0                                     | エリア境界との距離バッファ（メートル）。この距離未満で `near` 状態になる。既存の保存済み値も更新時に一度だけ0mへ移行し、他の設定値は維持する。 |
 | Leave confirm samples | `leave_confirm_samples` | int              | 3                                       | OUTER 確定に必要な連続サンプル数。                                         |
 | Leave confirm seconds | `leave_confirm_seconds` | int              | 10                                      | OUTER 確定に必要な経過秒数。                                               |
 | GPS bad threshold     | `gps_accuracy_bad_m`    | double           | 40.0                                    | 位置精度がこの値を超えると `gpsBad` 状態になる（メートル）。               |
 | Sample interval       | `sample_interval_s`     | Map<String, int> | `{"slow": 15, "normal": 8, "fast": 3}`  | 位置取得間隔（秒）。`fast` が優先的に使用される。                          |
-| Sample distance       | `sample_distance_m`     | Map<String, int> | `{"slow": 25, "normal": 15, "fast": 8}` | 距離フィルタ（未使用、位置サービスでは 0m 固定）。                         |
-| Screen wake on leave  | `screen_wake_on_leave`  | bool             | true                                    | 離脱時に画面を点灯するか（未使用）。                                       |
+| Alarm volume          | `alarm_volume`         | double           | 0.5                                     | 警告音量。0.0〜1.0の範囲に正規化する。                                      |
 
 ---
 
 ## 9. 画面仕様
+
+### 9.0 利用方法の選択
+
+- 起動時は `UsageModeSelectionPage` を表示し、B2案のラジオ式二択で「スマホで利用」を初期選択する。選択は保存しないため、次のコールドスタートでも選択画面を表示する。
+- 「次へ」でスマホを選んだ場合は従来の `HomePage`、GARMINを選んだ場合は既存の `GarminTransferPage` を開く。後者はARGUSからGARMINへの境界データ送信に用いる。戻る操作で選択画面へ戻れる。
+- 監視と転送は同じ `AppController` を利用する。従来のHomePageメニューにある「GARMINに送る」も残す。
 
 ### 9.1 HomePage
 
@@ -646,6 +653,13 @@ stateDiagram-v2
 - **Developer mode switch**: 距離/方位の詳細情報を常時表示するかどうかを切り替え。デフォルトは OFF。
 - **Export logs ボタン**: JSON 形式でログをエクスポートし、ダイアログで表示。
 
+### 9.3 GARMIN転送画面とData Field
+
+- GARMIN転送画面はGeoJSON／QR読込、ペアリング済み時計の選択、送信、監視停止を扱う。監視停止はファイル未読込時やRUN中にも送信できる。
+- 送信完了は時計の保存・照合ACKを確認してから表示する。ACK待機は最大60秒。スマホの完了通知はACK後に発行する。
+- Data Fieldはファイル名、`ARMED`／`GPS WAIT`／`IN`／`CHECKING`／`OUT`／`EXPIRED`を表示する。OUTでは日本語の方角と境界までの距離を示し、音と振動を3秒鳴動・1秒休止で繰り返す。
+- 送信から12時間は新しいRUNの開始期限。期限内に開始したRUNの1回だけ監視し、RUN終了時またはスマホからの停止時に時計の範囲データを削除する。期限切れデータは新しいRUNで監視せず、RUN終了時または次の送信・停止時まで保持する。詳細な転送形式・制約は [GARMIN転送データ形式](garmin_data_format.md) を参照。
+
 ---
 
 ## 10. テストと検証
@@ -656,6 +670,7 @@ stateDiagram-v2
 - Android 周辺は、音量 50% 境界、MethodChannel payload、通知チャンネル、OUTER 通知 ID `1001`、Foreground Service 文言、権限要求順序、音設定導線を契約テストで守る。
 - GPS、カメラ、file picker、通知プラグインなど実機・OS 境界の薄い wrapper は `coverage:ignore` を許容し、Fake と contract test でアプリ側の判定を検証する。
 - `integration_test/ui_smoke_test.dart` は実機 / emulator 向け smoke として、Home permission card、background disclosure、Settings、QR permission error、Home → Settings navigation に限定する。
+- 全E2Eは `integration_test/`（および将来の `e2e/`）の `*_test.dart` を再帰検出して実行する。実行方法は [CIとリリースのワークフロー](ci.md) と [テスト方針](tests.md) を参照。
 
 ---
 

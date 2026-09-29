@@ -33,6 +33,10 @@ class Notifier {
   static const _channelName = 'ARGUS警告';
   static const _channelDescription = 'ジオフェンスの安全エリアから離れたときに通知します。';
   static const int _outerNotificationId = 1001;
+  static const _garminChannelId = 'argus_garmin_transfer_v1';
+  static const _garminChannelName = 'GARMINへの転送';
+  static const _garminChannelDescription = 'GARMINへの境界データ転送が完了したときに通知します。';
+  static const int _garminNotificationId = 1002;
 
   bool _initialized = false;
   bool _isAlarming = false;
@@ -107,8 +111,38 @@ class Notifier {
         enableVibration: false,
       ),
     );
+    await _notifications.ensureAndroidChannel(
+      const AndroidNotificationChannel(
+        _garminChannelId,
+        _garminChannelName,
+        description: _garminChannelDescription,
+        importance: Importance.high,
+      ),
+    );
 
     _initialized = true;
+  }
+
+  Future<void> notifyGarminTransferComplete({
+    required String deviceName,
+    required String fileName,
+  }) async {
+    await initialize();
+    await _notifications.show(
+      _garminNotificationId,
+      'GARMINへの送信完了',
+      '$deviceNameに$fileNameを保存しました。',
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          _garminChannelId,
+          _garminChannelName,
+          channelDescription: _garminChannelDescription,
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+        iOS: DarwinNotificationDetails(presentAlert: true),
+      ),
+    );
   }
 
   Future<void> notifyOuter() async {

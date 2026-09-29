@@ -48,6 +48,10 @@ android {
     }
 
     buildTypes {
+        getByName("debug") {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         getByName("release") {
             signingConfig = if (hasReleaseKeystore) {
                 signingConfigs.getByName("release")
@@ -72,6 +76,8 @@ flutter {
 }
 
 dependencies {
+    implementation("com.garmin.connectiq:ciq-companion-app-sdk:2.4.0@aar")
+    implementation("org.jetbrains.kotlin:kotlin-stdlib:1.9.24")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
     constraints {
         implementation("androidx.camera:camera-camera2:1.5.3") {

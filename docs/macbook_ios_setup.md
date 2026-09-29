@@ -2,6 +2,8 @@
 
 この文書は、Windows 上で実装した ARGUS の iOS 対応を MacBook に引き継ぎ、Simulator ビルド、実機デバッグ、署名、Archive まで進めるための初回セットアップ手順です。
 
+`gati-ios-version` を使う以下の取得・push例は当時の引き継ぎ記録であり、現在のGARMIN開発ブランチにそのまま適用しない。新しい作業では現在の対象ブランチを確認し、作業中の変更を保持したまま進める。
+
 毎回の実機確認とリリース前チェックは [ios_release.md](ios_release.md) を参照してください。
 
 ## 前提

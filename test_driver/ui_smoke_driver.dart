@@ -5,7 +5,8 @@ import 'dart:io';
 import 'package:integration_test/integration_test_driver_extended.dart';
 
 Future<void> main() async {
-  final outputDir = Directory('build/integration_test/screenshots')
+  final outputDir = Directory(Platform.environment['E2E_SCREENSHOT_DIR'] ??
+      'build/integration_test/screenshots')
     ..createSync(recursive: true);
 
   await integrationDriver(

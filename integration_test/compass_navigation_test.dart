@@ -28,6 +28,8 @@ void main() {
     });
     await tester.pumpWidget(HarnessBuilder.buildApp(controller));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('usageModeNextButton')));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('タップで開始'));
     await tester.pumpAndSettle();
     expect(location.hasStarted, isTrue);
@@ -105,6 +107,8 @@ void main() {
         controller.dispose();
       });
       await tester.pumpWidget(HarnessBuilder.buildApp(controller));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('usageModeNextButton')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('タップで開始'));
 

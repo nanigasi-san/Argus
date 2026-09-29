@@ -1,6 +1,6 @@
 # Google Play Background Location Declaration
 
-Last updated: 2026-06-17
+Last updated: 2026-09-29
 
 ## Privacy Policy URL
 
@@ -10,7 +10,7 @@ Use this public URL in Play Console and in the app:
 
 ## Core functionality description
 
-ARGUS is a geofence monitoring app for orienteering and similar field activities. The app lets the user load a GeoJSON competition area and start monitoring. After monitoring starts, ARGUS uses background location so it can detect when the user leaves the configured competition area and immediately notify them, even when the app is closed or not in use.
+ARGUS is a geofence monitoring app for orienteering and similar field activities. The app lets the user load a GeoJSON competition area and start monitoring. After monitoring starts, ARGUS can use background location while the phone screen is locked or another app is in use. It warns the user after out-of-area readings meet the configured confirmation threshold. Monitoring does not automatically restart after ARGUS is terminated.
 
 ## Why background location is required
 
@@ -18,7 +18,7 @@ Background location is required because the app's core feature is continuous geo
 
 ## User benefit
 
-The user benefit is immediate safety and rules-compliance feedback during an event. ARGUS warns the user as soon as they leave the configured area so they can return promptly.
+The user benefit is safety and rules-compliance feedback during an event. By default, ARGUS confirms at least three out-of-area readings over ten seconds before warning, to reduce false alerts.
 
 ## Data handling statement
 
@@ -29,19 +29,20 @@ ARGUS uses location data only to evaluate whether the device remains inside the 
 Before any location runtime permission request, the app shows an in-app disclosure screen stating that:
 
 - ARGUS uses location data for geofence monitoring.
-- Location is used even when the app is closed or not in use after monitoring starts.
+- Location may be used while the screen is locked or another app is in use after monitoring starts.
 - Location is used only to detect leaving the configured competition area.
 - Location data is processed only on-device and is not sent to the developer's server.
 
 After the disclosure, the app requests foreground location first and then background/always location. Notification permission is part of setup so the user does not miss an alert, but monitoring is blocked only when location services are disabled or Always location permission is unavailable.
+The app does not claim to continue monitoring after ARGUS itself is terminated.
 
 ## Short declaration text for Play Console
 
-ARGUS uses background location only after the user starts monitoring a loaded GeoJSON competition area. This is required for the app's core feature: detecting when the user leaves the configured area and notifying them immediately, even when the app is closed or not in use. Location data is processed only on the device and is not sent to the developer's server.
+ARGUS uses background location only after the user starts monitoring a loaded GeoJSON competition area. This is required to detect leaving the area while the screen is locked or another app is in use. After the configured confirmation threshold is met, the app warns the user. Location data is processed on the device and is not sent to the developer's server. Monitoring does not automatically restart after ARGUS is terminated.
 
 ## Foreground service declaration text
 
-ARGUS uses the location foreground service type only while the user has started geofence monitoring. The foreground service keeps location monitoring active so ARGUS can notify the user immediately when they leave the loaded GeoJSON area. Monitoring is user initiated and can be stopped from the app.
+ARGUS uses the location foreground service type only while the user has started geofence monitoring. The foreground service keeps location monitoring active while the screen is locked or another app is used. ARGUS warns after the configured out-of-area confirmation threshold is met. Monitoring is user initiated and can be stopped from the app.
 
 ## Store listing short description note
 
@@ -55,8 +56,8 @@ ARGUS monitors a loaded GeoJSON area and can warn you with notifications and sou
 
 Record a short video that shows this exact flow:
 
-1. Open ARGUS.
-2. Show that a GeoJSON area is already loaded.
+1. Open ARGUS and choose `スマホで利用`.
+2. Load a GeoJSON area and show that it is ready for monitoring.
 3. Tap `監視開始前に設定する` or the start action that leads to setup.
 4. Show the in-app disclosure screen.
 5. Tap `同意して位置情報の設定へ進む`.

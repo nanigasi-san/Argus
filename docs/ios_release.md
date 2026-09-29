@@ -2,11 +2,13 @@
 
 Windows 上で実装、Dart テスト、Android 回帰確認までは完了できます。iOS の最終確認、署名、Archive は macOS と Xcode が必要です。
 
+以下の `gati-ios-version`、0.5.0の実機確認・Archive記録は当時の引き継ぎ手順／証跡であり、現在の開発ブランチや最新リリース番号を示すものではない。現在のiOSリリース手順は [iOS リリース運用](ios_release_cd.md)、全E2E手順は [CIとリリースのワークフロー](ci.md) を参照。
+
 MacBook の初回環境構築は [macbook_ios_setup.md](macbook_ios_setup.md) を先に実施してください。この文書は環境構築後の実機確認とリリース前チェックを扱います。
 
 ## 実装済みのiOS設定
 
-- App version: `0.7.0+1009`
+- App version（開発ブランチの暫定値）: `0.9.0+1016`
 - Bundle ID: `com.argus.orienteering`
 - Minimum deployment target: iOS 15.0
 - Background Modes: `Location updates`, `Audio`
@@ -114,7 +116,7 @@ xcrun devicectl device process launch \
 11. サイレントモード、集中モード、画面ロック中の通知挙動を確認する。
 12. 音量案内からiOSのARGUSアプリ設定画面を開ける。
 13. Xcodeの `Product > Test` で `RunnerTests` が通る。
-14. 設定画面に `0.7.0 (1009)` が表示される。
+14. 設定画面に `0.9.0 (1013)` が表示される。
 15. `agz1` QRからGeoJSONと元ファイル名を復元でき、`gjz1` QRも読み込める。
 
 ## Archive前の確認

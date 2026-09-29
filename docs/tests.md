@@ -53,7 +53,7 @@ Widget test はユーザーから見える文言と導線を守る。
 
 ### Integration Smoke
 
-`integration_test/ui_smoke_test.dart` は実機または Android emulator / iOS Simulator 向けの smoke に限定する。unit / widget で守れる詳細仕様とは重複させない。
+`integration_test/ui_smoke_test.dart` は実機または Android emulator / iOS Simulator 向けの smoke に限定する。`core_monitoring_e2e_test.dart` は監視・警告・復帰、`compass_navigation_test.dart` は退避ナビゲーションを扱う。unit / widget で守れる詳細仕様とは重複させない。
 
 対象:
 
@@ -63,7 +63,7 @@ Widget test はユーザーから見える文言と導線を守る。
 - QR camera permission error
 - Home から Settings への navigation
 
-Android emulator を CI に追加する作業は現在の範囲外。ローカルまたは実機で必要時に実行する。
+Android / iOSの全E2Eは現在CIで実行する。対象は `integration_test/` および追加された場合の `e2e/` 配下の全 `*_test.dart` で、個別のsmokeだけでは全件検証にならない。
 
 ## 実行コマンド
 
@@ -93,10 +93,22 @@ flutter test \
   test/ui/qr_scanner_page_test.dart
 ```
 
-実機 / emulator / Simulator smoke:
+実機 / emulator / Simulatorでの個別smoke（全件検証の代替にはしない）:
 
 ```sh
 flutter test integration_test/ui_smoke_test.dart -d <device-id>
+```
+
+macOS / LinuxのAndroid Emulatorで全E2E:
+
+```sh
+bash scripts/run_android_e2e.sh emulator-5554
+```
+
+macOSのiOS Simulatorで全E2E:
+
+```sh
+bash scripts/run_ios_e2e.sh <simulator-udid>
 ```
 
 PowerShell helper:

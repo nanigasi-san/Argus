@@ -12,9 +12,10 @@ class AppConfig {
     required this.alarmVolume,
   });
 
-  static const defaultInnerBufferM = 30.0;
-  static const minInnerBufferM = 1.0;
+  static const defaultInnerBufferM = 0.0;
+  static const minInnerBufferM = 0.0;
   static const maxInnerBufferM = 300.0;
+  static const currentConfigVersion = 2;
 
   static const defaultLeaveConfirmSamples = 3;
   static const minLeaveConfirmSamples = 1;
@@ -74,6 +75,7 @@ class AppConfig {
   }
 
   Map<String, dynamic> toJson() => <String, dynamic>{
+        'config_version': currentConfigVersion,
         'inner_buffer_m': innerBufferM,
         'leave_confirm_samples': leaveConfirmSamples,
         'leave_confirm_seconds': leaveConfirmSeconds,

@@ -27,7 +27,7 @@ const coreGeoJsonFixture = '''
 ''';
 const inside = LatLng(35.005, 139.005);
 const outside = LatLng(35.005, 139.020);
-// About 36 m from the west edge: INNER at 30 m, NEAR at 50 m.
+// About 36 m from the west edge: INNER at the 0 m default, NEAR at 50 m.
 const bufferProbe = LatLng(35.005, 139.0004);
 
 class CoreE2eHarness {

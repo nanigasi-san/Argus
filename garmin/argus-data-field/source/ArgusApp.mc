@@ -1,0 +1,375 @@
+import Toybox.Activity;
+import Toybox.Application;
+import Toybox.Attention;
+import Toybox.Background;
+import Toybox.Graphics;
+import Toybox.Lang;
+import Toybox.Position;
+import Toybox.System;
+import Toybox.Time;
+import Toybox.WatchUi;
+
+(:background)
+class ArgusApp extends Application.AppBase {
+    function initialize() {
+        AppBase.initialize();
+        if (!Background.getPhoneAppMessageEventRegistered()) {
+            Background.registerForPhoneAppMessageEvent();
+        }
+        if (!Background.getActivityCompletedEventRegistered()) {
+            Background.registerForActivityCompletedEvent();
+        }
+        // Older versions may leave a temporal deletion event registered.
+        if (Application.Storage.getValue("expiryJob") != null) {
+            Application.Storage.deleteValue("expiryJob");
+            try { Background.deleteTemporalEvent(); }
+            catch (e) { System.println("ARGUS old expiry event cleanup failed: " + e.toString()); }
+        }
+        // Remove a course left OFF by an older Data Field version.
+        var stored = Application.Storage.getValue("course");
+        if (stored instanceof Lang.Dictionary
+            && stored["monitoringEnabled"] == false
+            && stored["requestId"] instanceof Lang.String) {
+            ArgusCourseLifecycle.removeCourse(stored["requestId"]);
+        }
+    }
+
+    function getInitialView() { return [new ArgusField()]; }
+    function getServiceDelegate() { return [new ArgusReceiver()]; }
+}
+
+class ArgusField extends WatchUi.DataField {
+    var _lastId = null;
+    var _lastReload = -1;
+    var _geometry = null;
+    var _monitor = null;
+    var _armedUntil = 0;
+    var _monitoringEnabled = true;
+    var _receivedUntil = -1;
+    var _courseName = "ARGUS";
+    var _vertexCount = 0;
+    var _status = "READY";
+    var _detail = "";
+
+    function initialize() {
+        DataField.initialize();
+        reload();
+    }
+
+    function onTimerStart() {
+        reload();
+        var info = Activity.getActivityInfo();
+        var runStart = info != null && info.startTime != null
+            ? info.startTime.value() : null;
+        claimRun(runStart);
+    }
+
+    function onTimerReset() { retireUsedCourse(); }
+
+    // Activity.Info arrives every second, including when another Run page is visible.
+    function compute(info) {
+        var now = Time.now().value();
+        if (_lastReload < 0 || now - _lastReload >= 10) { reload(); }
+        if (_geometry == null) {
+            if (!_status.equals("DATA ERR")) { _status = "READY"; }
+            _detail = "";
+            return;
+        }
+        if (info != null && info.timerState == Activity.TIMER_STATE_OFF
+            && hasCourseRun()) {
+            retireUsedCourse();
+            return;
+        }
+        if (!_monitoringEnabled) {
+            _monitor.reset();
+            _status = "OFF";
+            _detail = "";
+            return;
+        }
+        if (info != null && info.timerState == Activity.TIMER_STATE_ON) {
+            var runStart = info.startTime != null ? info.startTime.value() : null;
+            if (!claimRun(runStart)) { return; }
+        }
+        // The deadline is for starting a Run, not for stopping an active one.
+        if (now >= _armedUntil && !hasRunClaim()) {
+            _monitor.reset();
+            _status = "EXPIRED";
+            _detail = "";
+            return;
+        }
+        if (info == null || info.timerState != Activity.TIMER_STATE_ON) {
+            _monitor.reset();
+            _status = "ARMED";
+            _detail = "";
+        } else if (info.currentLocation == null || info.currentLocationAccuracy == null
+            || info.currentLocationAccuracy < Position.QUALITY_USABLE) {
+            _monitor.onGpsUnavailable();
+            _status = _monitor.state().equals("OUT") ? "OUT" : "GPS WAIT";
+            _detail = _monitor.state().equals("OUT") ? "GPS WAIT" : "";
+            if (_monitor.alertDue(now)) { alertOut(); }
+        } else {
+            var point = _geometry.localPoint(info.currentLocation.toDegrees());
+            _monitor.update(point[0], point[1], now);
+            if (_monitor.alertDue(now)) { alertOut(); }
+            if (_monitor.state().equals("OUT")) {
+                _status = "OUT";
+                _detail = directionJa(_monitor.direction()) + " " + _monitor.distance().toString() + "m";
+            } else {
+                _status = _monitor.state().equals("CANDIDATE") ? "CHECKING" : "IN";
+                _detail = "";
+            }
+        }
+        if (now < _receivedUntil && !_status.equals("OUT")) {
+            _status = "RECEIVED";
+            _detail = _vertexCount.toString() + " PT";
+        }
+    }
+
+    function onUpdate(dc) {
+        var width = dc.getWidth();
+        var height = dc.getHeight();
+        var center = width / 2;
+        var background = getBackgroundColor();
+        var foreground = background == Graphics.COLOR_WHITE
+            ? Graphics.COLOR_BLACK : Graphics.COLOR_WHITE;
+        var safeWidth = getObscurityFlags() == 0 ? width * 0.88 : width * 0.70;
+        dc.setColor(foreground, background);
+        dc.clear();
+        if (height < 48) {
+            dc.drawText(center, height / 2, Graphics.FONT_XTINY,
+                fitText(dc, _status, Graphics.FONT_XTINY, safeWidth),
+                Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+            return;
+        }
+        if (height < 95) {
+            dc.drawText(center, height * 0.27, Graphics.FONT_TINY,
+                fitText(dc, _status, Graphics.FONT_TINY, safeWidth),
+                Graphics.TEXT_JUSTIFY_CENTER);
+            dc.drawText(center, height * 0.62, Graphics.FONT_XTINY,
+                fitText(dc, _detail, Graphics.FONT_XTINY, safeWidth),
+                Graphics.TEXT_JUSTIFY_CENTER);
+            return;
+        }
+        dc.drawText(center, height * 0.12, Graphics.FONT_XTINY,
+            fitText(dc, _courseName, Graphics.FONT_XTINY, safeWidth),
+            Graphics.TEXT_JUSTIFY_CENTER);
+        var statusFont = height >= 145 ? Graphics.FONT_LARGE : Graphics.FONT_MEDIUM;
+        dc.drawText(center, height * 0.38, statusFont,
+            fitText(dc, _status, statusFont, safeWidth),
+            Graphics.TEXT_JUSTIFY_CENTER);
+        var detailFont = height >= 145 ? Graphics.FONT_MEDIUM : Graphics.FONT_TINY;
+        dc.drawText(center, height * 0.70, detailFont,
+            fitText(dc, _detail, detailFont, safeWidth),
+            Graphics.TEXT_JUSTIFY_CENTER);
+    }
+
+    function fitText(dc, value, font, maxWidth) {
+        if (dc.getTextWidthInPixels(value, font) <= maxWidth) { return value; }
+        var chars = value.toCharArray();
+        var clipped = "";
+        for (var i = 0; i < chars.size(); i++) {
+            var next = clipped + chars[i].toString();
+            if (dc.getTextWidthInPixels(next + "...", font) > maxWidth) { break; }
+            clipped = next;
+        }
+        return clipped + "...";
+    }
+
+    function directionJa(direction) {
+        var names = {"N" => "北", "NE" => "北東", "E" => "東", "SE" => "南東",
+            "S" => "南", "SW" => "南西", "W" => "西", "NW" => "北西"};
+        return names[direction];
+    }
+
+    function status() { return _status; }
+    function detail() { return _detail; }
+    function courseName() { return _courseName; }
+
+    function hasCourseRun() {
+        var claim = Application.Storage.getValue("courseRun");
+        return claim instanceof Lang.Dictionary && _lastId != null
+            && claim["requestId"] instanceof Lang.String
+            && claim["requestId"].equals(_lastId);
+    }
+
+    function hasRunClaim() {
+        var claim = Application.Storage.getValue("courseRun");
+        return hasCourseRun() && claim["expired"] != true;
+    }
+
+    function claimRun(runStart) {
+        if (_geometry == null) { return false; }
+        var stored = Application.Storage.getValue("course");
+        if (!(stored instanceof Lang.Dictionary)
+            || !(stored["requestId"] instanceof Lang.String)
+            || !stored["requestId"].equals(_lastId)) {
+            clearLoadedCourse();
+            return false;
+        }
+        if (stored["monitoringEnabled"] == false) {
+            _monitoringEnabled = false;
+            _monitor.reset();
+            _status = "OFF";
+            _detail = "";
+            return false;
+        }
+        var now = Time.now().value();
+        var claim = Application.Storage.getValue("courseRun");
+        if (claim instanceof Lang.Dictionary && _lastId != null
+            && claim["requestId"] instanceof Lang.String
+            && claim["requestId"].equals(_lastId)) {
+            var previousStart = claim["startTime"];
+            if (previousStart != null && runStart != null
+                && previousStart != runStart) {
+                // The reset event was missed; never arm an old course in a new Run.
+                retireUsedCourse();
+                return false;
+            }
+            if (claim["expired"] == true) {
+                if (claim["provisional"] == true && runStart != null) {
+                    if (runStart < _armedUntil) {
+                        Application.Storage.setValue("courseRun",
+                            {"requestId" => _lastId, "startTime" => runStart,
+                                "claimedAt" => now});
+                        return true;
+                    }
+                    Application.Storage.setValue("courseRun",
+                        {"requestId" => _lastId, "startTime" => runStart,
+                            "expired" => true});
+                }
+                _monitor.reset();
+                _status = "EXPIRED";
+                _detail = "";
+                return false;
+            }
+            var claimedAt = claim["claimedAt"];
+            if ((runStart != null && runStart >= _armedUntil)
+                || (previousStart == null && runStart == null
+                    && now >= _armedUntil
+                    && !(claimedAt instanceof Lang.Number
+                        && claimedAt < _armedUntil))) {
+                // Do not revive a course in a Run begun after its deadline.
+                retireUsedCourse();
+                return false;
+            }
+            if (previousStart == null && runStart != null) {
+                Application.Storage.setValue("courseRun",
+                    {"requestId" => _lastId, "startTime" => runStart,
+                        "claimedAt" => claimedAt});
+            }
+            return true;
+        }
+        if ((runStart != null && runStart >= _armedUntil)
+            || (runStart == null && now >= _armedUntil)) {
+            // Keep the file until this Run ends; it must never be monitored.
+            Application.Storage.setValue("courseRun",
+                {"requestId" => _lastId, "startTime" => runStart,
+                    "expired" => true, "provisional" => runStart == null});
+            _monitor.reset();
+            _status = "EXPIRED";
+            _detail = "";
+            return false;
+        }
+        // Another field instance may already have retired this course.
+        Application.Storage.setValue("courseRun",
+            {"requestId" => _lastId, "startTime" => runStart,
+                "claimedAt" => now});
+        return true;
+    }
+
+    function retireUsedCourse() {
+        var claim = Application.Storage.getValue("courseRun");
+        if (!(claim instanceof Lang.Dictionary)
+            || !(claim["requestId"] instanceof Lang.String)
+            || _lastId == null || !claim["requestId"].equals(_lastId)) {
+            reload();
+            return;
+        }
+        if (ArgusCourseLifecycle.removeCourse(claim["requestId"])) {
+            clearLoadedCourse();
+        } else {
+            var current = Application.Storage.getValue("course");
+            if (!ArgusCourseLifecycle.matches(current, claim["requestId"])) {
+                ArgusCourseLifecycle.clearRunClaim(claim["requestId"]);
+                reload();
+            } else {
+                _monitor.reset();
+                _status = "DATA ERR";
+                _detail = "";
+            }
+        }
+    }
+
+    function clearLoadedCourse() {
+        _lastId = null;
+        _lastReload = -1;
+        _geometry = null;
+        _monitor = null;
+        _armedUntil = 0;
+        _monitoringEnabled = true;
+        _receivedUntil = -1;
+        _courseName = "ARGUS";
+        _vertexCount = 0;
+        _status = "READY";
+        _detail = "";
+    }
+
+    function reload() {
+        _lastReload = Time.now().value();
+        var stored = Application.Storage.getValue("course");
+        if (!(stored instanceof Lang.Dictionary) || stored["requestId"] == null) {
+            if (_geometry != null) {
+                clearLoadedCourse();
+                _lastReload = Time.now().value();
+            }
+            return;
+        }
+        if (_lastId != null && stored["requestId"].equals(_lastId)) {
+            _monitoringEnabled = stored["monitoringEnabled"] != false;
+            if (!_monitoringEnabled) { _monitor.reset(); }
+            return;
+        }
+        var candidate = new ArgusGeometry(stored);
+        if (!candidate.isValid()) {
+            _status = "DATA ERR";
+            _geometry = null;
+            _monitor = null;
+            return;
+        }
+        _lastId = stored["requestId"];
+        _geometry = candidate;
+        _monitor = new ArgusMonitor(candidate);
+        _armedUntil = stored["armedUntil"];
+        _monitoringEnabled = stored["monitoringEnabled"] != false;
+        _vertexCount = candidate.count();
+        _courseName = stored["displayName"] instanceof Lang.String
+            ? stored["displayName"] : "ARGUS";
+        var receivedAt = stored["receivedAt"];
+        var now = Time.now().value();
+        // Storage is polled every 10s. Start the confirmation when this field
+        // notices the new course, not when the background service saves it.
+        _receivedUntil = receivedAt instanceof Lang.Number
+            && now >= receivedAt && now - receivedAt <= 20 ? now + 6 : -1;
+    }
+
+    function alertOut() {
+        try {
+            if (Attention has :vibrate) {
+                Attention.vibrate([
+                    new Attention.VibeProfile(100, 3000)
+                ]);
+            }
+        } catch (e) {
+            System.println("ARGUS vibration failed: " + e.toString());
+        }
+        try {
+            if (Attention has :ToneProfile) {
+                Attention.playTone({:toneProfile => [new Attention.ToneProfile(2500, 3000)]});
+            } else if (Attention has :playTone) {
+                Attention.playTone(Attention.TONE_ALERT_HI);
+            }
+        } catch (e) {
+            System.println("ARGUS tone failed: " + e.toString());
+        }
+    }
+}

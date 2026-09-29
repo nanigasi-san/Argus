@@ -35,12 +35,11 @@ export E2E_REPORT_DIR="$output_dir"
 # Virtual headings are injected in Dart; no magnetic sensor is required.
 # Native GPS remains a separate opt-in mode (SIMULATOR_GPS is not enabled).
 echo "[$(date -u '+%FT%TZ')] Starting $test_file (timeout ${suite_timeout}s)"
-boot_args=()
+runner=(python3 scripts/run_ios_e2e.py "$device_id" "$output_dir")
 if [ "${E2E_IOS_BOOT_SIMULATOR:-false}" = true ]; then
-  boot_args+=(--boot-simulator)
+  runner+=(--boot-simulator)
 fi
-if bounded "$suite_timeout" python3 scripts/run_ios_e2e.py "$device_id" "$output_dir" \
-    "${boot_args[@]}" \
+if bounded "$suite_timeout" "${runner[@]}" \
     2>&1 | tee "$output_dir/${suite}.log"; then
   echo "$suite: success" | tee -a "$output_dir/results.txt"
 else

@@ -9,3 +9,9 @@
 - 指示された作業を終えたら、その作業の変更をコミットし、現在のブランチに `git push` してから完了を報告する。
 
 既存の未コミット変更や作業対象外のファイルは保持する。PULL・PUSH に失敗した場合は、強制操作をせず原因を報告する。
+
+## Connect IQ Simulator（macOS）
+
+- Homebrewで入れたConnect IQ SDKでは、`/Applications/ConnectIQ.app` のシミュレーターが親ディレクトリの `/Applications/version.txt` を参照する。一方、実ファイルはSDKの `bin/version.txt` にある。この参照がないと `can't open file '/Applications/version.txt'` と表示される。アプリやテストコードのエラーと取り違えない。
+- `SDK_BIN=$(dirname "$(realpath "$(command -v monkeydo)")")` で使用中のSDKを特定し、`$SDK_BIN/version.txt` と `/Applications/version.txt` の存在・リンク先を確認する。後者がない場合のみ `ln -s "$SDK_BIN/version.txt" /Applications/version.txt` で参照を作る。SDK更新後はリンク切れを確認し、新しいSDKのファイルを指すように更新する。
+- 参照を直した後はシミュレーターを再起動して確認する。このリンクは各Macのローカル環境設定であり、リポジトリには含まれない。

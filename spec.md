@@ -1,12 +1,14 @@
 # Argus アプリ仕様（コード起点 / 2026-06-17）
 
+この文書は当時の実装スナップショットであり、現行仕様ではない。現在のスマホ仕様は [docs/spec.md](docs/spec.md)、GARMIN転送・監視の形式と制限は [docs/garmin_data_format.md](docs/garmin_data_format.md) を参照。特に以下の当時の既定値・画面構成・未使用設定の記述を現行実装へ適用しないこと。
+
 この文書はリポジトリ内の実装（特に `lib/` 配下）から読み取った事実ベースの仕様です。ランディングページ用コピーや追加開発時の参照に使えます。
 
 ---
 
 ## 1. プロダクト概要
-- 目的: GeoJSON で定義された安全圏からの離脱を端末内で検知し、音・バイブ・ローカル通知で即時警告するジオフェンスアプリ。
-- 想定利用: 認知症徘徊対策、警備エリア監視、養護施設内の見守りなど「エリア外に出たら即アラート」が要るケース。
+- 目的: GeoJSON で定義された安全圏からの離脱を端末内で検知し、既定ではエリア外の測位を3サンプルかつ10秒確認した後に音・バイブ・ローカル通知で警告するジオフェンスアプリ。
+- 想定利用: 競技エリアや安全区域からの離脱を、確認時間を設けて警告したいケース。
 - 対応プラットフォーム: Flutter 3 / Dart 3.2+。Android 9+ / iOS 15+（Foreground / 背景位置情報前提）。
 - 同期/クラウドなし。GeoJSON は手動読み込み（ファイル or QR）。位置情報は Geolocator の単一ストリームで取得する。
 
@@ -91,7 +93,7 @@
 
 ## 6. データ/設定リファレンス
 - AppConfig (`io/config.dart`):
-  - `inner_buffer_m`(double, 30.0) / `leave_confirm_samples`(int, 3) / `leave_confirm_seconds`(int, 10) / `gps_accuracy_bad_m`(double, 40.0) / `sample_interval_s.fast`(int, 3) / `sample_distance_m`(保持のみ・未使用) / `screen_wake_on_leave`(保持のみ・未使用) / `alarm_volume`(double, 1.0)。
+  - 2026-06-17当時の設定一覧。現行の `AppConfig` は `inner_buffer_m` 既定0.0、`alarm_volume` 既定0.5で、`sample_distance_m` と `screen_wake_on_leave` は含まれない。その他のキーは [docs/spec.md](docs/spec.md) を参照。
   - 保存先: ドキュメントディレクトリの `config.json`。読み込み失敗時はデフォルトを再生成。
 - StateSnapshot (`state.dart`): `status`, `timestamp`, `distanceToBoundaryM`, `horizontalAccuracyM`, `geoJsonLoaded`, `notes`, `nearestBoundaryPoint(LatLng)`, `bearingToBoundaryDeg`。
 - ログ:

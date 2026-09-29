@@ -114,7 +114,7 @@ class _BackgroundLocationDisclosurePageState
                             Text(
                               isIOS
                                   ? '監視開始後は、画面ロック中や他のアプリ使用中も位置情報を使って競技エリアからの離脱を検知し、警告します。'
-                                  : '監視開始後は、アプリを閉じているときや使用していないときも位置情報を使って競技エリアからの離脱を検知し、通知します。',
+                                  : '監視開始後は、画面ロック中や他のアプリ使用中も位置情報を使って競技エリアからの離脱を検知し、通知します。',
                               style: theme.textTheme.bodyLarge,
                             ),
                             if (isIOS) ...[
@@ -149,7 +149,7 @@ class _BackgroundLocationDisclosurePageState
                                   Text(
                                     isIOS
                                         ? '・位置情報は画面ロック中や他のアプリ使用中も使われます。'
-                                        : '・位置情報はアプリを閉じているときや使用していないときも使われます。',
+                                        : '・位置情報は画面ロック中や他のアプリ使用中も使われます。',
                                   ),
                                   const SizedBox(height: 6),
                                   const Text(

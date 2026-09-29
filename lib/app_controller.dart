@@ -89,6 +89,8 @@ class AppController extends ChangeNotifier {
   StateSnapshot get snapshot => _snapshot;
   AppConfig? get config => _config;
   bool get geoJsonLoaded => _geoModel.hasGeometry;
+  bool get isMonitoring => _subscription != null;
+  GeoModel get geoModel => _geoModel;
   String? get lastErrorMessage => _lastErrorMessage;
   String? get geoJsonFileName => _geoJsonFileName;
   List<AppLogEntry> get logs => List.unmodifiable(_logs);

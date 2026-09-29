@@ -1,5 +1,5 @@
 {
-  "inner_buffer_m": 30,
+  "inner_buffer_m": 0,
   "leave_confirm_samples": 3,
   "leave_confirm_seconds": 10,
   "gps_accuracy_bad_m": 40,
