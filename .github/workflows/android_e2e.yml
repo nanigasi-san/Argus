@@ -43,7 +43,7 @@ jobs:
         with:
           cache-provider: external
 
-      # Separate release/debug state; refresh it on each commit without collisions.
+      # Separate release/debug dependencies; reuse unchanged entries without re-uploading.
       - name: Restore Gradle cache
         id: gradle-cache
         uses: actions/cache/restore@v5
@@ -53,9 +53,10 @@ jobs:
             ~/.gradle/wrapper
             !~/.gradle/caches/**/*.lock
             !~/.gradle/caches/**/gc.properties
-          key: ${{ runner.os }}-${{ runner.arch }}-gradle-v1-${{ github.workflow }}-${{ hashFiles('android/**/*.gradle*', 'android/gradle.properties', 'android/gradle/wrapper/gradle-wrapper.properties', 'pubspec.lock') }}-${{ github.sha }}
+          key: ${{ runner.os }}-${{ runner.arch }}-gradle-v1-${{ github.workflow }}-${{ hashFiles('android/**/*.gradle*', 'android/gradle.properties', 'android/gradle/wrapper/gradle-wrapper.properties', 'pubspec.lock') }}
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-gradle-v1-${{ github.workflow }}-${{ hashFiles('android/**/*.gradle*', 'android/gradle.properties', 'android/gradle/wrapper/gradle-wrapper.properties', 'pubspec.lock') }}-
+            ${{ runner.os }}-${{ runner.arch }}-gradle-v1-${{ github.workflow }}-
 
       - name: Get dependencies
         run: flutter pub get

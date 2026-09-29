@@ -120,8 +120,9 @@ URL取得の時間制限、接続不能時の中断、driver失敗の保持もPy
 Flutter SDK・pubキャッシュを全検証ワークフローで有効にする。
 Android Build・Android E2Eは `gradle/actions/setup-gradle` により
 wrapperを検証し、`cache-provider: external`と`actions/cache`でGradle依存を保存する。
-キャッシュキーはOS・CPU・ワークフロー名・Gradle設定/ロックファイルのハッシュ・コミットSHA。
-復元時は同じ設定の過去コミットへフォールバックし、成功後に更新する。
+キャッシュキーはOS・CPU・ワークフロー名・Gradle設定/ロックファイルのハッシュ。
+依存設定が同じ場合は再保存せず、ミス時は同じワークフローの既存依存へフォールバックし、
+成功後に新しいキーで保存する。依存の変更・解決はGradle自身が検証する。
 BuildとE2Eの同一キーへの保存競合を避け、失敗した実行とfork PRからは保存しない。
 ロックファイルを除外し、アプリ成果物とテスト結果はキャッシュしない。
 iOSはOS・CPU・Xcode版・Podfile/lock・pubspec.lock・Xcodeプロジェクトをキーに、

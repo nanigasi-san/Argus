@@ -53,7 +53,7 @@ Pythonは`python -m unittest discover -s scripts -p 'test_*.py'`で全件実行�
 | [Android E2E / 36558512126](https://github.com/nanigasi-san/Argus/actions/runs/36558512126) | job 599秒、E2E step 513秒、assembleDebug 319.6秒 | Gradleキャッシュが見つからず、保存に44秒かかった後、別jobとの同一キー競合で保存失敗 |
 | [iOS Build / 36558512313](https://github.com/nanigasi-san/Argus/actions/runs/36558512313) | job 577秒、Flutter準備70秒、build/native test 451秒 | Flutter/pubは既にキャッシュあり。CocoaPods等のダウンロードキャッシュはなし |
 
-Androidはワークフロー名と依存設定をキーに含め、SHAごとに成功した依存キャッシュを更新する。iOSはXcode・依存設定ごとにCocoaPods/SwiftPMの取得結果を再利用する。詳細は[CI](ci.md)。
+Androidはワークフロー名と依存設定をキーに含め、成功した依存キャッシュを保存する。初回の実測でAndroid Buildのキャッシュが約2.3GBあったため、コミットSHAは最終キーから除外し、同じ依存設定での再アップロードを省いた。iOSはXcode・依存設定ごとにCocoaPods/SwiftPMの取得結果を再利用する。詳細は[CI](ci.md)。
 
 キャッシュがなくても通常の取得・ビルド・全テストを行う。アプリ成果物、テスト結果、AVDの状態、DerivedDataはキャッシュしない。実行対象・起動条件・タイムアウト・必須チェックは変更しない。
 
