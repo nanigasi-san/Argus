@@ -44,14 +44,22 @@ void main() {
         ),
       ));
       await tester.pumpAndSettle();
-      await _tryTakeScreenshot(binding, 'garmin-transfer-before-improved');
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.widgetWithText(FilledButton, 'GARMINに送信'),
+            )
+            .onPressed,
+        isNotNull,
+      );
+      await _tryTakeScreenshot(binding, 'garmin-transfer-option1-before');
 
       await tester.ensureVisible(find.text('GARMINに送信'));
       await tester.tap(find.text('GARMINに送信'));
       await tester.pumpAndSettle();
       expect(find.text('GARMINへ転送しました'), findsOneWidget);
       await tester.pump(const Duration(seconds: 2));
-      await _tryTakeScreenshot(binding, 'garmin-transfer-after-improved');
+      await _tryTakeScreenshot(binding, 'garmin-transfer-option1-after');
     });
 
     testWidgets('entry screen opens the existing Garmin transfer flow',

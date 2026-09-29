@@ -191,8 +191,8 @@ Future<void> _startTransfer(
 }
 
 Future<void> _selectSecondWatch(WidgetTester tester) async {
-  await tester.ensureVisible(find.byType(DropdownButtonFormField<String>));
-  await tester.tap(find.byType(DropdownButtonFormField<String>));
+  await tester.ensureVisible(find.text('時計を変更'));
+  await tester.tap(find.text('時計を変更'));
   await tester.pumpAndSettle();
   await tester.tap(find.text('Watch 2 · 接続済み').last);
   await tester.pumpAndSettle();
@@ -210,7 +210,7 @@ void main() {
           MaterialApp(home: GarminTransferPage(client: _PendingGarminClient())),
     ));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('GeoJSONファイルを読み込む'));
+    await tester.tap(find.text('ファイルを選ぶ'));
     await tester.pumpAndSettle();
     expect(setup.controller.isMonitoring, isTrue);
     expect(setup.location.hasStopped, isFalse);
@@ -234,7 +234,7 @@ void main() {
           MaterialApp(home: GarminTransferPage(client: _PendingGarminClient())),
     ));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('GeoJSONファイルを読み込む'));
+    await tester.tap(find.text('ファイルを選ぶ'));
     await tester.pumpAndSettle();
     expect(setup.controller.isMonitoring, isTrue);
     expect(setup.location.hasStopped, isFalse);
@@ -258,7 +258,7 @@ void main() {
       child: MaterialApp(home: GarminTransferPage(client: client)),
     ));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('GeoJSONファイルを読み込む'));
+    await tester.tap(find.text('ファイルを選ぶ'));
     await tester.pumpAndSettle();
     expect(find.text('watch.geojson'), findsOneWidget);
     await tester.ensureVisible(find.text('GARMINに送信'));
