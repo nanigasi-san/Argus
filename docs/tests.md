@@ -12,6 +12,14 @@
 
 ## テスト層
 
+### GARMIN Data Field
+
+`Garmin Tests` CIでConnect IQ SDK 9.2.0の`fr55` Simulatorを起動し、
+`garmin/argus-data-field/tests/MonitorTests.mc`の境界判定・監視状態・範囲の寿命・
+保存とACKの全テストを実行する。通常ビルドも毎回実行し、テスト結果と検出件数が
+一致しなければ失敗とする。[CIの実行環境と診断ログ](ci.md#garminのビルドとsimulatorテスト)を参照。
+BLE通信・実GPS・実時計の表示や警告は実機確認として区別する。
+
 ### State / Geo / QR / IO
 
 状態遷移、GeoJSON パース、点とポリゴン判定、QR codec、設定 JSON、ログ出力を純粋 Dart テストで守る。ここは実機依存を持たせず、例外系と境界値を厚く見る。

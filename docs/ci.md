@@ -5,6 +5,7 @@
 | ワークフロー・チェック名 | 定義 | 検証内容 |
 | --- | --- | --- |
 | Flutter Tests | `.github/workflows/flutter_tests.yml` | 静的解析、unit/widgetテスト、カバレッジ |
+| Garmin Tests | `.github/workflows/garmin_tests.yml` | Connect IQ SDK 9.2.0でfr55通常ビルドと全Monkey C Simulatorテスト |
 | Android Build | `.github/workflows/android_build.yml` | 本番エントリーポイントのrelease AAB生成 |
 | iOS Build | `.github/workflows/ios_build.yml` | Simulator向けビルド、native XCTest（Dartテスト・解析はFlutter Testsに集約） |
 | Android E2E | `.github/workflows/android_e2e.yml` | Android Emulator上の全共通E2E |
@@ -12,7 +13,7 @@
 | Android Release | `.github/workflows/android_release.yml` | main CI 成功確認、署名AAB生成、Google Play production への公開要求 |
 
 テスト・ビルド・E2EはPRとmain pushで実行する。
-Android Build・iOS Buildと両E2Eは手動実行にも対応する。
+Android Build・iOS Buildと両E2E、Garmin Testsは手動実行にも対応する。
 Android Release はバージョンタグの push のみで起動する。
 
 iOS はGitHub ActionsのCDを使用しない。5つの必須チェックが対象 SHA で成功した後、
@@ -54,11 +55,40 @@ PRがない作業ブランチへのpushでは実行せず、mainへのpushでは
 現在はDraft PRも通常PRと同じ検証対象であり、Readyにした時だけ実行する
 最適化は導入していない。
 
-5つの検証ワークフローに `concurrency` と `cancel-in-progress: true` を設定し、
+6つの検証ワークフローに `concurrency` と `cancel-in-progress: true` を設定し、
 同じワークフロー・同じブランチの新しい実行が始まると古い実行をキャンセルする。
 `Android Release` はアプリ単位で配信を直列化し、進行中の配信をキャンセルしない。
 これは古い実行の重複を抑える設定であり、マージを制限する必須チェック設定とは
 別の仕組みである。
+
+## GARMINのビルドとSimulatorテスト
+
+`Garmin Tests` はPR・main push・手動実行で、`fr55`向けの通常ビルドと
+`garmin/argus-data-field/source/`・`tests/`の全Monkey Cテストを実行する。
+現在は`tests/MonitorTests.mc`の26件。コンパイルには`--unit-test`、
+実行には`monkeydo ... fr55 -t`を指定し、個別テスト名で絞り込まない。
+[Garmin公式のテスト手順](https://developer.garmin.com/connect-iq/core-topics/unit-testing/)に沿って
+Xvfb上のConnect IQ Simulatorを使用する。
+
+実行環境は[matco/connectiq-tester](https://github.com/matco/connectiq-tester)の
+Connect IQ SDK 9.2.0・機種定義・フォントを含むイメージをSHA-256 digestで固定する。
+更新時は`.github/workflows/garmin_tests.yml`のdigestをレビューする。
+イメージ付属のテストスクリプトは使わず、リポジトリの
+`scripts/run_garmin_tests.sh`でビルドと全テストを実行する。
+コンテナはネットワークを無効にし、配布用署名鍵やGarmin認証情報を渡さない。
+テスト用鍵は毎回一時生成して終了時に削除する。
+
+通常・テストビルドは各180秒、Simulator起動は60秒、テストは300秒、
+ジョブ全体は15分を上限とする。終了時はSimulatorとXvfbを停止する。
+SDKの`monkeydo`は全成功でも終了コード1を返す場合があるため、
+`scripts/verify_garmin_tests.py`でPASSEDサマリー、失敗・エラー0件、
+ソースから再帰検出した件数との一致を確認する。結果欠落・0件・件数不足・
+タイムアウトを成功扱いしない。この判定の回帰テストはFlutter Testsで実行する。
+ログ・PRG・検出一覧・`test-results.json`は`garmin-tests-fr55` Artifactに14日間保存する。
+
+これは時計側ロジックのSimulator検証であり、実時計のBLE・GPS・音・振動や
+全登録機種の表示確認は別途必要。mainの必須5チェックや配信ゲートの設定は
+変更しておらず、Garmin Testsは追加のPRチェックとして実行する。
 
 ## iOS E2Eの診断ログと時間制限
 

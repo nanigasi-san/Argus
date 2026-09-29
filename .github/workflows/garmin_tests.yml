@@ -1,0 +1,61 @@
+name: Garmin Tests
+
+on:
+  pull_request:
+    branches: ["*"]
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Garmin Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Connect IQ 9.2.0, device definitions and fonts (2026-08-31).
+      # Pin the full environment; updates require a reviewed digest change.
+      GARMIN_IMAGE: ghcr.io/matco/connectiq-tester@sha256:64958e8fd2925d0c4986d72a9aa9d8e2101297a881354aab0118be2f1dc22105
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Pull pinned Connect IQ environment
+        run: docker pull "$GARMIN_IMAGE"
+
+      - name: Build and run all watch tests
+        run: |
+          mkdir -p build/garmin-tests
+          docker run --name argus-garmin-tests --rm --init --network none \
+            --volume "$PWD:/workspace" --workdir /workspace \
+            --entrypoint /bin/bash "$GARMIN_IMAGE" \
+            scripts/run_garmin_tests.sh fr55
+
+      - name: Verify complete test results
+        run: python3 scripts/verify_garmin_tests.py
+
+      - name: Stop test container
+        if: always()
+        run: |
+          if docker container inspect argus-garmin-tests >/dev/null 2>&1; then
+            docker stop --time 5 argus-garmin-tests
+          fi
+
+      - name: Upload build and simulator diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: garmin-tests-fr55
+          path: build/garmin-tests/
+          if-no-files-found: warn
+          retention-days: 14

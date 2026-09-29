@@ -48,6 +48,11 @@ monkeyc -f garmin/argus-data-field/monkey.jungle -d fr55 \
 初回はRunのデータ画面にARGUSを追加して一度表示し、バックグラウンド受信を登録する。
 その後Runを終了しても転送できる。スマホ側はGarmin ConnectとのBluetooth接続が必要。
 
+PR・main pushでは`Garmin Tests` CIがSDK 9.2.0 / `fr55`で通常ビルドと
+`tests/MonitorTests.mc`の26件を含む全Monkey CテストをSimulator上で実行する。
+実行件数不足・失敗・タイムアウトはCI失敗になる。環境、ログと制限は
+[GARMIN CIの説明](../../docs/ci.md#garminのビルドとsimulatorテスト)を参照。
+
 座標表現、100頂点時のサイズ、チェックサムとACKの詳細は[Garmin転送データ形式](../../docs/garmin_data_format.md)を参照。
 
 送信するGeoJSON/QRはスマホ内で読み込む。AndroidではGarmin Connectを介した
