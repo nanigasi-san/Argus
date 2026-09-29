@@ -237,8 +237,8 @@ public final class GarminBridge implements MethodChannel.MethodCallHandler {
                 && "background".equals(ack.get("receiver"))
                 && numberEquals(1, ack.get("v"));
         if (control) {
-            valid = valid && "disable".equals(ack.get("action"))
-                    && Boolean.TRUE.equals(ack.get("disabled"));
+            valid = valid && "clear".equals(ack.get("action"))
+                    && Boolean.TRUE.equals(ack.get("cleared"));
         } else {
             valid = valid && Boolean.TRUE.equals(ack.get("saved"))
                     && pendingRequest.get("courseId").equals(ack.get("courseId"))

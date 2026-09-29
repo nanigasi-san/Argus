@@ -8,7 +8,7 @@ MacBook の初回環境構築は [macbook_ios_setup.md](macbook_ios_setup.md) �
 
 ## 実装済みのiOS設定
 
-- App version（開発ブランチの暫定値）: `0.9.0+1013`
+- App version（開発ブランチの暫定値）: `0.9.0+1016`
 - Bundle ID: `com.argus.orienteering`
 - Minimum deployment target: iOS 15.0
 - Background Modes: `Location updates`, `Audio`

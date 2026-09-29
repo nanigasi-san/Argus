@@ -60,7 +60,7 @@ class GarminTransferClient {
           'deviceId': device.id,
           'type': 'argus-control',
           'v': 1,
-          'action': 'disable',
+          'action': 'clear',
         },
         device);
   }

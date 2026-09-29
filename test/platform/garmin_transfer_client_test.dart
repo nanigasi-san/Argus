@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('reset monitoring sends a disable command to the selected watch',
+  test('reset monitoring sends a clear command to the selected watch',
       () async {
     const channel = MethodChannel('argus/garmin');
     MethodCall? sent;
@@ -26,7 +26,7 @@ void main() {
       'deviceId': 'watch-1',
       'type': 'argus-control',
       'v': 1,
-      'action': 'disable',
+      'action': 'clear',
     });
     expect(result.deviceName, 'ForeAthlete 55');
     expect(result.elapsedMs, 42);

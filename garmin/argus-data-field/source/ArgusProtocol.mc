@@ -51,22 +51,22 @@ module ArgusProtocol {
             && (new ArgusGeometry(data)).isValid();
     }
 
-    function validDisable(data) {
+    function validClear(data) {
         return data instanceof Lang.Dictionary
             && data["type"] instanceof Lang.String
             && data["type"].equals("argus-control")
             && data["v"] == 1
             && data["action"] instanceof Lang.String
-            && data["action"].equals("disable")
+            && data["action"].equals("clear")
             && data["requestId"] instanceof Lang.String
             && data["requestId"].length() > 0
             && data["requestId"].length() <= 64;
     }
 
-    function disableAck(data, disabled, error) {
+    function clearAck(data, cleared, error) {
         return {"type" => "ack", "v" => 1, "receiver" => "background",
-            "requestId" => data["requestId"], "action" => "disable",
-            "disabled" => disabled, "error" => error};
+            "requestId" => data["requestId"], "action" => "clear",
+            "cleared" => cleared, "error" => error};
     }
 
     function ack(data, saved, error) {

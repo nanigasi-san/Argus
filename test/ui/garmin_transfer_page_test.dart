@@ -421,7 +421,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.text('GARMINの監視を停止しました'), -200);
     expect(find.text('GARMINの監視を停止しました'), findsOneWidget);
-    expect(find.text('範囲ファイルは期限まで保持されます。再開には再送信してください。'), findsOneWidget);
+    expect(find.text('時計の範囲データを削除しました。再開には再送信してください。'), findsOneWidget);
   });
 
   testWidgets('allows reset without loading a GeoJSON file', (tester) async {

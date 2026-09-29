@@ -1,6 +1,6 @@
 # GARMIN Data Field の対象機種とセットアップ
 
-ARGUS Data Field 0.4.0 は、Connect IQ API 3.4 以上の次のランニング系・fēnix機種IDをmanifestに登録している。1つのIDに複数の販売名（Solar、Sapphireなど）が対応する場合がある。APIと販売名の出典は[Garmin公式対応機種表](https://developer.garmin.com/connect-iq/compatible-devices/)。Forerunner 245／745／945（LTE以外）、fēnix 5系などAPI 3.3以下の機種、および他シリーズは対象外。
+ARGUS Data Field 0.6.0 は、Connect IQ API 3.4 以上の次のランニング系・fēnix機種IDをmanifestに登録している。1つのIDに複数の販売名（Solar、Sapphireなど）が対応する場合がある。APIと販売名の出典は[Garmin公式対応機種表](https://developer.garmin.com/connect-iq/compatible-devices/)。Forerunner 245／745／945（LTE以外）、fēnix 5系などAPI 3.3以下の機種、および他シリーズは対象外。
 
 | 系列 | 登録した製品ID |
 | --- | --- |
@@ -25,6 +25,6 @@ iPhoneの転送はARGUSを開いた状態で行う。Garmin公式[iOS Companion 
 
 ## Macでの検証
 
-Forerunner 55ではiPhoneからの境界送信と時計側の保存・照合ACKを実機で確認済み。iOS Simulator向けビルドと`fr55`向けConnect IQビルドも成功している。一方、今回追加した監視停止コマンド・RUN一回限りの停止・期限削除は、この記録だけでは実機確認済みと扱わない。追加機種の実機通信と表示・警告も未検証であり、**manifest登録だけを実機での動作保証と扱わない。** MacでConnect IQ SDK Managerから上記の全製品IDの端末定義を導入してから、各IDを個別にビルド・シミュレーター実行する。小／大データ欄、MIP／AMOLED、白黒背景、日本語、最大100頂点の保存・再送・ACK、IN／OUT、GPS待ち、有効期限切れ、音・振動を確認する。
+Forerunner 55ではiPhoneからの境界送信と時計側の保存・照合ACKを実機で確認済み。ユーザー報告ではオフライン送信、1回目のRun後に次のRunで監視がOFFになること、Run中のスマホからの停止も確認済み。ただし、これらは変更前のData Fieldでの確認であり、0.6.0のRun終了・手動停止時の範囲削除ACKは実機で再確認する。iOS Simulator向けビルドと`fr55`向けConnect IQビルドも先行版では成功している。追加機種の実機通信と表示・警告は未検証であり、**manifest登録だけを実機での動作保証と扱わない。** MacでConnect IQ SDK Managerから上記の全製品IDの端末定義を導入してから、各IDを個別にビルド・シミュレーター実行する。小／大データ欄、MIP／AMOLED、白黒背景、日本語、最大100頂点の保存・再送・ACK、IN／OUT、GPS待ち、有効期限切れ、音・振動を確認する。
 
 Forerunner 55実機ではAndroidとiPhoneの双方から送信して保存ACKを確認し、スマホを切断したRun中の判定・音・振動を確認する。追加機種は全IDのシミュレーター結果を記録し、実機試験済みと区別する。PR提出前には `flutter test`、`flutter analyze`、Android全E2E、およびMac上で `bash scripts/run_ios_e2e.sh <simulator-udid>` を実行し、結果をPRに記録する。

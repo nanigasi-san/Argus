@@ -21,10 +21,10 @@ ARGUSはGeoJSONやQRから復元した境界をスマホ上で変換し、GARMIN
 
 GARMINのBackground受信処理は形式・長さ・必須の期限と原点座標・チェックサム・座標の復元可否を確認し、`pending` に一時保存して読み戻した後、`course` として永続保存し再度読み戻す。成功時だけ保存結果を含むACKを返す。スマホは `requestId`、`courseId`、ファイル名、チェックサム、バイト数、頂点数、有効期限が一致するACKを受けて初めて転送完了とする。ACK待機の上限は60秒。通信開始には事前のペアリングとGarmin Connectが必要だが、ARGUSの転送処理自体はクラウドAPIを呼ばない。Garmin Connectまで含めた完全オフライン実機送信は未検証。
 
-保存した`course`には `monitoringEnabled` を持たせ、送信成功時は `true` にする。送信後に進行中のRun、またはRun外で送信した場合は次に開始したRunの1回だけ監視し、タイマー停止・一時停止ではONのまま保持する。Run終了・活動完了時は `false` にして監視を停止するが、範囲ファイルと名前は期限まで残す。終了イベントを取り逃しても、保存したRun開始時刻と次のRun開始時刻が異なればOFFにする。OFFのData Fieldはファイル名と `OFF` を表示し、位置判定・警告を行わない。再開にはスマホから範囲を再送信する。
+保存した`course`には `monitoringEnabled` を持たせ、送信成功時は `true` にする。期限内に開始した次のRunの1回だけ監視し、タイマーの一時停止・再開では監視を保持する。Run終了・活動完了時は対象の `requestId` を照合して範囲データを削除し、Data Fieldを `READY` に戻す。終了イベントを取り逃しても、保存したRun開始時刻と次のRun開始時刻が異なれば古い範囲を削除する。Run中の新規送信は対象外。次のRunで監視するにはスマホから範囲を再送信する。
 
-スマホの「GARMINの監視を停止」は、ファイルを読み込んでいなくても送れる `type=argus-control, v=1, action=disable` コマンドを使う。時計は保存済みの `course` のフラグをOFFにして読み戻し、RUN中の記録も解除する。スマホは同じ `requestId` と `action=disable, disabled=true` のACKを確認して停止完了とする。Data Field表示への反映は通常の保存データ再読込（最大約10秒）までかかり得る。現在再生中の3秒間の音・振動は途中停止せず、以後の警告を止める。
+スマホの「GARMINの監視を停止」は、ファイルを読み込んでいなくても送れる `type=argus-control, v=1, action=clear` コマンドを使う。時計は保存済みの `course` を削除して読み戻し、対象Runの記録も解除する。スマホは同じ `requestId` と `action=clear, cleared=true` のACKを確認して停止完了とする。旧版Data Fieldの `action=disable` ACKは削除成功と扱わない。Data Field表示への反映は通常の保存データ再読込（最大約10秒）までかかり得る。現在再生中の3秒間の音・振動は途中停止せず、以後の警告を止める。
 
-`armedUntil` はスマホが送信時刻から12時間後として生成する**Run開始期限**。期限前に始まったRunは、期限を過ぎても終了まで監視する。期限後に新しくRunを始めても監視しない。未使用または監視OFFの`course`はConnect IQのtemporal background eventで期限の約5分後に削除を試みる。この5分は期限直前のRun開始と削除の競合を避ける猶予で、監視を5分延長するものではない。イベント時にRunが継続中なら30分後に再確認し、活動完了時にも削除を試みる。時計の電源断やイベント予約失敗などでイベントが届かなかった場合は、期限＋約5分以降の次のアプリ起動・Data Field更新時に遅延削除する。予約だけが失敗しても、保存・監視可能な範囲には成功ACKを返す。古いイベントで新しい転送を消さないよう、削除前に`requestId`と`armedUntil`を照合する。時計とスマホの時刻差を補正する機能はまだない。
+`armedUntil` はスマホが送信時刻から12時間後として生成する**Run開始期限**。期限前に始まったRunは、期限を過ぎても終了まで監視する。期限後に新しくRunを始めた場合は `EXPIRED` と表示して監視しない。そのRunの終了時には範囲データを削除する。Runを一度も開始しなければ、期限後も範囲データは時計に残り、次の送信で置き換わるか、スマホからの停止操作で削除される。時刻指定のバックグラウンド削除は行わない。Run終了時の削除は `requestId` を照合し、遅れて届いた終了イベントが新しい転送を消さないようにする。時計とスマホの時刻差を補正する機能はまだない。
 
-実装: [エンコーダ](../lib/garmin/garmin_course_encoder.dart)、[転送payload](../lib/garmin/garmin_course_payload.dart)、[GARMIN受信処理](../garmin/argus-data-field/source/ArgusReceiver.mc)、[期限処理](../garmin/argus-data-field/source/ArgusExpiry.mc)、[形式・チェックサム検証](../garmin/argus-data-field/source/ArgusProtocol.mc)。
+実装: [エンコーダ](../lib/garmin/garmin_course_encoder.dart)、[転送payload](../lib/garmin/garmin_course_payload.dart)、[GARMIN受信処理](../garmin/argus-data-field/source/ArgusReceiver.mc)、[Run終了・削除処理](../garmin/argus-data-field/source/ArgusCourseLifecycle.mc)、[形式・チェックサム検証](../garmin/argus-data-field/source/ArgusProtocol.mc)。

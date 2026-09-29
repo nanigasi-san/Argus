@@ -19,12 +19,18 @@ class ArgusApp extends Application.AppBase {
         if (!Background.getActivityCompletedEventRegistered()) {
             Background.registerForActivityCompletedEvent();
         }
+        // Older versions may leave a temporal deletion event registered.
+        if (Application.Storage.getValue("expiryJob") != null) {
+            Application.Storage.deleteValue("expiryJob");
+            try { Background.deleteTemporalEvent(); }
+            catch (e) { System.println("ARGUS old expiry event cleanup failed: " + e.toString()); }
+        }
+        // Remove a course left OFF by an older Data Field version.
         var stored = Application.Storage.getValue("course");
         if (stored instanceof Lang.Dictionary
-            && stored["armedUntil"] instanceof Lang.Number
-            && Time.now().value() >= stored["armedUntil"]
-                + ArgusExpiry.CLEANUP_GRACE_SECONDS) {
-            ArgusExpiry.cleanupExpired(Time.now().value());
+            && stored["monitoringEnabled"] == false
+            && stored["requestId"] instanceof Lang.String) {
+            ArgusCourseLifecycle.removeCourse(stored["requestId"]);
         }
     }
 
@@ -70,7 +76,7 @@ class ArgusField extends WatchUi.DataField {
             return;
         }
         if (info != null && info.timerState == Activity.TIMER_STATE_OFF
-            && hasRunClaim()) {
+            && hasCourseRun()) {
             retireUsedCourse();
             return;
         }
@@ -82,23 +88,13 @@ class ArgusField extends WatchUi.DataField {
         }
         if (info != null && info.timerState == Activity.TIMER_STATE_ON) {
             var runStart = info.startTime != null ? info.startTime.value() : null;
-            if (!claimRun(runStart)) {
-                if (now >= _armedUntil + ArgusExpiry.CLEANUP_GRACE_SECONDS
-                    && ArgusExpiry.cleanupExpired(now)) {
-                    clearLoadedCourse();
-                }
-                return;
-            }
+            if (!claimRun(runStart)) { return; }
         }
         // The deadline is for starting a Run, not for stopping an active one.
         if (now >= _armedUntil && !hasRunClaim()) {
             _monitor.reset();
             _status = "EXPIRED";
             _detail = "";
-            if (now >= _armedUntil + ArgusExpiry.CLEANUP_GRACE_SECONDS
-                && ArgusExpiry.cleanupExpired(now)) {
-                clearLoadedCourse();
-            }
             return;
         }
         if (info == null || info.timerState != Activity.TIMER_STATE_ON) {
@@ -189,11 +185,16 @@ class ArgusField extends WatchUi.DataField {
     function detail() { return _detail; }
     function courseName() { return _courseName; }
 
-    function hasRunClaim() {
+    function hasCourseRun() {
         var claim = Application.Storage.getValue("courseRun");
         return claim instanceof Lang.Dictionary && _lastId != null
             && claim["requestId"] instanceof Lang.String
             && claim["requestId"].equals(_lastId);
+    }
+
+    function hasRunClaim() {
+        var claim = Application.Storage.getValue("courseRun");
+        return hasCourseRun() && claim["expired"] != true;
     }
 
     function claimRun(runStart) {
@@ -224,6 +225,23 @@ class ArgusField extends WatchUi.DataField {
                 retireUsedCourse();
                 return false;
             }
+            if (claim["expired"] == true) {
+                if (claim["provisional"] == true && runStart != null) {
+                    if (runStart < _armedUntil) {
+                        Application.Storage.setValue("courseRun",
+                            {"requestId" => _lastId, "startTime" => runStart,
+                                "claimedAt" => now});
+                        return true;
+                    }
+                    Application.Storage.setValue("courseRun",
+                        {"requestId" => _lastId, "startTime" => runStart,
+                            "expired" => true});
+                }
+                _monitor.reset();
+                _status = "EXPIRED";
+                _detail = "";
+                return false;
+            }
             var claimedAt = claim["claimedAt"];
             if ((runStart != null && runStart >= _armedUntil)
                 || (previousStart == null && runStart == null
@@ -243,6 +261,10 @@ class ArgusField extends WatchUi.DataField {
         }
         if ((runStart != null && runStart >= _armedUntil)
             || (runStart == null && now >= _armedUntil)) {
+            // Keep the file until this Run ends; it must never be monitored.
+            Application.Storage.setValue("courseRun",
+                {"requestId" => _lastId, "startTime" => runStart,
+                    "expired" => true, "provisional" => runStart == null});
             _monitor.reset();
             _status = "EXPIRED";
             _detail = "";
@@ -263,22 +285,18 @@ class ArgusField extends WatchUi.DataField {
             reload();
             return;
         }
-        if (ArgusExpiry.disableCourse(claim["requestId"])) {
-            _monitoringEnabled = false;
-            _monitor.reset();
-            _status = "OFF";
-            _detail = "";
-            if (Time.now().value() >= _armedUntil
-                + ArgusExpiry.CLEANUP_GRACE_SECONDS
-                && ArgusExpiry.cleanupExpired(Time.now().value())) {
-                clearLoadedCourse();
-            }
+        if (ArgusCourseLifecycle.removeCourse(claim["requestId"])) {
+            clearLoadedCourse();
         } else {
-            var remainingClaim = Application.Storage.getValue("courseRun");
-            if (ArgusExpiry.matches(remainingClaim, claim["requestId"])) {
-                Application.Storage.deleteValue("courseRun");
+            var current = Application.Storage.getValue("course");
+            if (!ArgusCourseLifecycle.matches(current, claim["requestId"])) {
+                ArgusCourseLifecycle.clearRunClaim(claim["requestId"]);
+                reload();
+            } else {
+                _monitor.reset();
+                _status = "DATA ERR";
+                _detail = "";
             }
-            reload();
         }
     }
 

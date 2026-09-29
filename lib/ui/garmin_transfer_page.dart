@@ -259,7 +259,7 @@ class _GarminTransferPageState extends State<GarminTransferPage>
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('GARMINの監視を停止しますか？'),
-        content: const Text('RUN中でも境界の警告を停止します。再開するには範囲を再送信してください。'),
+        content: const Text('RUN中でも境界の警告を停止し、時計の範囲データを削除します。再開するには範囲を再送信してください。'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
@@ -361,7 +361,7 @@ class _GarminTransferPageState extends State<GarminTransferPage>
             context,
             icon: Icons.notifications_off_outlined,
             title: 'GARMINの監視を停止しました',
-            detail: '範囲ファイルは期限まで保持されます。再開には再送信してください。',
+            detail: '時計の範囲データを削除しました。再開には再送信してください。',
           ),
           const SizedBox(height: 16),
         ],

@@ -132,7 +132,7 @@ function fieldUsesJapaneseReturnDirection(logger) {
 }
 
 (:test)
-function courseIsDisabledAfterOneRunButNotBeforeIt(logger) {
+function courseIsRemovedAfterOneRunButNotBeforeIt(logger) {
     var course = squareCourse();
     course["requestId"] = "one-run-test";
     course["armedUntil"] = Time.now().value() + 3600;
@@ -150,11 +150,10 @@ function courseIsDisabledAfterOneRunButNotBeforeIt(logger) {
     field.compute(null);
     Test.assert(Application.Storage.getValue("course") != null);
     field.onTimerReset();
-    Test.assert(Application.Storage.getValue("course")["monitoringEnabled"] == false);
+    Test.assert(Application.Storage.getValue("course") == null);
     Test.assert(Application.Storage.getValue("courseRun") == null);
-    Test.assertEqual(field.status(), "OFF");
+    Test.assertEqual(field.status(), "READY");
     Test.assert(!field.claimRun(2000));
-    Application.Storage.deleteValue("course");
     return true;
 }
 
@@ -169,9 +168,8 @@ function oldCourseCannotBeReusedIfResetWasMissed(logger) {
     var reloadedField = new ArgusField();
     Test.assert(reloadedField.claimRun(1000));
     Test.assert(!reloadedField.claimRun(2000));
-    Test.assert(Application.Storage.getValue("course")["monitoringEnabled"] == false);
+    Test.assert(Application.Storage.getValue("course") == null);
     Test.assert(Application.Storage.getValue("courseRun") == null);
-    Application.Storage.deleteValue("course");
     return true;
 }
 
@@ -208,10 +206,9 @@ function twoFieldsCannotReviveDiscardedCourse(logger) {
     firstField.onTimerReset();
     secondField.onTimerReset();
     secondField.compute(null);
-    Test.assertEqual(secondField.status(), "OFF");
+    Test.assertEqual(secondField.status(), "READY");
     Test.assert(!secondField.claimRun(2000));
-    Test.assert(Application.Storage.getValue("course")["monitoringEnabled"] == false);
-    Application.Storage.deleteValue("course");
+    Test.assert(Application.Storage.getValue("course") == null);
     return true;
 }
 
@@ -235,8 +232,7 @@ function oldFieldCannotDiscardAnotherRunClaim(logger) {
     Test.assertEqual(Application.Storage.getValue("courseRun")["requestId"],
         "new-field-test");
     newField.onTimerReset();
-    Test.assert(Application.Storage.getValue("course")["monitoringEnabled"] == false);
-    Application.Storage.deleteValue("course");
+    Test.assert(Application.Storage.getValue("course") == null);
     return true;
 }
 
@@ -253,8 +249,25 @@ function runStartedBeforeDeadlineSurvivesExpiry(logger) {
     Test.assertEqual(field.status(), "ARMED");
     Test.assert(Application.Storage.getValue("course") != null);
     field.onTimerReset();
-    Test.assert(Application.Storage.getValue("course")["monitoringEnabled"] == false);
-    Application.Storage.deleteValue("course");
+    Test.assert(Application.Storage.getValue("course") == null);
+    return true;
+}
+
+(:test)
+function delayedRunStartCanConfirmPreDeadlineStart(logger) {
+    var now = Time.now().value();
+    var course = squareCourse();
+    course["requestId"] = "delayed-start";
+    course["armedUntil"] = now - 5;
+    Application.Storage.setValue("course", course);
+    var field = new ArgusField();
+    Test.assert(!field.claimRun(null));
+    Test.assert(Application.Storage.getValue("courseRun")["provisional"] == true);
+    Test.assert(field.claimRun(now - 10));
+    Test.assert(Application.Storage.getValue("courseRun")["expired"] != true);
+    Test.assert(Application.Storage.getValue("course") != null);
+    field.onTimerReset();
+    Test.assert(Application.Storage.getValue("course") == null);
     return true;
 }
 
@@ -268,62 +281,46 @@ function runStartedAfterDeadlineCannotClaimCourse(logger) {
     var field = new ArgusField();
     Test.assert(!field.claimRun(now));
     Test.assertEqual(field.status(), "EXPIRED");
-    Test.assert(Application.Storage.getValue("courseRun") == null);
-    Application.Storage.deleteValue("course");
+    Test.assert(Application.Storage.getValue("courseRun")["expired"] == true);
+    Test.assert(Application.Storage.getValue("course") != null);
+    field.onTimerReset();
+    Test.assert(Application.Storage.getValue("course") == null);
     return true;
 }
 
 (:test)
-function staleTemporalEventCannotDeleteReplacement(logger) {
+function expiredCourseRemainsUntilACompletedRun(logger) {
+    var now = Time.now().value();
+    var course = squareCourse();
+    course["requestId"] = "unused-expired";
+    course["armedUntil"] = now - 3600;
+    Application.Storage.setValue("course", course);
+    var field = new ArgusField();
+    field.compute(null);
+    Test.assertEqual(field.status(), "EXPIRED");
+    Test.assert(Application.Storage.getValue("course") != null);
+    Test.assert(!field.claimRun(now));
+    field.onTimerReset();
+    Test.assert(Application.Storage.getValue("course") == null);
+    return true;
+}
+
+(:test)
+function oldRunCannotDeleteReplacementCourse(logger) {
     var now = Time.now().value();
     var course = squareCourse();
     course["requestId"] = "replacement";
     course["armedUntil"] = now + 3600;
     Application.Storage.setValue("course", course);
-    Application.Storage.setValue("expiryJob",
-        {"requestId" => "old-course", "armedUntil" => now - 301});
-    Test.assert(!ArgusExpiry.onTemporal(now));
+    Test.assert(!ArgusCourseLifecycle.removeCourse("old-run"));
     Test.assertEqual(Application.Storage.getValue("course")["requestId"],
         "replacement");
     Application.Storage.deleteValue("course");
-    Application.Storage.deleteValue("expiryJob");
     return true;
 }
 
 (:test)
-function missedTemporalEventIsCleanedOnNextFieldWake(logger) {
-    var now = Time.now().value();
-    var course = squareCourse();
-    course["requestId"] = "missed-expiry";
-    course["armedUntil"] = now - 301;
-    Application.Storage.setValue("course", course);
-    Application.Storage.setValue("expiryJob",
-        {"requestId" => "missed-expiry", "armedUntil" => now - 301});
-    var field = new ArgusField();
-    field.compute(null);
-    Test.assertEqual(field.status(), "READY");
-    Test.assert(Application.Storage.getValue("course") == null);
-    Test.assert(Application.Storage.getValue("expiryJob") == null);
-    return true;
-}
-
-(:test)
-function temporalEventDeletesUnusedExpiredCourse(logger) {
-    var now = Time.now().value();
-    var course = squareCourse();
-    course["requestId"] = "scheduled-expiry";
-    course["armedUntil"] = now - 301;
-    Application.Storage.setValue("course", course);
-    Application.Storage.setValue("expiryJob",
-        {"requestId" => "scheduled-expiry", "armedUntil" => now - 301});
-    Test.assert(ArgusExpiry.onTemporal(now));
-    Test.assert(Application.Storage.getValue("course") == null);
-    Test.assert(Application.Storage.getValue("expiryJob") == null);
-    return true;
-}
-
-(:test)
-function activityCompletionDisablesOnlyItsClaimedCourse(logger) {
+function activityCompletionRemovesOnlyItsClaimedCourse(logger) {
     var now = Time.now().value();
     var course = squareCourse();
     course["requestId"] = "completed-run";
@@ -331,19 +328,14 @@ function activityCompletionDisablesOnlyItsClaimedCourse(logger) {
     Application.Storage.setValue("course", course);
     Application.Storage.setValue("courseRun",
         {"requestId" => "completed-run", "startTime" => now - 60});
-    Application.Storage.setValue("expiryJob",
-        {"requestId" => "completed-run", "armedUntil" => now + 3600});
-    Test.assert(ArgusExpiry.onActivityCompleted(now));
-    Test.assert(Application.Storage.getValue("course")["monitoringEnabled"] == false);
+    Test.assert(ArgusCourseLifecycle.onActivityCompleted());
+    Test.assert(Application.Storage.getValue("course") == null);
     Test.assert(Application.Storage.getValue("courseRun") == null);
-    Test.assert(Application.Storage.getValue("expiryJob") != null);
-    Application.Storage.deleteValue("course");
-    Application.Storage.deleteValue("expiryJob");
     return true;
 }
 
 (:test)
-function resetDisablesActiveCourseAndKeepsItsFile(logger) {
+function controlRemovesActiveCourseAndItsFile(logger) {
     var now = Time.now().value();
     var course = squareCourse();
     course["requestId"] = "active-reset";
@@ -353,43 +345,42 @@ function resetDisablesActiveCourseAndKeepsItsFile(logger) {
     Application.Storage.setValue("course", course);
     var field = new ArgusField();
     Test.assert(field.claimRun(now));
-    Test.assert(ArgusExpiry.disableCourse("active-reset"));
+    Test.assert(ArgusCourseLifecycle.removeCourse("active-reset"));
     Test.assert(Application.Storage.getValue("courseRun") == null);
     field.reload();
     field.compute(null);
-    Test.assertEqual(field.status(), "OFF");
-    Test.assertEqual(field.courseName(), "chiba.geojson");
+    Test.assertEqual(field.status(), "READY");
+    Test.assertEqual(field.courseName(), "ARGUS");
     Test.assert(!field.claimRun(now));
-    Application.Storage.deleteValue("course");
     return true;
 }
 
 (:test)
-function disabledCourseExpiresEvenWithAnOldRunClaim(logger) {
+function legacyDisabledCourseIsRemovedWhenAppStarts(logger) {
     var now = Time.now().value();
     var course = squareCourse();
-    course["requestId"] = "disabled-expiry";
-    course["armedUntil"] = now - 301;
+    course["requestId"] = "legacy-disabled";
+    course["armedUntil"] = now + 3600;
     course["monitoringEnabled"] = false;
     Application.Storage.setValue("course", course);
     Application.Storage.setValue("courseRun",
-        {"requestId" => "disabled-expiry", "startTime" => now - 400});
-    Test.assert(ArgusExpiry.cleanupExpired(now));
+        {"requestId" => "legacy-disabled", "startTime" => now - 400});
+    new ArgusApp();
     Test.assert(Application.Storage.getValue("course") == null);
     Test.assert(Application.Storage.getValue("courseRun") == null);
     return true;
 }
 
 (:test)
-function controlAckRequiresDisableRequest(logger) {
+function controlAckRequiresClearRequest(logger) {
     var request = {"type" => "argus-control", "v" => 1,
-        "action" => "disable", "requestId" => "reset-test"};
-    Test.assert(ArgusProtocol.validDisable(request));
-    var ack = ArgusProtocol.disableAck(request, true, "");
-    Test.assert(ack["disabled"] == true);
+        "action" => "clear", "requestId" => "reset-test"};
+    Test.assert(ArgusProtocol.validClear(request));
+    var ack = ArgusProtocol.clearAck(request, true, "");
+    Test.assert(ack["cleared"] == true);
     Test.assertEqual(ack["requestId"], "reset-test");
-    request["action"] = "enable";
-    Test.assert(!ArgusProtocol.validDisable(request));
+    request["action"] = "disable";
+    Test.assert(!ArgusProtocol.validClear(request));
     return true;
 }
 
@@ -444,7 +435,7 @@ function oldCompletionCannotDiscardNewTransfer(logger) {
     Application.Storage.setValue("course", course);
     Application.Storage.setValue("courseRun",
         {"requestId" => "old-completed-run", "startTime" => now - 60});
-    Test.assert(!ArgusExpiry.onActivityCompleted(now));
+    Test.assert(!ArgusCourseLifecycle.onActivityCompleted());
     Test.assertEqual(Application.Storage.getValue("course")["requestId"],
         "new-after-old-run");
     Application.Storage.deleteValue("course");
@@ -453,26 +444,15 @@ function oldCompletionCannotDiscardNewTransfer(logger) {
 }
 
 (:test)
-function expiryScheduleRegistersTemporalEvent(logger) {
-    var course = {"requestId" => "scheduled-event-test",
-        "armedUntil" => Time.now().value() + 3600};
-    ArgusExpiry.schedule(course);
-    Test.assert(Background.getTemporalEventRegisteredTime() != null);
-    Test.assertEqual(Application.Storage.getValue("expiryJob")["requestId"],
-        "scheduled-event-test");
-    Background.deleteTemporalEvent();
-    Application.Storage.deleteValue("expiryJob");
-    return true;
-}
-
-(:test)
-function missedEventIsCleanedWhenAppStarts(logger) {
+function expiredCourseIsRetainedWhenAppStarts(logger) {
     var course = squareCourse();
-    course["requestId"] = "wake-cleanup";
+    course["requestId"] = "expired-at-wake";
     course["armedUntil"] = Time.now().value() - 301;
     Application.Storage.setValue("course", course);
     new ArgusApp();
-    Test.assert(Application.Storage.getValue("course") == null);
+    Test.assertEqual(Application.Storage.getValue("course")["requestId"],
+        "expired-at-wake");
     Test.assert(Background.getActivityCompletedEventRegistered());
+    Application.Storage.deleteValue("course");
     return true;
 }

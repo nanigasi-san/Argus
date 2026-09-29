@@ -202,7 +202,7 @@ final class IOSGarminBridge: NSObject, IQDeviceEventDelegate, IQAppMessageDelega
       && (ack["receiver"] as? String) == "background"
       && number(ack["v"]) == 1
     let matches = baseMatches && ((request["type"] as? String) == "argus-control"
-      ? (ack["action"] as? String) == "disable" && (ack["disabled"] as? Bool) == true
+      ? (ack["action"] as? String) == "clear" && (ack["cleared"] as? Bool) == true
       : (ack["saved"] as? Bool) == true
         && (ack["courseId"] as? String) == request["courseId"] as? String
         && (ack["displayName"] as? String) == request["displayName"] as? String

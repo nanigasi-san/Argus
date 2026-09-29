@@ -17,20 +17,18 @@ class ArgusReceiver extends System.ServiceDelegate {
         try {
             if (data["type"] instanceof Lang.String
                 && data["type"].equals("argus-control")) {
-                if (!ArgusProtocol.validDisable(data)) {
-                    reply(ArgusProtocol.disableAck(data, false, "invalid-control")); return;
+                if (!ArgusProtocol.validClear(data)) {
+                    reply(ArgusProtocol.clearAck(data, false, "invalid-control")); return;
                 }
                 control = data;
                 var currentCourse = Application.Storage.getValue("course");
                 if (currentCourse instanceof Lang.Dictionary) {
                     if (!(currentCourse["requestId"] instanceof Lang.String)
-                        || !ArgusExpiry.disableCourse(currentCourse["requestId"])) {
-                        reply(ArgusProtocol.disableAck(data, false, "disable-readback-failed")); return;
+                        || !ArgusCourseLifecycle.removeCourse(currentCourse["requestId"])) {
+                        reply(ArgusProtocol.clearAck(data, false, "clear-readback-failed")); return;
                     }
                 }
-                // A replacement course may have arrived before the old Run claim was updated.
-                Application.Storage.deleteValue("courseRun");
-                reply(ArgusProtocol.disableAck(data, true, "")); return;
+                reply(ArgusProtocol.clearAck(data, true, "")); return;
             }
             if (!ArgusProtocol.validEnvelope(data)) {
                 reply(ArgusProtocol.ack(data, false, "invalid-payload")); return;
@@ -77,12 +75,11 @@ class ArgusReceiver extends System.ServiceDelegate {
                 reply(ArgusProtocol.ack(expected, false, "course-readback-failed")); return;
             }
             Application.Storage.deleteValue("pending");
-            ArgusExpiry.schedule(saved);
             reply(ArgusProtocol.ack(saved, true, ""));
         } catch (e) {
             System.println("ARGUS receiver failed: " + e.toString());
             if (control != null) {
-                reply(ArgusProtocol.disableAck(control, false, "storage-error"));
+                reply(ArgusProtocol.clearAck(control, false, "storage-error"));
             } else if (expected != null) { reply(ArgusProtocol.ack(expected, false, "storage-error")); }
             else { Background.exit(null); }
         }
@@ -93,17 +90,14 @@ class ArgusReceiver extends System.ServiceDelegate {
         catch (e) { Background.exit(null); }
     }
 
-    function onTemporalEvent() {
-        try { ArgusExpiry.onTemporal(Time.now().value()); }
-        catch (e) { System.println("ARGUS expiry cleanup failed: " + e.toString()); }
-        Background.exit(null);
-    }
-
     function onActivityCompleted(activity) {
-        try { ArgusExpiry.onActivityCompleted(Time.now().value()); }
+        try { ArgusCourseLifecycle.onActivityCompleted(); }
         catch (e) { System.println("ARGUS Run completion failed: " + e.toString()); }
         Background.exit(null);
     }
+
+    // Ignore an event left registered by an older Data Field version.
+    function onTemporalEvent() { Background.exit(null); }
 }
 
 (:background)
