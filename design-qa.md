@@ -1,8 +1,8 @@
 # 利用方法選択画面（B2）デザインQA
 
-- Source visual truth: `/Users/kaitoyamada/.codex/generated_images/01a0ce70-5597-7141-b15c-5f4de3f8c2c1/exec-765408af-8643-40af-9645-af864b03d4c4.png` の右上 B2。画像全体は1024×1536pxで、B2にはiPhone枠が含まれる。
+- Source visual truth: リポジトリ外のB2デザイン参照画像の右上。画像全体は1024×1536pxで、B2にはiPhone枠が含まれる。
 - Implementation screenshot: `build/integration_test/screenshots/usage-mode-selection.png`。Android Emulator API 36、アプリ領域411×891 logical px、PNG 1440×3120px（約3.5倍密度）。E2Eの `usage-mode-selection` で取得する。端末枠・OS chromeを除き、アプリ所有領域を比較した。
-- iPhone実機の追加確認: `/tmp/argus-usage-mode-iphone-verified-20260925.png`（1125×2436px、iOS 26.7）。開発デバッグ用ローカルネットワーク許可ダイアログを閉じた状態で最終画面を確認した。
+- iPhone実機の追加確認: 開発時のローカル画像（1125×2436px、iOS 26.7）。開発デバッグ用ローカルネットワーク許可ダイアログを閉じた状態で最終画面を確認した。
 - State: 初期表示、「スマホで利用」選択済み。「次へ」操作前。B2は短めの端末、実装は縦長端末なので、余白は固定ピクセルではなく画面高に追従する。
 
 ## 比較結果
@@ -24,7 +24,7 @@ final result: passed
 
 ## GARMIN送信画面（案1）デザインQA
 
-- Source visual truth: `/Users/kaitoyamada/.codex/generated_images/01a0ce70-5597-7141-b15c-5f4de3f8c2c1/exec-ffd022c5-2715-4263-ae63-13692450aef0.png`（853×1844px）。
+- Source visual truth: リポジトリ外の案1デザイン参照画像（853×1844px）。
 - Implementation screenshots: `build/integration_test/screenshots/garmin-transfer-option1-before.png` と `build/integration_test/screenshots/garmin-transfer-option1-after.png`。Android Emulator API 36、411×891 logical px、PNG 1440×3120px。
 - iOS比較画像: `build/integration_test/ios-screenshots/garmin-transfer-option1-before.png` と `build/integration_test/ios-screenshots/garmin-transfer-option1-after.png`。iPhone 17 Pro Simulator / iOS 26.5。通常Releaseビルドの未選択状態は `build/integration_test/iphone-physical-garmin-transfer-final.png`（iPhone 12 mini / iOS 26.7、1125×2436px）。
 - 大画面確認: `build/integration_test/ios-pro-max-screenshots/garmin-transfer-option1-before.png` と `build/integration_test/ios-pro-max-screenshots/garmin-transfer-option1-after.png`。iPhone 17 Pro Max Simulator / iOS 26.5、1320×2868px。送信前後とも文字切れ・ボタン重なりなし。

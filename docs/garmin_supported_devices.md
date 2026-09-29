@@ -23,8 +23,8 @@ ARGUS Data Field 0.6.0 は、Connect IQ API 3.4 以上の次のランニング�
 
 iPhoneの転送はARGUSを開いた状態で行う。Garmin公式[iOS Companion SDK 1.8.0](https://github.com/garmin/connectiq-companion-app-sdk-ios/tree/1.8.0)をXcodeのSwift Packageとして取得する。Garmin Connectは初回の時計選択とData Fieldのインストールに使い、iPhoneから時計への送信はBLEで行う。[GarminのiOS SDK手順](https://github.com/garmin/connectiq-companion-app-sdk-ios/blob/1.8.0/documentation/ConnectIQ_iOS_SDK.html)も参照。
 
-## Macでの検証
+## 検証状況と追加確認
 
-Forerunner 55ではiPhoneからの境界送信と時計側の保存・照合ACKを実機で確認済み。ユーザー報告ではオフライン送信、1回目のRun後に次のRunで監視がOFFになること、Run中のスマホからの停止も確認済み。ただし、これらは変更前のData Fieldでの確認であり、0.6.0のRun終了・手動停止時の範囲削除ACKは実機で再確認する。iOS Simulator向けビルドと`fr55`向けConnect IQビルドも先行版では成功している。追加機種の実機通信と表示・警告は未検証であり、**manifest登録だけを実機での動作保証と扱わない。** MacでConnect IQ SDK Managerから上記の全製品IDの端末定義を導入してから、各IDを個別にビルド・シミュレーター実行する。小／大データ欄、MIP／AMOLED、白黒背景、日本語、最大100頂点の保存・再送・ACK、IN／OUT、GPS待ち、有効期限切れ、音・振動を確認する。
+ForeAthlete 55では旧版Data FieldへのiPhone送信と、0.6.0へのAndroid送信で、時計側の保存・照合ACKを実機確認した。0.6.0でRunを終了・削除した後、次にRun画面を開いた際の`READY`表示も確認した。最初は「CONNECT IQ」と表示されたが、待つか画面を開き直すと`READY`になり、時計のエラーログに今回のARGUSエラーは記録されていなかった。保存領域の直接照合、0.6.0でのRun中の手動停止と削除ACK、期限動作は未確認。オフライン送信、Run中の停止、次のRunでの非監視は変更前のData Fieldで確認した。`fr55`向けConnect IQビルドと26件のSimulatorテスト、Android・iOSのCIは成功している。追加機種の実機通信と表示・警告は未検証であり、**manifest登録だけを実機での動作保証と扱わない。** MacでConnect IQ SDK Managerから上記の全製品IDの端末定義を導入してから、各IDを個別にビルド・シミュレーター実行する。小／大データ欄、MIP／AMOLED、白黒背景、日本語、最大100頂点の保存・再送・ACK、IN／OUT、GPS待ち、有効期限切れ、音・振動を確認する。
 
 Forerunner 55実機ではAndroidとiPhoneの双方から送信して保存ACKを確認し、スマホを切断したRun中の判定・音・振動を確認する。追加機種は全IDのシミュレーター結果を記録し、実機試験済みと区別する。PR提出前には `flutter test`、`flutter analyze`、Android全E2E、およびMac上で `bash scripts/run_ios_e2e.sh <simulator-udid>` を実行し、結果をPRに記録する。
