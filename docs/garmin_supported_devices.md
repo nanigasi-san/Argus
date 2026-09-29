@@ -13,11 +13,13 @@ ARGUS Data Field 0.6.0 は、Connect IQ API 3.4 以上の次のランニング�
 | fēnix 7 / 7 Pro / 7 Pro Solar（Wi-Fiなし）/ 7S / 7S Pro / 7X / 7X Pro / 7X Pro Solar（Wi-Fiなし） | `fenix7`, `fenix7pro`, `fenix7pronowifi`, `fenix7s`, `fenix7spro`, `fenix7x`, `fenix7xpro`, `fenix7xpronowifi` |
 | fēnix 8 43mm / 47・51mm / 8 Pro / 8 Solar 47・51mm | `fenix843mm`, `fenix847mm`, `fenix8pro47mm`, `fenix8solar47mm`, `fenix8solar51mm` |
 
+画像付きの詳しい手順は[GARMIN初心者ガイド](guides/garmin.md)を参照。
+
 ## 初回セットアップ
 
 1. 時計をGarmin Connectとペアリングし、ARGUS Data Fieldを時計にインストールする。
 2. 時計の通常のRunのデータ画面にARGUS Data Fieldを追加し、一度表示する。これでバックグラウンド受信を登録する。
-3. スマホのARGUSでGeoJSONファイルまたはQRを読み込み、「GARMINに送る」を開く。iPhoneでは初回に「Garmin Connectで時計を選ぶ」を押して共有する時計を選び、ARGUSに戻る。Androidではペアリング済み時計を検索する。
+3. スマホのARGUSでGeoJSONファイルまたはQRを読み込み、「GARMINに送る」を開く。iPhoneでは「時計を変更」を押して共有する時計を選び、ARGUSに戻る。Androidではペアリング済み時計を検索する。
 4. 接続済みの時計を選んで送信する。時計の保存・照合ACKを受けた場合だけ完了と表示する。未接続、Data Field未導入、送信失敗、ACK不一致・タイムアウトは再接続／再送して確認する。
 5. 競技中は通常のRunを開始する。転送済みデータの有効期限内なら、判定と警告はスマホなしで動作する。
 

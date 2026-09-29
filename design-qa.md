@@ -1,4 +1,14 @@
-# 利用方法選択画面（B2）デザインQA
+# デザインQA
+
+## 2026-09-29の調整と確認
+
+- 選択画面の説明文字をbodyMediumへ変更し、青・濃紺・補足色をAppPaletteへ集約。
+- 転送画面の操作ボタンは最小高さと折返しで拡大文字に対応。結果の長い値も折り返す。
+- 320×568・文字倍率2倍で転送画面の描画とスクロールをWidgetテストで確認。
+- API 36 / Medium_Phone_API_36.0で全Android E2E成功。1080×2400の選択・送信前・送信後画像を目視確認。
+- 最新画像は[ガイド画像](docs/guides/images/README.md)に保存。以下は以前のデザイン導入時の記録で、端末サイズとiPhone実機結果は今回の検証と区別する。
+
+## 利用方法選択画面（B2）の導入記録
 
 - Source visual truth: リポジトリ外のB2デザイン参照画像の右上。画像全体は1024×1536pxで、B2にはiPhone枠が含まれる。
 - Implementation screenshot: `build/integration_test/screenshots/usage-mode-selection.png`。Android Emulator API 36、アプリ領域411×891 logical px、PNG 1440×3120px（約3.5倍密度）。E2Eの `usage-mode-selection` で取得する。端末枠・OS chromeを除き、アプリ所有領域を比較した。

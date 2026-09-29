@@ -1,5 +1,7 @@
 # モバイル配信のセキュリティとレビュー
 
+2026-09-18の監査記録です。現在の配信はAndroidのみタグ起動、iOSはMac上で実行します。[Android](release.md)・[iOS](ios_release_cd.md)の現行手順を優先してください。以下のSecrets・Environment・件数は監査当時の記録で、今回再取得した実設定ではありません。
+
 ## GitHub の実設定（2026-09-18）
 
 リポジトリは公開の `nanigasi-san/Argus`。閲覧・fork・外部 PR ができても、配信 Secrets を利用する権限は与えない。

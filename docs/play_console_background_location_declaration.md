@@ -78,4 +78,4 @@ Do not include unrelated permission prompts if possible. If Android shows notifi
 | Foreground service declaration is submitted, if requested | Declaration submission screenshot |
 | Video is uploaded as YouTube or Drive URL | Video URL |
 | In-app disclosure appears before runtime location permission | Video timestamp |
-| Closed testing release is available to testers | Track name / versionCode |
+| Release is submitted to the intended track (current CD: production) | Track name / versionCode / review status |

@@ -1,4 +1,12 @@
-# macOS の Android E2E 環境
+# ローカルの Android E2E 環境
+
+## Windows
+
+Android SDK・Java・Flutterを準備し、`./scripts/run_android_ui_checks.ps1 -CaptureScreenshots`で全件実行する。2026-09-29にはFlutter 3.44.2、Medium_Phone_API_36.0（x86_64 / API 36）で全3ファイルを確認した。詳細は[検証記録](refactor_validation.md)。
+
+テストのために起動したエミュレーターは終了後に`adb -s <serial> emu kill`で閉じる。作業前から起動していた端末は閉じない。
+
+## macOSの構築記録
 
 2026-09-18 に Apple Silicon の Mac でセットアップした構成。
 Android SDK は `~/Library/Android/sdk` にそろえ、Flutter の SDK 設定もこの場所へ変更した。

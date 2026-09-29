@@ -2,7 +2,7 @@
 
 この文書は、Windows 上で実装した ARGUS の iOS 対応を MacBook に引き継ぎ、Simulator ビルド、実機デバッグ、署名、Archive まで進めるための初回セットアップ手順です。
 
-`gati-ios-version` を使う以下の取得・push例は当時の引き継ぎ記録であり、現在のGARMIN開発ブランチにそのまま適用しない。新しい作業では現在の対象ブランチを確認し、作業中の変更を保持したまま進める。
+以下の`<作業ブランチ>`は共有したい実在のブランチ名へ置き換える。新しい作業では現在の対象ブランチを確認し、作業中の変更を保持したまま進める。
 
 毎回の実機確認とリリース前チェックは [ios_release.md](ios_release.md) を参照してください。
 
@@ -20,16 +20,16 @@
 - テスト対象の iPhone と接続用ケーブル
 - Apple Account
 - App Store 提出まで行う場合は Apple Developer Program の Team
-- GitHub 上の `gati-ios-version` ブランチへアクセスできる Git 設定
+- GitHub 上の `<作業ブランチ>` ブランチへアクセスできる Git 設定
 
 ## 0. Windows 側でブランチを共有する
 
 MacBook で取得する前に、Windows 側で iOS 対応の commit を作成し、ブランチを remote に push します。
 
 ```powershell
-git switch gati-ios-version
+git switch <作業ブランチ>
 git status --short
-git push -u origin gati-ios-version
+git push -u origin <作業ブランチ>
 ```
 
 未 commit の変更は push されません。MacBook へ移る前に `git status --short` を確認してください。
@@ -103,7 +103,7 @@ cd ~/Documents/GitHub
 git clone https://github.com/nanigasi-san/Argus.git
 cd Argus
 git fetch origin
-git switch --track origin/gati-ios-version
+git switch --track origin/<作業ブランチ>
 ```
 
 既に clone 済みの場合:
@@ -111,7 +111,7 @@ git switch --track origin/gati-ios-version
 ```bash
 cd ~/Documents/GitHub/Argus
 git fetch origin
-git switch gati-ios-version
+git switch <作業ブランチ>
 git pull --ff-only
 ```
 
@@ -122,7 +122,7 @@ git branch --show-current
 git status --short
 ```
 
-ブランチ名が `gati-ios-version` で、意図しないローカル変更がないことを確認します。
+ブランチ名が `<作業ブランチ>` で、意図しないローカル変更がないことを確認します。
 
 ## 5. Flutter と CocoaPods の依存関係を取得する
 
@@ -140,7 +140,7 @@ flutter doctor -v
 
 `flutter pub get` は必ず `pod install` より先に実行してください。`ios/Flutter/Generated.xcconfig` が生成されていない状態では `pod install` が失敗します。
 
-初回の `pod install` で `ios/Podfile.lock` が生成されます。依存関係を固定するため、内容を確認して iOS 対応の commit に含めてください。`Pods/`、`.symlinks/`、`Generated.xcconfig` は生成物なので commit しません。
+`ios/Podfile.lock` は既に追跡されています。通常は`pod install`で固定済みの依存を復元し、意図した依存更新時だけ差分を確認してcommitしてください。`Pods/`、`.symlinks/`、`Generated.xcconfig` は生成物なので commit しません。
 
 `flutter doctor -v` では、少なくとも Flutter、Xcode、CocoaPods に問題がないことを確認します。MacBook で Android 開発をしない場合、Android toolchain の警告は iOS ビルドの blocker ではありません。
 
@@ -156,16 +156,10 @@ xcrun simctl bootstatus "$simulator_id" -b
 flutter devices
 flutter analyze
 flutter test
-flutter build ios --simulator --debug
-xcodebuild build-for-testing \
-  -workspace ios/Runner.xcworkspace \
-  -scheme Runner \
-  -sdk iphonesimulator \
-  -destination 'generic/platform=iOS Simulator' \
-  CODE_SIGNING_ALLOWED=NO
+python3 scripts/run_ios_build.py
 ```
 
-`flutter analyze`、`flutter test`、`flutter build ios --simulator --debug`、`xcodebuild build-for-testing` がすべて成功することを確認します。この `xcodebuild` はネイティブ XCTest target のコンパイル確認です。GitHub Actions の iOS CI では、利用可能な Simulator を起動して `xcodebuild test` まで実行します。
+`flutter analyze`、`flutter test`、`scripts/run_ios_build.py`がすべて成功することを確認します。スクリプトは通常入口のアプリと全native XCTestを一度ビルドし、選択したSimulatorで`test-without-building`を実行します。全E2Eは別途`bash scripts/run_ios_e2e.sh <simulator-device-id>`で実行します。詳細は[CI](ci.md)を参照。
 
 アプリを Simulator で起動する場合:
 

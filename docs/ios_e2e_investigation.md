@@ -2,6 +2,8 @@
 
 調査日: 2026-09-17。対象: PR #85、コミット `0d57b2f` と直前の実行。
 
+現在は保存ログから今回のPIDのVM Service URLを取得する方式を実装済みです。以下は修正前の調査記録です。現行手順は[CI](ci.md)と[run_ios_e2e.py](../scripts/run_ios_e2e.py)を参照。
+
 ## 結論
 
 最新の失敗では、アプリ内のDart VM Serviceは起動しているが、Flutter CLIがそのURLをログから取得できていない。直接の停止箇所は、テスト実行前のVM Service URL検出である。

@@ -62,6 +62,8 @@ Widget test はユーザーから見える文言と導線を守る。
 - Settings
 - QR camera permission error
 - Home から Settings への navigation
+- 利用端末の選択からスマホ／GARMIN画面への遷移
+- GARMIN転送候補の読込から保存・照合ACK後の完了表示（SDKはFake）
 
 Android / iOSの全E2Eは現在CIで実行する。対象は `integration_test/` および追加された場合の `e2e/` 配下の全 `*_test.dart` で、個別のsmokeだけでは全件検証にならない。
 
@@ -121,6 +123,6 @@ PowerShell helper:
 
 - `flutter analyze` が通る。
 - `flutter test` が通る。
-- `flutter test --coverage` と `scripts/parse_coverage.py` で 100% を維持する。
+- `flutter test --coverage` と `scripts/parse_coverage.py` で実測値を記録し、未検証の分岐を確認する。100%は目標であり、現在のCIに割合による失敗ゲートはない。
 - Android 仕様に関わる文言、閾値、MethodChannel、通知、権限導線がテストで保護されている。
 - 実機依存 wrapper は実装詳細ではなく contract と ignore 理由で管理されている。

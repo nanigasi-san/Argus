@@ -1,5 +1,7 @@
 # ARGUS Data Field（範囲監視版）
 
+利用者向けの操作手順は[GARMIN初心者ガイド](../../docs/guides/garmin.md)、設計は[構成図](../../docs/architecture.md)を参照。
+
 Forerunner 55・165・255・265・945 LTE・955・965とfēnix 6・7・8向け。製品IDの一覧と初回セットアップは[対応機種ガイド](../../docs/garmin_supported_devices.md)を参照。Flutter ARGUS から送られた単一 Polygon（最大100頂点）を
 Connect IQ Background で受信し、Storageへ保存、読み戻しとAdler-32照合後にACKを返す。
 通常のRunのデータ画面へ追加し、Runのタイマー開始後にGPSが使える状態で

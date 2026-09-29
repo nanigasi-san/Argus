@@ -119,15 +119,22 @@ URL取得の時間制限、接続不能時の中断、driver失敗の保持もPy
 
 Flutter SDK・pubキャッシュを全検証ワークフローで有効にする。
 Android Build・Android E2Eは `gradle/actions/setup-gradle` により
-Gradle依存と再利用可能なビルド状態をキャッシュする。
+wrapperを検証し、`cache-provider: external`と`actions/cache`でGradle依存を保存する。
+キャッシュキーはOS・CPU・ワークフロー名・Gradle設定/ロックファイルのハッシュ・コミットSHA。
+復元時は同じ設定の過去コミットへフォールバックし、成功後に更新する。
+BuildとE2Eの同一キーへの保存競合を避け、失敗した実行とfork PRからは保存しない。
+ロックファイルを除外し、アプリ成果物とテスト結果はキャッシュしない。
+iOSはOS・CPU・Xcode版・Podfile/lock・pubspec.lock・Xcodeプロジェクトをキーに、
+CocoaPods/SwiftPMのダウンロードキャッシュを保存する。`Pods`やDerivedDataは保存せず、
+依存解決・コンパイル・テストは毎回実行する。計測結果と注意点は[改善検証記録](refactor_validation.md)を参照。
 iOS Buildで重複実行していた解析・DartテストはFlutter Testsの全件実行に
 集約する。通常入口のSimulatorアプリとnative XCTestは
 `scripts/run_ios_build.py` で検証する。
 `flutter build ios --simulator --debug --config-only --target=lib/main.dart` で
 Flutter設定・プラグイン・CocoaPodsを準備し、`xcodebuild build-for-testing`
 でアプリと全テストを一つのDerivedDataに一度だけビルドする。
-ビルドはgeneric Simulator向けとし、通常アプリのSimulator用アーキテクチャを
-特定の端末のものだけに絞らない。
+ビルド先は選択したSimulatorのUDIDを指定する。Xcode 27でgeneric destinationの
+アーキテクチャが空になる問題を避けるための設定で、テストにも同じSimulatorを使用する。
 Flutterの設定準備、アプリと全nativeテストのビルド、Simulator起動・起動確認、
 全nativeテスト実行、結果検証を順番に行う。前の処理の成功前に次へ進まない。
 IDE向けの索引生成は `COMPILER_INDEX_STORE_ENABLE=NO` で省き、

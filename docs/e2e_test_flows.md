@@ -6,7 +6,7 @@
 実行コマンドとArtifactの取得方法は
 [integration_test/README.md](../integration_test/README.md) を参照。
 
-通常実行の14シナリオ（Core 8件・UI smoke 5件・コンパス1件）と、
+通常実行の16シナリオ（Core 8件・UI smoke 7件・コンパス1件）と、
 任意のiOS仮想GPSシナリオ1件を、スクリーンショットではない説明図で示す。
 一覧図は流れの要約、各シナリオの詳細図は操作・位置入力と検証結果を示す。
 
@@ -204,9 +204,14 @@ Androidのnative dialog自体の操作は対象にしない。
 
 テスト名: `settings-update-monitoring-buffer`
 
-![C7: バッファ30mから50mへ変更し、自動再開後は同じ座標をINNERからNEARへ判定](images/e2e/c7-settings-update-monitoring-buffer.png)
+```mermaid
+flowchart LR
+  A[境界バッファ0 m / INNER] --> B[設定で50 mを保存]
+  B --> C[監視を自動再開]
+  C --> D[同じ座標を投入 / NEAR]
+```
 
-上の画像は旧デフォルト30 mで撮影した参考画像。現行テストの初期値は0 m。
+![C7: 境界バッファ0mから50mへの設定変更](images/e2e/c7-settings-update-monitoring-buffer.png)
 
 | 手順 | 操作・入力 | 期待する状態・処理 |
 | --- | --- | --- |
@@ -246,6 +251,8 @@ CoreのGeoJSONロード・範囲外判定を通す役割は持たない。
 | S3 | Settingsを描画 | 設定フォーム、監視可能のカード、境界バッファ。iOSはスクロールして警告音テストも確認 |
 | S4 | カメラdeniedのQR画面を描画 | カメラ権限エラーと「再試行」 |
 | S5 | Homeのメニュー → 「設定」 | Settingsへ遷移 |
+| S6 | GARMIN転送用の範囲と接続済み時計を選択 → 送信 | Fake SDKの保存・照合ACK後に完了画面 |
+| S7 | 利用端末を選んで「次へ」、戻ってもう一方を選ぶ | スマホはHome、GARMINは転送画面 |
 
 S1〜S4の画面をスクリーンショットとして保存する。
 
@@ -291,6 +298,19 @@ Settingsを直接描画する。Androidはフォーム表示まで、iOSは警�
 ![S5: Homeからメニューを開き、設定項目をタップしてSettingsへ遷移](images/e2e/s5-home-to-settings.png)
 
 画面遷移を確認する。設定変更・保存・監視の自動再開はC7で扱う。
+
+### S6・S7. GARMIN転送と利用端末の選択
+
+```mermaid
+flowchart LR
+  A[利用端末を選択] -->|スマホ| H[Home]
+  A -->|GARMIN| G[転送画面]
+  G --> B[境界データ・時計を選択]
+  B --> C[送信・Fake ACK照合]
+  C --> D[転送完了を表示]
+```
+
+選択画面・転送前・転送後の実スクリーンショットを保存する。時計の実通信はSDKを置き換えており、実機検証とは区別する。上の一覧画像S1〜S5は従来の5シナリオの要約で、追加の2シナリオはこの図が対象。
 
 ## 5. コンパスE2Eの流れ
 

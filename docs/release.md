@@ -10,7 +10,7 @@ Google Play の `production / completed` を commit し、Google の審査・公
 1. `docs/app_store/releases/<version>/ja-JP.txt`（両ストア共通、500文字以内）と
    `review_notes.md`（iOS の審査メモ、3900文字以内）を用意し、アプリの変更とともに PR で main に取り込む。
 2. main push の `Flutter Tests`、`Android Build`、`iOS Build`、`Android E2E`、`iOS E2E` が成功したことを確認する。
-3. 配信対象の main コミットに `vX.Y.Z` タグを作成し push する。同じタグで iOS も配信される。
+3. 配信対象の main コミットに `vX.Y.Z` タグを作成し push する。iOSは自動配信されない。同じタグのSHAを使い、[Mac上のiOSリリース手順](ios_release_cd.md)で別途実行する。
 4. 各 workflow の Job Summary を確認する。Google Play の審査・公開状態は Play Console で確認する。
 
 タグの削除・付け替えはしない。GitHub の ruleset でも禁止している。
