@@ -74,50 +74,61 @@
   <body>
     <main>
       <section class="card">
-        <p class="muted">Last updated: 2026-04-04</p>
+        <p class="muted">Last updated: 2026-09-29</p>
+
         <h1>ARGUS Privacy Policy</h1>
-        <p>
-          ARGUS is a geofencing support app. This policy explains what data the app uses and how that
-          data is handled.
-        </p>
+
+        <p>ARGUS is a geofencing support app. This policy explains what data the app uses and how that data is handled.</p>
 
         <h2>1. Data used by the app</h2>
+
+        <p>ARGUS uses the following data to provide its core features on the phone and, when the user chooses GARMIN transfer, on the selected watch:</p>
+
         <ul>
-          <li>Location data for foreground and background geofence monitoring.</li>
-          <li>Camera access to scan GeoJSON QR codes.</li>
-          <li>Local files selected by the user to import GeoJSON data.</li>
-          <li>Notification permission to warn the user when they leave the configured area.</li>
+          <li><strong>Location data.</strong> After the user starts monitoring, the phone can use foreground and background location while its screen is locked or another app is in use. Monitoring does not automatically restart after ARGUS is terminated.</li>
+          <li><strong>Camera access.</strong> The app uses the camera to scan GeoJSON QR codes.</li>
+          <li><strong>Local files selected by the user.</strong> The app can import GeoJSON files that the user chooses.</li>
+          <li><strong>Notification permission.</strong> The app uses notifications to warn the user when they leave the configured area.</li>
         </ul>
 
         <h2>2. How the data is handled</h2>
+
         <ul>
-          <li>Location data is processed on the device to evaluate geofence status.</li>
+          <li>Location data is processed on the device to evaluate geofence status. Background location is used only to keep geofence monitoring active after the user starts monitoring.</li>
           <li>Camera input is processed on the device to decode QR codes.</li>
-          <li>Imported GeoJSON and temporary restore files remain on the device.</li>
-          <li>No developer-operated external server receives location, camera, or GeoJSON data.</li>
+          <li>Imported GeoJSON data is stored on the phone. When the user selects GARMIN transfer, ARGUS converts the selected boundary and sends its geometry and file name to the selected paired watch through Connect IQ. The watch stores that boundary to monitor a Run. The transfer does not send the phone&#x27;s location history or camera input.</li>
+          <li>Temporary files created while restoring GeoJSON from QR codes are kept only on the device and can be deleted by the app.</li>
         </ul>
 
+        <p>ARGUS does not send location data, camera frames, GeoJSON files, or personal information to an external server operated by the developer.</p>
+
         <h2>3. Third-party services</h2>
-        <p>
-          ARGUS is built with Flutter and may rely on platform components provided by Android, Google Play
-          services, and ML Kit for barcode scanning. Their handling of data is governed by their own terms
-          and privacy policies.
-        </p>
+
+        <p>ARGUS is built with Flutter and may rely on platform components provided by Android, Google Play services, and related libraries such as ML Kit for barcode scanning. User-initiated GARMIN transfer uses Garmin Connect or the Connect IQ Companion SDK and Bluetooth. Release builds may also check the app store for updates. These third-party components and services are governed by their own terms and privacy policies.</p>
 
         <h2>4. Third-party sharing</h2>
-        <p>The developer does not sell, share, or provide personal data to third parties.</p>
+
+        <p>The developer does not sell personal data or send location data, camera frames, or GeoJSON files to a server operated by the developer. Boundary transfer to a paired GARMIN watch occurs only when the user requests it.</p>
 
         <h2>5. Data retention</h2>
-        <p>Data used by ARGUS remains on the device unless the user removes the app or deletes the files.</p>
+
+        <p>Imported files and settings remain on the phone until the user removes the app or deletes the related files. Temporary GeoJSON files created from QR codes may be removed by the app. A boundary sent to a GARMIN watch is enabled for one Run and has a 12-hour deadline for starting that Run. Ending the associated Run deletes its boundary. The phone&#x27;s stop command also requests deletion, and ARGUS reports completion only after the watch confirms deletion. Pausing and resuming the same Run retains the boundary. A Run started before the deadline can continue until that Run ends. If no Run is started, passing the deadline alone does not delete the stored boundary; it remains until a later transfer replaces it, the phone requests deletion, or an associated Run ends.</p>
 
         <h2>6. Contact</h2>
-        <p>
-          Questions about this policy can be sent through the
-          <a href="https://github.com/nanigasi-san/Argus/issues">ARGUS issue tracker</a>.
-        </p>
+
+        <p>Questions about this policy can be sent to:</p>
+
+        <ul>
+          <li><a href="mailto:yamada.orien@gmail.com">yamada.orien@gmail.com</a></li>
+        </ul>
 
         <h2>7. Changes</h2>
-        <p>This policy may be updated when the app or legal requirements change.</p>
+
+        <p>This policy may be updated when the app or legal requirements change. The latest version will be published at:</p>
+
+        <ul>
+          <li><a href="https://argus-lp.vercel.app/privacy.html">ARGUS Privacy Policy</a> </li>
+        </ul>
       </section>
     </main>
   </body>

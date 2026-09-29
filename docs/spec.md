@@ -8,7 +8,7 @@
 
 - **目的**: GeoJSON で定義した警戒エリアからの逸脱を端末上で監視し、エリア外の測位が既定で3サンプルかつ10秒継続してOUTERに確定した時点で警告する。OUTER状態時には復帰のための距離・方位情報を提供する。
 - **利用想定**: 保護対象者の無断外出検知、現場作業者の安全区域逸脱監視、競技エリア監視など。
-- **対応プラットフォーム**: Flutter 3.x / Dart 3.2+。Android 9 以降、iOS 15 以降を想定。
+- **対応プラットフォーム**: Flutter 3.x / Dart 3.2+。AndroidのminSdkはFlutter SDKの既定値を使用し、iOSは15.0以降。ビルド時の実値は生成Manifestで確認する。
 - **位置取得**: Geolocator を利用し、最短 3 秒間隔・距離フィルタ 0m で継続的に測位。Android では Foreground Service、iOS では常時位置情報を前提。
 
 ---
@@ -19,8 +19,9 @@
 
 - **初回起動**: GeoJSON は自動ロードしない。状態は `waitGeoJson` で開始し、ユーザーがファイルまたは QR から読み込む。
 - **ファイルピッカー**: スマホ監視画面の読込ボタン、またはGARMIN転送画面から `.geojson` / `.json` を読み込める。
-- **QRコード読み込み**: スマホ監視画面のQR読込ボタン、またはGARMIN転送画面からスキャンできる。QRコードは `agz1:` または互換用の `gjz1:` スキームで始まる必要がある。読み込んだGeoJSONは一時ファイルとして保存され、アプリ終了時に自動削除される。
-- **ファイル名処理**: 読み込んだファイル名は `.geojson` 拡張子に正規化され、UI に表示される。`agz1` では埋め込まれた元ファイル名を表示し、一時ファイルの実体は `temp_geojson_<timestamp>.geojson` として管理する。
+- **QRコード読み込み**: スマホ監視画面のQR読込ボタン、またはGARMIN転送画面からスキャンできる。QRコードは `agz1:` または互換用の `gjz1:` スキームで始まる必要がある。読み込んだGeoJSONは一時ファイルとして保存され、QRの再読込時と終了通知を受けた際に削除を試みる。OSの強制終了では完了を保証できない。
+- **内部のファイル名**: スマホ監視用にファイルから読み込んだ名前は `.geojson` 拡張子に正規化して保持する。GARMIN転送画面で選んだファイルは選択元の名前を保持し、`agz1` では埋め込まれたファイル名を復元する。スマホ監視用QRの一時ファイルの実体は `temp_geojson_<timestamp>.geojson` として管理する。
+- **表示名**: スマホ・GARMINとも、ファイル名の最後のピリオドとそれ以降を省略する。例えば `公園.v2.geojson` は `公園.v2`、`course.geojson.gz` は `course.geojson` と表示し、ピリオドがなければそのまま表示する。この表示処理では元ファイルやQR内のファイル名を変更しない。時計へ送る表示名は拡張子除去後に最大48 UTF-8バイトへ制限し、空の場合は `ARGUS` とする。時計に保存済みの表示名は再送信時に更新される。
 - **エラー処理**: 読み込み失敗はエラーバナーとログ（レベル ERROR）で通知。`FormatException` とその他の例外を区別して表示。QRコードの形式が無効な場合やデコードに失敗した場合も適切にエラーを表示する。
 
 ### 1.2 位置情報ストリーム
@@ -83,7 +84,7 @@
   - タイトル: `ARGUS警告`
   - 本文: `競技エリアから離れています。`（実装では「競技エリア」と記載）
   - Android: `Importance.max`, `Priority.max`, `category: AndroidNotificationCategory.alarm`, `playSound: false`, `enableVibration: false`
-  - iOS: 視覚通知は `interruptionLevel: InterruptionLevel.timeSensitive`。音は `AVAudioPlayer` のネイティブループ再生に一本化。
+  - iOS: 視覚通知は `interruptionLevel: InterruptionLevel.timeSensitive`。音は `AVAudioPlayer` のループ再生に加え、バックグラウンド通知の `alarm.caf` を使用する。
 - **Foreground Service 通知**: Android 背景計測用にチャンネル名 `ARGUSバックグラウンド監視`、タイトル「ARGUSが位置情報を監視中です」、本文「画面を消しても位置情報の追跡は継続されます。」を表示する。
 - **アラーム音**: Android / iOS は `argus/alarm` MethodChannel のネイティブループ再生を使用。iOSは画面ロック中の到達性を確保するため、Time Sensitiveローカル通知にもバンドル済み `alarm.caf` を設定する。フォアグラウンドでは通知音を提示せずネイティブ再生を使う。`Notifier.stopAlarm()` で停止。
 - **iOS警告音テスト**: 設定画面から現在のスライダー音量で音声だけを開始・停止できる。通知・バイブは発生せず、ホーム画面でも継続する。設定画面終了、監視開始、アプリ終了では停止する。
@@ -107,10 +108,10 @@
 
 #### HomePage
 
-- **AppBar**: タイトル ARGUS（中央寄せ）、右上オーバーフローメニューから Settings へ遷移。
+- **AppBar**: タイトル ARGUS（中央寄せ）、右上メニューの「設定」から設定画面へ遷移。
 - **Body**:
   1. **状態バッジ**: 大きな円形バッジ（画面幅の70%）で状態を表示。状態別カラー。`waitStart` 状態ではタップ可能（リップルあり）で START として機能。
-  2. **GeoJSON ファイル状態**: Chip 表示。未ロード時は情報アイコン付きの Chip、ロード済み時はファイル名 Chip を中央表示。
+  2. **GeoJSON ファイル状態**: GPS精度とファイル名を状態バッジの上に表示。未ロード時のファイル名は「-」。
   3. **退避ナビゲーション**: OUTER 状態時または開発者モード時に距離・方角を表示。
   4. **開発者モード情報**: 開発者モード有効時のみ表示
      - 現在の状態名
@@ -122,16 +123,13 @@
      - エラーメッセージ（あれば）
      - ログエントリ（最新5件）
   5. **エラーメッセージ**: Snackbar（自動フェード、フローティング）。
-- **主要操作**: 画面下部に常設（Start / Load GeoJSON / Read QR code）。親指リーチ最適化。FABは未使用。
+- **主要操作**: 状態バッジで開始、監視中は5秒長押しで終了。画面内の読込操作からファイル・QRを選ぶ。内容はスクロールできる。
 
 #### SettingsPage
 
-- **設定値表示**: 現在の設定値をテキスト表示
-  - Inner buffer (m)
-  - Leave confirm (samples / seconds)
-  - GPS bad threshold (m)
+- **設定フォーム**: 境界バッファ距離、範囲外確定サンプル数・時間、GPS精度の閾値、位置更新間隔、警告音量を編集し、「設定を反映」で保存する。監視中の変更は監視を再開して適用する。
 - **Developer mode switch**: 距離/方位の詳細情報を常時表示するかどうかを切り替え。デフォルトは OFF。
-- **Export logs ボタン**: JSON 形式でログをエクスポートし、ダイアログで表示。ユーザが手動でコピーする運用。
+- **ログを出力**: JSONL形式でダイアログに表示する。
 
 ---
 
@@ -187,7 +185,7 @@ lib/
 | ジオメトリ       | `GeoModel`, `GeoPolygon`, `LatLng`                                             | GeoJSON パース、ポリゴンデータの保持。                                               |
 | 空間インデックス | `AreaIndex`                                                                    | ポリゴンの境界ボックスによる空間インデックス。位置に基づいて候補ポリゴンを絞り込み。 |
 | 点とポリゴン判定 | `PointInPolygon`, `PointInPolygonEvaluation`                                   | Ray Casting による包含判定、最近接点・距離・方位角の計算。                           |
-| QRコード         | `GeoJsonQrCodec`, `encodeGeoJson`, `decodeGeoJson`                            | GeoJSONのgzip圧縮、Base64URLエンコード、QRコード生成・復元。                        |
+| QRコード         | `encodeGeoJson`, `decodeGeoJson`（関数群）                            | GeoJSONのgzip圧縮、Base64URLエンコード、QRコード生成・復元。                        |
 | 位置サービス     | `LocationService`, `GeolocatorLocationService`, `LocationFix`                  | 位置ストリームの開始・停止、権限確認、プラットフォーム固有設定。                     |
 | 通知             | `Notifier`, `AlarmPlayer`（`NativeAlarmPlayer`）, `VibrationPlayer`（`NativeVibrationPlayer`）, `LocalNotificationsClient` | 通知チャンネル作成、アラーム音・バイブ制御、バッジ状態。                             |
 | ログ             | `EventLogger`, `AppLogEntry`, `AppLogLevel`                                    | GPS・状態イベントのメモリ記録と UI 連携、JSON エクスポート。                         |
@@ -205,193 +203,19 @@ lib/
 
 ### 3.4 依存関係
 
-- **AppController** ← StateMachine, LocationService, FileManager, EventLogger, Notifier, GeoJsonQrCodec
+- **AppController** ← StateMachine, LocationService, FileManager, EventLogger, Notifier, geojson_qr_codec.dartの関数群
 - **StateMachine** ← GeoModel, AreaIndex, PointInPolygon, AppConfig, HysteresisCounter
 - **GeoModel** ← GeoJSON（パース）
 - **PointInPolygon** ← 地理計算（Haversine公式など）
-- **GeoJsonQrCodec** ← gzip、Base64URL、SHA256、QR生成
+- **geojson_qr_codec.dartの関数群** ← gzip、Base64URL、SHA256、QR生成
 - **QrScannerPage** ← AppController（Provider経由）、MobileScanner
 - **UI** ← AppController（Provider経由）
 
 全モジュールは依存注入で連結され、`AppController.bootstrap()` が標準構成を生成する。
 
-### 3.5 クラス図
+### 3.5 クラス図・依存関係図
 
-```mermaid
-classDiagram
-    class AppController {
-        -StateMachine stateMachine
-        -LocationService locationService
-        -FileManager fileManager
-        -EventLogger logger
-        -Notifier notifier
-        -AppConfig? _config
-        -GeoModel _geoModel
-        -AreaIndex _areaIndex
-        -StateSnapshot _snapshot
-        +StateSnapshot get snapshot
-        +Future initialize()
-        +Future startMonitoring()
-        +Future stopMonitoring()
-        +Future reloadGeoJsonFromPicker()
-        +void setDeveloperMode(bool)
-    }
-    
-    class StateMachine {
-        -AppConfig _config
-        -GeoModel _geoModel
-        -AreaIndex _areaIndex
-        -PointInPolygon _pip
-        -HysteresisCounter _hysteresis
-        -LocationStateStatus _current
-        +StateSnapshot evaluate(LocationFix)
-        +void updateGeometry(GeoModel, AreaIndex)
-        +void updateConfig(AppConfig)
-    }
-    
-    class LocationService {
-        <<abstract>>
-        +Stream~LocationFix~ get stream
-        +Future start(AppConfig)
-        +Future stop()
-    }
-    
-    class GeolocatorLocationService {
-        +Stream~LocationFix~ get stream
-        +Future start(AppConfig)
-        +Future stop()
-    }
-    
-    class Notifier {
-        -LocalNotificationsClient _notifications
-        -AlarmPlayer _alarmPlayer
-        -VibrationPlayer _vibrationPlayer
-        +Future notifyOuter()
-        +Future notifyRecover()
-        +Future stopAlarm()
-    }
-    
-    class GeoModel {
-        +List~GeoPolygon~ polygons
-        +bool hasGeometry
-        +factory fromGeoJson(String)
-    }
-    
-    class GeoPolygon {
-        +List~LatLng~ points
-        +double minLat
-        +double maxLat
-        +double minLon
-        +double maxLon
-    }
-    
-    class AreaIndex {
-        +factory build(List~GeoPolygon~)
-        +Iterable~GeoPolygon~ lookup(double, double)
-    }
-    
-    class PointInPolygon {
-        +PointInPolygonEvaluation evaluatePoint(double, double, GeoPolygon)
-    }
-    
-    class HysteresisCounter {
-        -int _requiredSamples
-        -Duration _requiredDuration
-        +bool addSample(DateTime)
-        +bool isSatisfied(DateTime)
-        +void reset()
-    }
-    
-    class StateSnapshot {
-        +LocationStateStatus status
-        +DateTime timestamp
-        +double? distanceToBoundaryM
-        +double? horizontalAccuracyM
-        +bool geoJsonLoaded
-        +LatLng? nearestBoundaryPoint
-        +double? bearingToBoundaryDeg
-    }
-    
-    class FileManager {
-        +Future~XFile?~ pickGeoJsonFile()
-        +Future~AppConfig~ readConfig()
-        +Future saveConfig(AppConfig)
-    }
-    
-    class EventLogger {
-        +Future logLocationFix(LocationFix)
-        +Future logStateChange(StateSnapshot)
-        +Future~String~ exportJsonl()
-    }
-    
-    class GeoJsonQrCodec {
-        +Future~GeoJsonQrBundle~ encodeGeoJson(GeoJsonQrEncodeInput)
-        +Future~String~ decodeGeoJson(GeoJsonQrDecodeInput)
-        +String minifyGeoJson(String)
-    }
-    
-    class QrScannerPage {
-        +Widget build(BuildContext)
-    }
-    
-    AppController --> StateMachine
-    AppController --> LocationService
-    AppController --> FileManager
-    AppController --> EventLogger
-    AppController --> Notifier
-    AppController --> StateSnapshot
-    AppController --> GeoJsonQrCodec
-    StateMachine --> GeoModel
-    StateMachine --> AreaIndex
-    StateMachine --> PointInPolygon
-    StateMachine --> HysteresisCounter
-    StateMachine --> StateSnapshot
-    GeoModel --> GeoPolygon
-    AreaIndex --> GeoPolygon
-    PointInPolygon --> GeoPolygon
-    LocationService <|.. GeolocatorLocationService
-    QrScannerPage --> AppController
-```
-
-### 3.6 依存関係図
-
-```mermaid
-graph TD
-    A[AppController] --> B[StateMachine]
-    A --> C[LocationService]
-    A --> D[FileManager]
-    A --> E[EventLogger]
-    A --> F[Notifier]
-    
-    B --> G[GeoModel]
-    B --> H[AreaIndex]
-    B --> I[PointInPolygon]
-    B --> J[HysteresisCounter]
-    B --> K[AppConfig]
-    
-    G --> L[GeoPolygon]
-    H --> L
-    I --> L
-    
-    C --> M[GeolocatorLocationService]
-    
-    F --> N[LocalNotificationsClient]
-    F --> O[AlarmPlayer]
-    F --> P[VibrationPlayer]
-    
-    A --> Q[GeoJsonQrCodec]
-    A --> R[QrScannerPage]
-    
-    D --> K
-    
-    style A fill:#e1f5ff
-    style B fill:#fff4e1
-    style G fill:#e8f5e9
-    style H fill:#e8f5e9
-    style I fill:#e8f5e9
-    style Q fill:#fff9c4
-    style R fill:#f3e5f5
-```
+[構成と処理フロー](architecture.md)にスマホ／GARMINのシステム構成、実クラスに対応するクラス図、転送シーケンス、データ寿命をまとめる。QR codecは関数群、ヒステリシスは単調増加する`Duration`を使用する。
 
 ---
 
@@ -500,12 +324,12 @@ stateDiagram-v2
 ## 5. GeoJSON パース仕様
 
 - **対応形式**: GeoJSON FeatureCollection。`Polygon` と `MultiPolygon` をサポート。
-- **座標系**: GeoJSON 標準（経度、緯度の順）。パース時に `LatLng(latitude, longitude)` に変換。
+- **座標系**: GeoJSON標準の経度・緯度の順。パース時に`LatLng(latitude, longitude)`へ変換し、有限値・緯度±90・経度±180を検証する。短い配列や非数値、不正な構造は`FormatException`。高度など3要素目以降は無視する。
 - **ポリゴン処理**:
   - ポリゴンが閉じていない場合（最初と最後の点が異なる）、自動的に閉じる。
-  - `MultiPolygon` の各ポリゴンから最初のリング（外側リング）のみを抽出。
+  - `Polygon` / `MultiPolygon`の各ポリゴンから外側リングのみを抽出。穴の扱いは従来どおり未対応。
   - 3点未満のポリゴンは無視。
-- **プロパティ**: `name` と `version` を読み込み（現在は未使用）。
+- **プロパティ**: `name`は文字列、`version`は有限数値を整数化して保持（現在は未使用）。欠落は許容する。
 - **空間インデックス**: `AreaIndex.build()` が各ポリゴンの境界ボックスを計算し、インデックスを構築。
 
 ---
@@ -550,7 +374,7 @@ stateDiagram-v2
 
 - **保存場所**: `getTemporaryDirectory()`で取得した一時ディレクトリ。
 - **ファイル名**: 実体は `temp_geojson_<timestamp>.geojson`（`timestamp`はミリ秒単位のエポック時刻）。`agz1`の表示名は埋め込まれた元ファイル名。
-- **クリーンアップ**: アプリが完全終了時（`AppLifecycleState.detached`）に自動削除。新しいQRコードを読み込む際も既存の一時ファイルを削除。
+- **クリーンアップ**: `AppLifecycleState.detached`通知時とQR再読込時に一時ファイルの削除を試みる。OSの強制終了では非同期削除の完了を保証できない。
 
 ---
 
@@ -591,7 +415,7 @@ stateDiagram-v2
 - **タイトル**: `ARGUS警告`
 - **本文**: `競技エリアから離れています。`（実装では「競技エリア」と記載）
 - **Android**: `Importance.max`, `Priority.max`, `category: AndroidNotificationCategory.alarm`, `playSound: false`, `enableVibration: false`
-- **iOS**: 視覚通知は `interruptionLevel: InterruptionLevel.timeSensitive`。音は `AVAudioPlayer` のネイティブループ再生に一本化。
+- **iOS**: 視覚通知は `interruptionLevel: InterruptionLevel.timeSensitive`。音は `AVAudioPlayer` のループ再生に加え、バックグラウンド通知の `alarm.caf` を使用する。
 - **アラーム**: 通知と同時に同梱の警報音をネイティブでループ再生開始。端末の既定通知音には依存しない。
 
 ### 7.3 復帰通知
@@ -638,20 +462,20 @@ stateDiagram-v2
 
 ### 9.1 HomePage
 
-- **AppBar**: タイトル ARGUS（中央寄せ）、右上オーバーフローメニューから Settings へ遷移。
+- **AppBar**: タイトル ARGUS（中央寄せ）、右上メニューの「設定」から設定画面へ遷移。
 - **Body**:
   1. **状態バッジ**: 大きな円形バッジ（画面幅の70%）で状態を表示。状態別カラー。`waitStart` 状態ではタップ可能（リップルあり）で START として機能。
-  2. **GeoJSON ファイル状態**: Chip 表示。未ロード時は情報アイコン付きの Chip、ロード済み時はファイル名 Chip を中央表示。
+  2. **GeoJSON ファイル状態**: GPS精度とファイル名を状態バッジの上に表示。未ロード時のファイル名は「-」。
   3. **退避ナビゲーション**: OUTER 状態時または開発者モード時に距離・方角を表示。
   4. **開発者モード情報**: 開発者モード有効時のみ表示（詳細は上記参照）。
   5. **エラーメッセージ**: Snackbar（自動フェード、フローティング）。
-- **主要操作**: 画面下部に常設（Start / Load GeoJSON / Read QR code）。親指リーチ最適化。FABは未使用。
+- **主要操作**: 状態バッジで開始、監視中は5秒長押しで終了。画面内の読込操作からファイル・QRを選ぶ。内容はスクロールできる。
 
 ### 9.2 SettingsPage
 
-- **設定値表示**: 現在の設定値をテキスト表示。
+- **設定フォーム**: 数値・スライダーを編集し「設定を反映」で保存する。項目は1.8を参照。
 - **Developer mode switch**: 距離/方位の詳細情報を常時表示するかどうかを切り替え。デフォルトは OFF。
-- **Export logs ボタン**: JSON 形式でログをエクスポートし、ダイアログで表示。
+- **ログを出力**: JSONL形式でダイアログに表示する。
 
 ### 9.3 GARMIN転送画面とData Field
 
@@ -669,7 +493,7 @@ stateDiagram-v2
 - `flutter test --coverage` と `scripts/parse_coverage.py` で 100% coverage を目標にする。
 - Android 周辺は、音量 50% 境界、MethodChannel payload、通知チャンネル、OUTER 通知 ID `1001`、Foreground Service 文言、権限要求順序、音設定導線を契約テストで守る。
 - GPS、カメラ、file picker、通知プラグインなど実機・OS 境界の薄い wrapper は `coverage:ignore` を許容し、Fake と contract test でアプリ側の判定を検証する。
-- `integration_test/ui_smoke_test.dart` は実機 / emulator 向け smoke として、Home permission card、background disclosure、Settings、QR permission error、Home → Settings navigation に限定する。
+- `integration_test/ui_smoke_test.dart` は実機 / emulator 向け smoke として、Home permission card、background disclosure、Settings、QR permission error、Home → Settings navigation、利用端末選択、GARMIN転送ACK後の完了表示を検証する。
 - 全E2Eは `integration_test/`（および将来の `e2e/`）の `*_test.dart` を再帰検出して実行する。実行方法は [CIとリリースのワークフロー](ci.md) と [テスト方針](tests.md) を参照。
 
 ---

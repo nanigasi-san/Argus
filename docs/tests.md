@@ -12,6 +12,14 @@
 
 ## テスト層
 
+### GARMIN Data Field
+
+`Garmin Tests` CIでConnect IQ SDK 9.2.0の`fr55` Simulatorを起動し、
+`garmin/argus-data-field/tests/MonitorTests.mc`の境界判定・監視状態・範囲の寿命・
+保存とACKの全テストを実行する。通常ビルドも毎回実行し、テスト結果と検出件数が
+一致しなければ失敗とする。[CIの実行環境と診断ログ](ci.md#garminのビルドとsimulatorテスト)を参照。
+BLE通信・実GPS・実時計の表示や警告は実機確認として区別する。
+
 ### State / Geo / QR / IO
 
 状態遷移、GeoJSON パース、点とポリゴン判定、QR codec、設定 JSON、ログ出力を純粋 Dart テストで守る。ここは実機依存を持たせず、例外系と境界値を厚く見る。
@@ -62,6 +70,8 @@ Widget test はユーザーから見える文言と導線を守る。
 - Settings
 - QR camera permission error
 - Home から Settings への navigation
+- 利用端末の選択からスマホ／GARMIN画面への遷移
+- GARMIN転送候補の読込から保存・照合ACK後の完了表示（SDKはFake）
 
 Android / iOSの全E2Eは現在CIで実行する。対象は `integration_test/` および追加された場合の `e2e/` 配下の全 `*_test.dart` で、個別のsmokeだけでは全件検証にならない。
 
@@ -121,6 +131,6 @@ PowerShell helper:
 
 - `flutter analyze` が通る。
 - `flutter test` が通る。
-- `flutter test --coverage` と `scripts/parse_coverage.py` で 100% を維持する。
+- `flutter test --coverage` と `scripts/parse_coverage.py` で実測値を記録し、未検証の分岐を確認する。100%は目標であり、現在のCIに割合による失敗ゲートはない。
 - Android 仕様に関わる文言、閾値、MethodChannel、通知、権限導線がテストで保護されている。
 - 実機依存 wrapper は実装詳細ではなく contract と ignore 理由で管理されている。

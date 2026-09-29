@@ -10,6 +10,22 @@ https://argus-lp.vercel.app/
 
 ARGUSはGeoJSON／QRから読み込んだ範囲をスマホ上で監視する。起動時に「スマホで利用」または「GARMINだけで利用（試験機能）」を選べる。GARMIN向けは対応するConnect IQ Data Fieldへ範囲を送り、保存ACK後に時計のRun画面で監視する。対応機種・事前準備は [GARMINセットアップ](docs/garmin_supported_devices.md)、転送制限と期限・停止の仕様は [GARMIN転送データ形式](docs/garmin_data_format.md) を参照。
 
+## はじめて使う
+
+- [スマホで使う（画像付き）](docs/guides/phone.md)
+- [GARMINで使う（画像付き）](docs/guides/garmin.md)
+- [ドキュメント一覧](docs/README.md)
+
+## 開発する
+
+[現行仕様](docs/spec.md)・[構成図とクラス図](docs/architecture.md)・[テスト手順](docs/tests.md)を参照してください。
+
+```sh
+flutter pub get
+flutter analyze
+flutter test
+```
+
 ![App icon](./icon.png)
 
 ## CIとマージ条件
@@ -28,6 +44,6 @@ CIが未完了・失敗・キャンセルの場合はマージできません。
 
 ## リリース運用
 
-Android AAB のproduction / closed test配信とバージョン更新オプションは [docs/release.md](docs/release.md) を参照してください。
+Android AAB のタグ起動によるproduction配信は [docs/release.md](docs/release.md) を参照してください。
 
 iOS 開発用 MacBook の初回セットアップは [docs/macbook_ios_setup.md](docs/macbook_ios_setup.md)、署名、実機テスト、Archive 手順は [docs/ios_release.md](docs/ios_release.md) を参照してください。

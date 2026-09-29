@@ -1,11 +1,10 @@
-# FOR AI
-Dont change this file.
-
 # Argus リファクタリング方針と規約
 
 本ドキュメントは、Argusプロジェクトにおけるコードリファクタリング時の方針と規約を定義します。コードベースの一貫性を保ち、保守性とテスト容易性を向上させることを目的としています。
 
 ---
+
+本書のコード片は設計例です。実際のAPIと依存関係は[構成図・クラス図](architecture.md)を参照してください。
 
 ## 1. 抽象化と依存性注入
 
@@ -140,7 +139,7 @@ class NativeVibrationPlayer {
 可能な限り`final`を使用し、状態の変更を明示的にします。
 
 **良い例:**
-```dartをして
+```dart
 class AppController {
   final StateMachine stateMachine;
   final LocationService locationService;
@@ -195,9 +194,9 @@ try {
 }
 ```
 
-### 4.3 非同期ループの制御
+### 4.3 非同期処理の寿命
 
-長時間実行される非同期ループでは、停止フラグと`try-finally`を使用してリソースを確実に解放します。
+長時間処理は画面の破棄と再要求を考慮します。Widgetではawait後にmountedを確認し、競合する検索には世代番号を使います。警告音・振動はネイティブ側で開始・停止を管理します。
 
 **良い例:**
 ```dart

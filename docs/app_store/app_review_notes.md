@@ -1,6 +1,6 @@
 # App Review Notes
 
-提出対象: iOS `0.6.0 (1008)`
+過去の提出対象: iOS `0.6.0 (1008)`。この版の資料として保持します。新規提出では[iOSリリース運用](../ios_release_cd.md)に従い、対象版の`releases/<version>/review_notes.md`を作成してください。
 
 ## 日本語
 

@@ -4,7 +4,7 @@ This directory contains Android and iOS device/emulator tests for ARGUS. UI smok
 
 各シナリオの操作・位置入力・状態遷移・警告動作は
 [E2Eテストの流れ](../docs/e2e_test_flows.md) に、シナリオごとの状態遷移図と一覧図付きで整理しています。
-通常の14シナリオと任意のiOS仮想GPSシナリオを区別し、UI smokeは画面の表示・遷移として説明しています。
+通常の16シナリオ（Core 8・UI smoke 7・コンパス1）と任意のiOS仮想GPSシナリオを区別し、UI smokeは画面の表示・遷移として説明しています。
 
 ## What Is Covered
 
@@ -13,6 +13,8 @@ This directory contains Android and iOS device/emulator tests for ARGUS. UI smok
 - Settings screen
 - QR screen camera-permission error UI
 - Navigation from Home to Settings
+- Phone / GARMIN usage mode selection
+- GARMIN transfer confirmation after a matching storage ACK (fake SDK)
 
 ## Run On Android
 
@@ -53,6 +55,9 @@ Saved files:
 - `build/integration_test/screenshots/background-location-disclosure.png`
 - `build/integration_test/screenshots/settings-form.png`
 - `build/integration_test/screenshots/qr-permission-error.png`
+- `build/integration_test/screenshots/usage-mode-selection.png`
+- `build/integration_test/screenshots/garmin-transfer-option1-before.png`
+- `build/integration_test/screenshots/garmin-transfer-option1-after.png`
 
 ## Notes
 
@@ -207,14 +212,14 @@ KVMを有効化したエミュレーターで全suiteを実行します。
 Artifact `android-e2e-diagnostics` は成功・失敗とも14日間保存されます。
 
 - `build/integration_test/screenshots/`: UI smoke、Coreの完了画面・OUTER画面・失敗時画面
-- `build/e2e/`: suiteごとの実行ログ、結果、Flutter version、API level、logcat、最終画面
+- `build/e2e/`: 全件入口の実行ログ（PowerShellはsuite別）、結果、Flutter version、API level、logcat、最終画面
 
 Step SummaryにもAPI level、Flutter version、実行suite、成否を表示します。
 実行中のlogcatはエミュレーター終了前に収集します。
 実行ファイル一覧は `build/e2e/suites.txt` に保存します。
 PRの必須チェックにする場合のチェック名は `Android E2E` です。
 PR提出前にローカルで全件を成功させるルールを `AGENTS.md` に記載しています。
-`Flutter Tests`、`iOS Build`、`Android Release` は独立して動作します。
+`Flutter Tests`、`Android Build`、`iOS Build`、`iOS E2E`、`Android Release` は独立して動作します。
 
 ### Platform E2Eの残る範囲
 

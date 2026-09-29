@@ -14,7 +14,7 @@ MacBook の初回環境構築は [macbook_ios_setup.md](macbook_ios_setup.md) �
 - Background Modes: `Location updates`, `Audio`
 - 権限文言: 常時位置情報、使用中位置情報、カメラ、写真追加
 - 通知: `Time Sensitive Notifications`
-- 警告音: `ios/Runner/Resources/alarm.caf` をネイティブループ再生。iOS通知音は重複再生を避けるため無効
+- 警告音: `ios/Runner/Resources/alarm.caf` をネイティブループ再生。画面ロック中の到達性のためTime Sensitive通知にも同梱音を設定し、前面では通知音を提示せずネイティブ再生を使う
 - ネイティブアラーム: `argus/alarm` MethodChannel と `AVAudioPlayer` のループ再生
 - 警告音テスト: 設定画面から通知・バイブなしで警告音を開始・停止し、ホーム画面でも継続を確認可能
 - Privacy Manifest: `ios/Runner/PrivacyInfo.xcprivacy` を `Runner` target resources に含める
@@ -27,7 +27,8 @@ MacBook の初回環境構築は [macbook_ios_setup.md](macbook_ios_setup.md) �
 ## 環境構築後に実行するコマンド
 
 ```bash
-git switch gati-ios-version
+git branch --show-current
+# 検証対象のブランチで実行する
 flutter clean
 flutter pub get
 cd ios
@@ -116,7 +117,7 @@ xcrun devicectl device process launch \
 11. サイレントモード、集中モード、画面ロック中の通知挙動を確認する。
 12. 音量案内からiOSのARGUSアプリ設定画面を開ける。
 13. Xcodeの `Product > Test` で `RunnerTests` が通る。
-14. 設定画面に `0.9.0 (1013)` が表示される。
+14. 設定画面のversion/buildがビルド時に指定した番号（既定は`pubspec.yaml`）と一致する。
 15. `agz1` QRからGeoJSONと元ファイル名を復元でき、`gjz1` QRも読み込める。
 
 ## Archive前の確認
@@ -125,14 +126,14 @@ xcrun devicectl device process launch \
 flutter build ipa --release
 ```
 
-App Store Connectへ提出する際は、バックグラウンド位置情報とバックグラウンド音声の用途を審査メモに記載してください。音声モードはエリア外警告のループ再生中だけ使用します。
+App Store Connectへ提出する際は、バックグラウンド位置情報とバックグラウンド音声の用途を審査メモに記載してください。音声モードはエリア外警告、または利用者が開始した警告音テストの再生中に使用します。
 
 ## App Store Connect 審査メモ案
 
 ```text
 ARGUSは、利用者が読み込んだGeoJSONエリアを監視するアプリです。利用者が明示的に監視を開始した後、バックグラウンド位置情報を使用して、画面ロック中や他アプリ利用中でもエリア外への離脱を検知します。位置情報は端末内でのみエリア内外判定に使用し、開発者サーバーへ送信しません。
 
-バックグラウンド音声は、エリア外を検知したときに警告音をループ再生するためだけに使用します。警告音はスヌーズ操作、または安全エリアへの復帰で停止します。
+バックグラウンド音声は、エリア外の警告音と利用者が開始した警告音テストの再生に使用します。警告音はスヌーズ操作、または安全エリアへの復帰で停止します。
 
 審査時は、アプリ右上メニューの「設定」から「警告音をテスト」を押すと、通知やバイブレーションを発生させずに同じ警告音を確認できます。再生中にiPhoneのホーム画面へ移動しても警告音は継続し、アプリへ戻って「テストを停止」を押すと停止します。
 ```

@@ -1,5 +1,7 @@
 # ARGUS Data Field（範囲監視版）
 
+利用者向けの操作手順は[GARMIN初心者ガイド](../../docs/guides/garmin.md)、設計は[構成図](../../docs/architecture.md)を参照。
+
 Forerunner 55・165・255・265・945 LTE・955・965とfēnix 6・7・8向け。製品IDの一覧と初回セットアップは[対応機種ガイド](../../docs/garmin_supported_devices.md)を参照。Flutter ARGUS から送られた単一 Polygon（最大100頂点）を
 Connect IQ Background で受信し、Storageへ保存、読み戻しとAdler-32照合後にACKを返す。
 通常のRunのデータ画面へ追加し、Runのタイマー開始後にGPSが使える状態で
@@ -45,6 +47,11 @@ monkeyc -f garmin/argus-data-field/monkey.jungle -d fr55 \
 
 初回はRunのデータ画面にARGUSを追加して一度表示し、バックグラウンド受信を登録する。
 その後Runを終了しても転送できる。スマホ側はGarmin ConnectとのBluetooth接続が必要。
+
+PR・main pushでは`Garmin Tests` CIがSDK 9.2.0 / `fr55`で通常ビルドと
+`tests/MonitorTests.mc`の26件を含む全Monkey CテストをSimulator上で実行する。
+実行件数不足・失敗・タイムアウトはCI失敗になる。環境、ログと制限は
+[GARMIN CIの説明](../../docs/ci.md#garminのビルドとsimulatorテスト)を参照。
 
 座標表現、100頂点時のサイズ、チェックサムとACKの詳細は[Garmin転送データ形式](../../docs/garmin_data_format.md)を参照。
 

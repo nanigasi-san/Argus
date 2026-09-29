@@ -37,7 +37,7 @@ The developer does not sell personal data or send location data, camera frames, 
 
 ## 5. Data retention
 
-Imported files and settings remain on the phone until the user removes the app or deletes the related files. Temporary GeoJSON files created from QR codes may be removed by the app. A boundary sent to a GARMIN watch is enabled for one Run and has a 12-hour deadline for starting that Run. Stopping monitoring disables the watch's alerts but does not immediately erase the boundary; the watch attempts to delete expired data, and cleanup may be delayed until the watch runs the Data Field again.
+Imported files and settings remain on the phone until the user removes the app or deletes the related files. Temporary GeoJSON files created from QR codes may be removed by the app. A boundary sent to a GARMIN watch is enabled for one Run and has a 12-hour deadline for starting that Run. Ending the associated Run deletes its boundary. The phone's stop command also requests deletion, and ARGUS reports completion only after the watch confirms deletion. Pausing and resuming the same Run retains the boundary. A Run started before the deadline can continue until that Run ends. If no Run is started, passing the deadline alone does not delete the stored boundary; it remains until a later transfer replaces it, the phone requests deletion, or an associated Run ends.
 
 ## 6. Contact
 

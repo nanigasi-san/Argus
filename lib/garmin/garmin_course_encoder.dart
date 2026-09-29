@@ -2,10 +2,13 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import '../geo/geo_model.dart';
+import '../io/file_display_name.dart';
 import 'garmin_course_payload.dart';
 
 class GarminCourseEncoder {
   static const int maxVertices = 100;
+  static const int maxDataBytes = 2048;
+  static const int maxDisplayNameBytes = 48;
 
   GarminCoursePayload encode(
     GeoModel model, {
@@ -24,6 +27,9 @@ class GarminCourseEncoder {
     if (points.length < 3 || points.length > maxVertices) {
       throw FormatException('頂点数は3〜$maxVertices点にしてください（現在${points.length}点）。');
     }
+    if (points.any((point) => !isValidCoordinate(point))) {
+      throw const FormatException('Garminへ送る座標の緯度・経度が不正です。');
+    }
 
     final originLat =
         points.map((p) => p.latitude).reduce((a, b) => a + b) / points.length;
@@ -40,34 +46,39 @@ class GarminCourseEncoder {
       encoded.add('$x,$y');
     }
     final data = 'AGW1|${encoded.join(';')}';
-    if (data.length > 2048) {
+    if (data.length > maxDataBytes) {
       throw const FormatException('Garmin用データが2KBを超えています。頂点を簡略化してください。');
     }
     final normalizedName = fileName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
-    final baseName = fileName.split(RegExp(r'[/\\]')).last.trim();
-    final nameCharacters = (baseName.isEmpty ? 'ARGUS' : baseName).runes;
-    final displayBuffer = StringBuffer();
-    for (final character in nameCharacters) {
-      final next =
-          '${displayBuffer.toString()}${String.fromCharCode(character)}';
-      if (utf8.encode(next).length > 48) break;
-      displayBuffer.writeCharCode(character);
-    }
-    final displayName = displayBuffer.toString();
-    final courseId = '${normalizedName}_${_checksum(data)}';
+    final checksum = _checksum(data);
+    final courseId = '${normalizedName}_$checksum';
     final expiry = armedUntil ?? DateTime.now().add(const Duration(hours: 12));
     return GarminCoursePayload(
       courseId: courseId.length <= 64
           ? courseId
           : courseId.substring(courseId.length - 64),
-      displayName: displayName,
+      displayName: _displayName(fileName),
       armedUntil: expiry.millisecondsSinceEpoch ~/ 1000,
       vertexCount: points.length,
       originLatE7: (originLat * 1e7).round(),
       originLonE7: (originLon * 1e7).round(),
       data: data,
-      checksum: _checksum(data),
+      checksum: checksum,
     );
+  }
+
+  String _displayName(String fileName) {
+    final baseName = fileName.split(RegExp(r'[/\\]')).last.trim();
+    final displayName = fileDisplayName(baseName);
+    final nameCharacters = (displayName.isEmpty ? 'ARGUS' : displayName).runes;
+    final displayBuffer = StringBuffer();
+    for (final character in nameCharacters) {
+      final next =
+          '${displayBuffer.toString()}${String.fromCharCode(character)}';
+      if (utf8.encode(next).length > maxDisplayNameBytes) break;
+      displayBuffer.writeCharCode(character);
+    }
+    return displayBuffer.toString();
   }
 
   String _checksum(String data) {
