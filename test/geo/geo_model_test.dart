@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:argus/geo/geo_model.dart';
@@ -73,6 +75,86 @@ void main() {
   });
 
   group('GeoModel', () {
+    test('owns an immutable copy of the polygons', () {
+      final polygons = <GeoPolygon>[];
+      final model = GeoModel(polygons);
+      polygons.add(GeoPolygon(points: const []));
+      expect(model.hasGeometry, isFalse);
+      expect(() => model.polygons.clear(), throwsUnsupportedError);
+    });
+
+    test('malformed JSON structures produce recoverable format errors', () {
+      for (final raw in ['[]', 'null', '{"features":{}}', '{"features":[1]}']) {
+        expect(() => GeoModel.fromGeoJson(raw), throwsFormatException,
+            reason: raw);
+      }
+    });
+
+    test('rejects incomplete, nonnumeric and out-of-range coordinates', () {
+      for (final pair in <Object>[
+        [],
+        [139],
+        ['139', 35],
+        [139, null],
+        [181, 35],
+        [139, 91],
+      ]) {
+        final raw = jsonEncode({
+          'type': 'FeatureCollection',
+          'features': [
+            {
+              'geometry': {
+                'type': 'Polygon',
+                'coordinates': [
+                  [
+                    pair,
+                    [139, 35],
+                    [139.01, 35.01]
+                  ]
+                ]
+              }
+            }
+          ],
+        });
+        expect(() => GeoModel.fromGeoJson(raw), throwsFormatException,
+            reason: '$pair');
+      }
+    });
+
+    test('rejects nonfinite coordinates decoded from JSON exponents', () {
+      const raw = '{"features":[{"geometry":{"type":"Polygon",'
+          '"coordinates":[[[1e400,35],[139,35],[139,36]]]}}]}';
+      expect(() => GeoModel.fromGeoJson(raw), throwsFormatException);
+    });
+
+    test('preserves exterior-only interpretation and optional altitude', () {
+      final model = GeoModel.fromGeoJson(jsonEncode({
+        'features': [
+          {
+            'properties': {'name': 'area', 'version': 2},
+            'geometry': {
+              'type': 'Polygon',
+              'coordinates': [
+                [
+                  [139, 35, 5],
+                  [139.01, 35, 6],
+                  [139, 35.01, 7]
+                ],
+                [
+                  [139.001, 35.001],
+                  [139.002, 35.001],
+                  [139.001, 35.002]
+                ],
+              ]
+            },
+          }
+        ],
+      }));
+      expect(model.polygons, hasLength(1));
+      expect(model.polygons.single.points, hasLength(4));
+      expect(model.polygons.single.name, 'area');
+    });
+
     test('creates empty model', () {
       final model = GeoModel.empty();
       expect(model.polygons, isEmpty);

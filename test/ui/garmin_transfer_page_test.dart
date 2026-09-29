@@ -69,6 +69,22 @@ class _UnsupportedGarminClient extends GarminTransferClient {
       throw MissingPluginException();
 }
 
+class _RacingGarminClient extends GarminTransferClient {
+  final requests = <Completer<List<GarminDevice>>>[];
+  VoidCallback? onDeviceChange;
+
+  @override
+  void setDeviceChangeHandler(VoidCallback? handler) =>
+      onDeviceChange = handler;
+
+  @override
+  Future<List<GarminDevice>> getDevices() {
+    final request = Completer<List<GarminDevice>>();
+    requests.add(request);
+    return request.future;
+  }
+}
+
 const _deniedNotifications = MonitoringPermissionState(
   notificationStatus: PermissionStatus.denied,
   locationWhenInUseStatus: PermissionStatus.granted,
@@ -199,6 +215,67 @@ Future<void> _selectSecondWatch(WidgetTester tester) async {
 }
 
 void main() {
+  for (final staleFails in [false, true]) {
+    testWidgets('latest device search wins (stale error: $staleFails)',
+        (tester) async {
+      final controller = buildTestController();
+      addTearDown(controller.dispose);
+      final client = _RacingGarminClient();
+      await tester.pumpWidget(ChangeNotifierProvider.value(
+        value: controller,
+        child: MaterialApp(home: GarminTransferPage(client: client)),
+      ));
+      client.onDeviceChange!();
+      await tester.pump();
+      expect(client.requests, hasLength(2));
+      client.requests.last.complete(const [
+        GarminDevice(id: 'current', name: 'Current watch', connected: true),
+      ]);
+      await tester.pumpAndSettle();
+      if (staleFails) {
+        client.requests.first.completeError(
+            PlatformException(code: 'stale', message: 'Stale error'));
+      } else {
+        client.requests.first.complete(const [
+          GarminDevice(id: 'old', name: 'Old watch', connected: true),
+        ]);
+      }
+      await tester.pumpAndSettle();
+      expect(find.text('Current watch'), findsOneWidget);
+      expect(find.text('Old watch'), findsNothing);
+      expect(find.text('Stale error'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('transfer controls fit a narrow screen with large text',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final controller = buildTestController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(ChangeNotifierProvider.value(
+      value: controller,
+      child: MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: const TextScaler.linear(2)),
+          child: child!,
+        ),
+        home: GarminTransferPage(client: _PendingGarminClient()),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('GARMINに送信'), 200);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await tester.scrollUntilVisible(find.text('ファイルを選ぶ'), -200);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('cancelled Garmin file selection keeps phone monitoring active',
       (tester) async {
     final setup = await _monitoringController();

@@ -35,11 +35,24 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Cache Gradle dependencies and build state
+      - name: Setup Gradle and validate wrapper
         uses: gradle/actions/setup-gradle@v6
         with:
-          cache-provider: basic
-          cache-read-only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork }}
+          cache-provider: external
+
+      # Separate release/debug state; refresh it on each commit without collisions.
+      - name: Restore Gradle cache
+        id: gradle-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            !~/.gradle/caches/**/*.lock
+            !~/.gradle/caches/**/gc.properties
+          key: ${{ runner.os }}-${{ runner.arch }}-gradle-v1-${{ github.workflow }}-${{ hashFiles('android/**/*.gradle*', 'android/gradle.properties', 'android/gradle/wrapper/gradle-wrapper.properties', 'pubspec.lock') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-gradle-v1-${{ github.workflow }}-${{ hashFiles('android/**/*.gradle*', 'android/gradle.properties', 'android/gradle/wrapper/gradle-wrapper.properties', 'pubspec.lock') }}-
 
       - name: Get dependencies
         run: flutter pub get
@@ -56,3 +69,14 @@ jobs:
           path: build/app/outputs/bundle/release/app-release.aab
           if-no-files-found: error
           retention-days: 14
+
+      - name: Save Gradle cache
+        if: success() && steps.gradle-cache.outputs.cache-hit != 'true' && !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork)
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            !~/.gradle/caches/**/*.lock
+            !~/.gradle/caches/**/gc.properties
+          key: ${{ steps.gradle-cache.outputs.cache-primary-key }}

@@ -20,6 +20,19 @@ void main() {
     expect(result.info.featureCount, 1);
   });
 
+  test('gjz1 accepts uppercase hex without weakening hash verification',
+      () async {
+    final bundle = await encodeGeoJson(GeoJsonQrEncodeInput(
+      geoJson: sampleGeoJson,
+      generatePng: false,
+    ));
+    final parts = bundle.qrTexts.single.split('#');
+    final restored = await decodeGeoJson(GeoJsonQrDecodeInput(
+      qrTexts: ['${parts.first}#${parts.last.toUpperCase()}'],
+    ));
+    expect(restored, bundle.minimizedGeoJson);
+  });
+
   test('default encode and decode gjz1 round trip with hash succeeds',
       () async {
     final bundle =

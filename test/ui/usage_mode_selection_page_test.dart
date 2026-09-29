@@ -62,8 +62,10 @@ void main() {
     expect(tester.takeException(), isNull);
 
     await tester.ensureVisible(find.byKey(const Key('garminModeChoice')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('garminModeChoice')));
     await tester.ensureVisible(find.byKey(const Key('usageModeNextButton')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('usageModeNextButton')));
     await tester.pumpAndSettle();
 

@@ -526,7 +526,7 @@ PayloadAndHash _splitPayloadAndHash(String payloadWithHash) {
     throw DecodeFailedException('Malformed hash suffix');
   }
 
-  return PayloadAndHash(payload, hash);
+  return PayloadAndHash(payload, hash.toLowerCase());
 }
 
 class PayloadAndHash {

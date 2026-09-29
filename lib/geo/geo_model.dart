@@ -98,53 +98,36 @@ class _Bounds {
 }
 
 class GeoModel {
-  GeoModel(this.polygons);
+  GeoModel(List<GeoPolygon> polygons)
+      : polygons = List<GeoPolygon>.unmodifiable(polygons);
 
   factory GeoModel.fromGeoJson(String raw) {
-    final decoded = jsonDecode(raw) as Map<String, dynamic>;
-    final features = decoded['features'] as List<dynamic>? ?? [];
+    final decoded = _object(jsonDecode(raw), 'GeoJSON');
+    final features = _list(decoded['features'] ?? [], 'features');
     final polygons = <GeoPolygon>[];
 
     for (final feature in features) {
-      final featureMap = feature as Map<String, dynamic>;
-      final properties =
-          (featureMap['properties'] as Map<String, dynamic>? ?? {});
-      final geometry = featureMap['geometry'] as Map<String, dynamic>? ?? {};
-      final type = geometry['type'] as String? ?? '';
-      final coordinates = geometry['coordinates'] as List<dynamic>? ?? [];
-
-      final Iterable<List<dynamic>> rings;
-      if (type == 'Polygon') {
-        rings = coordinates.isEmpty
-            ? const Iterable<List<dynamic>>.empty()
-            : [coordinates.first as List<dynamic>];
-      } else if (type == 'MultiPolygon') {
-        rings = coordinates
-            .cast<List<dynamic>>()
-            .where((poly) => poly.isNotEmpty)
-            .map((poly) => poly.first as List<dynamic>);
-      } else {
-        continue;
-      }
-
-      for (final ring in rings) {
-        final pairs = ring.cast<List<dynamic>>();
-        if (pairs.length < 3) {
+      final featureMap = _object(feature, 'Feature');
+      final properties = _object(
+          featureMap['properties'] ?? <String, dynamic>{}, 'properties');
+      final geometry =
+          _object(featureMap['geometry'] ?? <String, dynamic>{}, 'geometry');
+      for (final ring in _exteriorRings(geometry)) {
+        if (ring.length < 3) {
           continue;
         }
-        final points = pairs
-            .map(
-              (pair) => LatLng(
-                (pair[1] as num).toDouble(),
-                (pair[0] as num).toDouble(),
-              ),
-            )
-            .toList(growable: false);
+        final points = ring.map(_coordinate).toList(growable: false);
+        final name = properties['name'];
+        final version = properties['version'];
+        if ((name != null && name is! String) ||
+            (version != null && (version is! num || !version.isFinite))) {
+          throw const FormatException('nameは文字列、versionは有限の数値にしてください。');
+        }
         polygons.add(
           GeoPolygon(
             points: points,
-            name: properties['name'] as String?,
-            version: (properties['version'] as num?)?.toInt(),
+            name: name as String?,
+            version: (version as num?)?.toInt(),
           ),
         );
       }
@@ -159,3 +142,49 @@ class GeoModel {
 
   bool get hasGeometry => polygons.isNotEmpty;
 }
+
+Map<String, dynamic> _object(dynamic value, String field) {
+  if (value is! Map<String, dynamic>) {
+    throw FormatException('$fieldはオブジェクトにしてください。');
+  }
+  return value;
+}
+
+List<dynamic> _list(dynamic value, String field) {
+  if (value is! List) {
+    throw FormatException('$fieldは配列にしてください。');
+  }
+  return value;
+}
+
+// Keep the existing exterior-ring-only interpretation for both geometry types.
+Iterable<List<dynamic>> _exteriorRings(Map<String, dynamic> geometry) sync* {
+  final type = geometry['type'];
+  if (type != 'Polygon' && type != 'MultiPolygon') return;
+  final coordinates = _list(geometry['coordinates'] ?? [], 'coordinates');
+  final polygons = type == 'Polygon' ? [coordinates] : coordinates;
+  for (final polygon in polygons) {
+    final rings = _list(polygon, 'Polygon');
+    if (rings.isNotEmpty) yield _list(rings.first, '外周リング');
+  }
+}
+
+LatLng _coordinate(dynamic value) {
+  final pair = _list(value, '座標');
+  if (pair.length < 2 || pair[0] is! num || pair[1] is! num) {
+    throw const FormatException('座標は[経度, 緯度]の数値配列にしてください。');
+  }
+  final point =
+      LatLng((pair[1] as num).toDouble(), (pair[0] as num).toDouble());
+  if (!isValidCoordinate(point)) {
+    throw const FormatException('緯度は-90〜90、経度は-180〜180の有限値にしてください。');
+  }
+  return point;
+}
+
+/// Whether a position can be represented as geographic latitude/longitude.
+bool isValidCoordinate(LatLng point) =>
+    point.latitude.isFinite &&
+    point.longitude.isFinite &&
+    point.latitude.abs() <= 90 &&
+    point.longitude.abs() <= 180;

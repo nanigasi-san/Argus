@@ -9,14 +9,15 @@ import '../app_controller.dart';
 import '../garmin/garmin_course_encoder.dart';
 import '../garmin/garmin_course_selection.dart';
 import '../platform/garmin_transfer_client.dart';
+import '../theme/app_palette.dart';
 import 'qr_scanner_page.dart';
 
-const _garminAccent = Color(0xFF1769C8);
-const _garminNavy = Color(0xFF122D55);
-const _garminText = Color(0xFF18243A);
-const _garminMuted = Color(0xFF526070);
-const _garminSelectedSurface = Color(0xFFEAF3FF);
-const _garminNeutralSurface = Color(0xFFF7F8FA);
+const _garminAccent = AppPalette.accent;
+const _garminNavy = AppPalette.navy;
+const _garminText = AppPalette.text;
+const _garminMuted = AppPalette.muted;
+const _garminSelectedSurface = AppPalette.selectedSurface;
+const _garminNeutralSurface = AppPalette.neutralSurface;
 
 class GarminTransferPage extends StatefulWidget {
   const GarminTransferPage(
@@ -34,6 +35,7 @@ class _GarminTransferPageState extends State<GarminTransferPage>
   GarminDevice? _selected;
   String? _selectedDeviceId;
   bool _loadingDevices = false;
+  int _deviceSearchGeneration = 0;
   bool _sending = false;
   bool _resetting = false;
   bool _resetCompleted = false;
@@ -103,6 +105,9 @@ class _GarminTransferPageState extends State<GarminTransferPage>
   }
 
   Future<void> _refreshDevices() async {
+    if (!mounted) return;
+    final generation = ++_deviceSearchGeneration;
+    bool isCurrent() => mounted && generation == _deviceSearchGeneration;
     setState(() {
       _loadingDevices = true;
       _error = null;
@@ -110,7 +115,7 @@ class _GarminTransferPageState extends State<GarminTransferPage>
     try {
       final devices =
           await widget.client.getDevices().timeout(const Duration(seconds: 15));
-      if (!mounted) return;
+      if (!isCurrent()) return;
       setState(() {
         _devices = devices;
         // Never silently switch to a different watch after a selection is lost.
@@ -120,13 +125,17 @@ class _GarminTransferPageState extends State<GarminTransferPage>
         _selectedDeviceId ??= _selected?.id;
       });
     } on PlatformException catch (e) {
-      if (mounted) setState(() => _error = e.message ?? 'GARMINを検索できませんでした。');
+      if (isCurrent()) {
+        setState(() => _error = e.message ?? 'GARMINを検索できませんでした。');
+      }
     } on TimeoutException {
-      if (mounted) setState(() => _error = 'GARMINの検索がタイムアウトしました。再検索してください。');
+      if (isCurrent()) {
+        setState(() => _error = 'GARMINの検索がタイムアウトしました。再検索してください。');
+      }
     } on MissingPluginException {
-      if (mounted) setState(() => _error = _unsupportedMessage);
+      if (isCurrent()) setState(() => _error = _unsupportedMessage);
     } finally {
-      if (mounted) setState(() => _loadingDevices = false);
+      if (isCurrent()) setState(() => _loadingDevices = false);
     }
   }
 
@@ -136,13 +145,7 @@ class _GarminTransferPageState extends State<GarminTransferPage>
           await context.read<AppController>().fileManager.pickGeoJsonFile();
       if (file == null) return;
       final course = await GarminCourseSelection.fromFile(file);
-      if (!mounted) return;
-      setState(() {
-        _course = course;
-        _result = null;
-        _error = null;
-        _resetCompleted = false;
-      });
+      _setCourse(course);
     } on FormatException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } catch (e) {
@@ -160,22 +163,29 @@ class _GarminTransferPageState extends State<GarminTransferPage>
     await Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => QrScannerPage(onQrScanned: (qrText) async {
         final course = await GarminCourseSelection.fromQrText(qrText);
-        if (!mounted) return;
-        setState(() {
-          _course = course;
-          _result = null;
-          _error = null;
-          _resetCompleted = false;
-        });
+        _setCourse(course);
       }),
     ));
+  }
+
+  void _setCourse(GarminCourseSelection course) {
+    if (!mounted) return;
+    setState(() {
+      _course = course;
+      _result = null;
+      _error = null;
+      _notificationWarning = null;
+      _resetCompleted = false;
+    });
   }
 
   Future<void> _send() async {
     final controller = context.read<AppController>();
     final device = _selected;
     final course = _course;
-    if (_sending || course == null || device == null) return;
+    if (_sending || course == null || device == null || !device.connected) {
+      return;
+    }
     if (controller.isMonitoring &&
         !course.hasSameGeometry(controller.geoModel)) {
       final confirmed = await showDialog<bool>(
@@ -259,7 +269,8 @@ class _GarminTransferPageState extends State<GarminTransferPage>
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('GARMINの監視を停止しますか？'),
-        content: const Text('RUN中でも境界の警告を停止し、時計の範囲データを削除します。再開するには範囲を再送信してください。'),
+        content:
+            const Text('RUN中でも境界の警告を停止し、時計の範囲データを削除します。再開するには範囲を再送信してください。'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
@@ -405,8 +416,8 @@ class _GarminTransferPageState extends State<GarminTransferPage>
               backgroundColor: const Color(0xFFFFF0F0)),
         ],
         const SizedBox(height: 20),
-        SizedBox(
-          height: 56,
+        ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 56),
           child: FilledButton.icon(
             style: _primaryButtonStyle(),
             onPressed:
@@ -419,9 +430,12 @@ class _GarminTransferPageState extends State<GarminTransferPage>
                     child: CircularProgressIndicator(
                         strokeWidth: 2, color: Colors.white))
                 : const Icon(Icons.watch_outlined),
-            label: Text(_sending
-                ? (_resetting ? '監視停止ACKを待っています…' : '保存・照合ACKを待っています…')
-                : 'GARMINに送信'),
+            label: Text(
+              _sending
+                  ? (_resetting ? '監視停止ACKを待っています…' : '保存・照合ACKを待っています…')
+                  : 'GARMINに送信',
+              textAlign: TextAlign.center,
+            ),
           ),
         ),
         const SizedBox(height: 8),
@@ -623,16 +637,16 @@ class _GarminTransferPageState extends State<GarminTransferPage>
     required String label,
     required VoidCallback? onPressed,
   }) {
-    return SizedBox(
-      height: 48,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 48),
       child: TextButton.icon(
         onPressed: onPressed,
         icon: Icon(icon, size: 19),
-        label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+        label: Text(label, textAlign: TextAlign.center),
         style: TextButton.styleFrom(
           backgroundColor: Colors.white,
           foregroundColor: _garminAccent,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
           textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -643,7 +657,8 @@ class _GarminTransferPageState extends State<GarminTransferPage>
 
   Widget _actionSurface(IconData icon, String label, {required bool enabled}) {
     return Container(
-      height: 48,
+      constraints: const BoxConstraints(minHeight: 48),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: Colors.white,
@@ -657,8 +672,7 @@ class _GarminTransferPageState extends State<GarminTransferPage>
           Flexible(
             child: Text(
               label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
@@ -716,8 +730,8 @@ class _GarminTransferPageState extends State<GarminTransferPage>
           ),
         ],
         const SizedBox(height: 24),
-        SizedBox(
-          height: 56,
+        ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 56),
           child: FilledButton(
             style: _primaryButtonStyle(),
             onPressed: () => Navigator.pop(context),
@@ -745,6 +759,7 @@ class _GarminTransferPageState extends State<GarminTransferPage>
           style: theme.textTheme.bodySmall?.copyWith(
             color: _garminMuted,
             fontWeight: FontWeight.w400,
+            height: 1.5,
           )),
     ]);
   }
@@ -797,7 +812,6 @@ class _GarminTransferPageState extends State<GarminTransferPage>
       Expanded(
         child: Text(value,
             textAlign: TextAlign.end,
-            overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodyMedium?.copyWith(color: _garminNavy)),
       ),
     ]);
@@ -859,8 +873,4 @@ class _GarminTransferPageState extends State<GarminTransferPage>
         textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       );
-}
-
-extension<T> on Iterable<T> {
-  T? get firstOrNull => isEmpty ? null : first;
 }

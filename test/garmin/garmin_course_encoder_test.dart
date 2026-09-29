@@ -6,6 +6,25 @@ import 'package:argus/geo/geo_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('rejects invalid geographic coordinates before integer conversion', () {
+    for (final point in const [
+      LatLng(double.nan, 139),
+      LatLng(35, double.infinity),
+      LatLng(91, 139),
+      LatLng(35, -181),
+    ]) {
+      final model = GeoModel([
+        GeoPolygon(points: [
+          point,
+          const LatLng(35, 139),
+          const LatLng(35.001, 139.001),
+        ])
+      ]);
+      expect(() => GarminCourseEncoder().encode(model, fileName: 'bad.geojson'),
+          throwsFormatException);
+    }
+  });
+
   test('encodes a closed polygon as compact AGW1 coordinates', () {
     final model = GeoModel([
       GeoPolygon(points: const [

@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_palette.dart';
 import 'garmin_transfer_page.dart';
 import 'home_page.dart';
 
 enum _UsageMode { phone, garmin }
 
-const _modeAccentBlue = Color(0xFF1769C8);
+const _modeAccentBlue = AppPalette.accent;
 
 /// The entry screen only selects a destination; monitoring and transfer keep
 /// using their existing pages and shared AppController.
@@ -49,7 +50,7 @@ class _UsageModeSelectionPageState extends State<UsageModeSelectionPage> {
                         Text(
                           'ARGUS',
                           style: theme.textTheme.headlineSmall?.copyWith(
-                            color: const Color(0xFF122D55),
+                            color: AppPalette.navy,
                             fontWeight: FontWeight.w800,
                             letterSpacing: 1.5,
                           ),
@@ -59,7 +60,7 @@ class _UsageModeSelectionPageState extends State<UsageModeSelectionPage> {
                           'どちらで利用しますか？',
                           textAlign: TextAlign.center,
                           style: theme.textTheme.headlineSmall?.copyWith(
-                            color: const Color(0xFF18243A),
+                            color: AppPalette.text,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
@@ -99,18 +100,20 @@ class _UsageModeSelectionPageState extends State<UsageModeSelectionPage> {
                         const SizedBox(height: 32),
                         SizedBox(
                           width: double.infinity,
-                          height: 54,
-                          child: FilledButton(
-                            key: const Key('usageModeNextButton'),
-                            onPressed: _openSelectedMode,
-                            style: FilledButton.styleFrom(
-                              backgroundColor: _modeAccentBlue,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(minHeight: 54),
+                            child: FilledButton(
+                              key: const Key('usageModeNextButton'),
+                              onPressed: _openSelectedMode,
+                              style: FilledButton.styleFrom(
+                                backgroundColor: _modeAccentBlue,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
                               ),
+                              child: const Text('次へ'),
                             ),
-                            child: const Text('次へ'),
                           ),
                         ),
                       ],
@@ -150,7 +153,8 @@ class _ModeChoiceCard extends StatelessWidget {
       selected: selected,
       label: title.replaceAll('\n', ''),
       child: Material(
-        color: selected ? const Color(0xFFEAF3FF) : const Color(0xFFF7F8FA),
+        color:
+            selected ? AppPalette.selectedSurface : AppPalette.neutralSurface,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           onTap: onTap,
@@ -171,7 +175,7 @@ class _ModeChoiceCard extends StatelessWidget {
                       : theme.colorScheme.onSurfaceVariant,
                 ),
                 const SizedBox(width: 14),
-                Icon(icon, size: 36, color: const Color(0xFF122D55)),
+                Icon(icon, size: 36, color: AppPalette.navy),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
@@ -181,14 +185,14 @@ class _ModeChoiceCard extends StatelessWidget {
                       Text(
                         title,
                         style: theme.textTheme.titleMedium?.copyWith(
-                          color: const Color(0xFF18243A),
+                          color: AppPalette.text,
                           height: 1.25,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         description,
-                        style: theme.textTheme.bodySmall?.copyWith(
+                        style: theme.textTheme.bodyMedium?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                           fontWeight: FontWeight.w400,
                           height: 1.35,
