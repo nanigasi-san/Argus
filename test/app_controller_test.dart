@@ -1156,6 +1156,39 @@ void main() {
           contains('監視可能なPolygon/MultiPolygonがありません'));
     });
 
+    test('file and QR loading reject the same invalid geometry', () async {
+      for (final (name, message) in [
+        ('hole', '穴のあるPolygon'),
+        ('bow-tie', '自己交差'),
+      ]) {
+        final raw = File('test/fixtures/geojson_validation/$name.geojson')
+            .readAsStringSync();
+        final config = _testConfig();
+        final controller = AppController(
+          stateMachine: StateMachine(config: config),
+          locationService: FakeLocationService(),
+          fileManager: _RawGeoJsonFileManager(config: config, raw: raw),
+          logger: FakeEventLogger(),
+          notifier: Notifier(
+            notificationsClient: FakeLocalNotificationsClient(),
+            alarmPlayer: FakeAlarmPlayer(),
+          ),
+        );
+        controller.debugSeed(geoJson: _squareModel());
+        await controller.reloadGeoJsonFromPicker();
+        expect(controller.lastErrorMessage, contains(message), reason: name);
+        expect(controller.geoModel.polygons, hasLength(1));
+
+        final legacyQr = 'gjz1:${base64UrlEncodeNoPad(gzipCompress(
+          Uint8List.fromList(utf8.encode(raw)),
+        ))}';
+        expect(await controller.reloadGeoJsonFromQr(legacyQr), isFalse,
+            reason: name);
+        expect(controller.lastErrorMessage, contains(message), reason: name);
+        expect(controller.geoModel.polygons, hasLength(1));
+      }
+    });
+
     test('reloadGeoJsonFromQr rejects GeoJSON without polygons', () async {
       final config = _testConfig();
       final controller = AppController(
@@ -1168,14 +1201,13 @@ void main() {
           alarmPlayer: FakeAlarmPlayer(),
         ),
       );
-      final bundle = await encodeGeoJson(
-        const GeoJsonQrEncodeInput(
-          geoJson: '{"type":"FeatureCollection","features":[]}',
-          scheme: GeoJsonQrScheme.gjz1,
-        ),
-      );
+      // A legacy QR can contain data that the new creation filter rejects.
+      final legacyQr = 'gjz1:${base64UrlEncodeNoPad(gzipCompress(
+        Uint8List.fromList(
+            utf8.encode('{"type":"FeatureCollection","features":[]}')),
+      ))}';
 
-      final loaded = await controller.reloadGeoJsonFromQr(bundle.qrTexts.first);
+      final loaded = await controller.reloadGeoJsonFromQr(legacyQr);
 
       expect(loaded, isFalse);
       expect(controller.geoJsonLoaded, isFalse);
@@ -1733,6 +1765,19 @@ class _InvalidGeoJsonFileManager extends FakeFileManager {
       mimeType: 'application/geo+json',
     );
   }
+}
+
+class _RawGeoJsonFileManager extends FakeFileManager {
+  _RawGeoJsonFileManager({required super.config, required this.raw});
+
+  final String raw;
+
+  @override
+  Future<XFile?> pickGeoJsonFile() async => XFile.fromData(
+        utf8.encode(raw),
+        name: 'case.geojson',
+        mimeType: 'application/geo+json',
+      );
 }
 
 class _EmptyGeoJsonFileManager extends FakeFileManager {

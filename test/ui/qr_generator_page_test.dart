@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_selector/file_selector.dart';
@@ -86,6 +87,28 @@ void main() {
     await tester.pumpAndSettle();
     expect(shared, isTrue);
     expect(sharedName, 'QR_course.png');
+  });
+
+  testWidgets('101-vertex QR remains available with a Garmin warning',
+      (tester) async {
+    final raw = File('test/fixtures/geojson_validation/vertices-101.geojson')
+        .readAsStringSync();
+    await tester.pumpWidget(MaterialApp(
+      home: QrGeneratorPage(
+        filePicker: () async => XFile.fromData(
+          utf8.encode(raw),
+          name: 'vertices-101.geojson',
+          path: 'vertices-101.geojson',
+        ),
+      ),
+    ));
+
+    await tester.tap(find.text('GeoJSONを選択'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('generated_qr_image')), findsOneWidget);
+    expect(find.textContaining('Garmin非対応'), findsOneWidget);
+    expect(find.textContaining('101点'), findsOneWidget);
   });
 
   testWidgets('rejects encoder output without a single PNG image',

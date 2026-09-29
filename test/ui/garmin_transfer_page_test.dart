@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:argus/app_controller.dart';
 import 'package:argus/garmin/garmin_course_payload.dart';
@@ -318,6 +319,54 @@ void main() {
     expect(find.text('argus'), findsOneWidget);
   });
 
+  testWidgets('101-vertex candidate is shown but never sent to Garmin',
+      (tester) async {
+    final setup = await _monitoringController();
+    addTearDown(setup.controller.dispose);
+    final client = _PendingGarminClient();
+    setup.files.selectedFile = XFile.fromData(
+      utf8.encode(File('test/fixtures/geojson_validation/vertices-101.geojson')
+          .readAsStringSync()),
+      name: 'vertices-101.geojson',
+    );
+    await tester.pumpWidget(ChangeNotifierProvider.value(
+      value: setup.controller,
+      child: MaterialApp(home: GarminTransferPage(client: client)),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ファイルを選ぶ'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Garmin非対応'), findsOneWidget);
+    final send = tester
+        .widget<FilledButton>(find.widgetWithText(FilledButton, 'GARMINに送信'));
+    expect(send.onPressed, isNull);
+    expect(client.sendCount, 0);
+    expect(setup.controller.isMonitoring, isTrue);
+  });
+
+  testWidgets('hole file is rejected without replacing the selected course',
+      (tester) async {
+    final setup = await _monitoringController();
+    addTearDown(setup.controller.dispose);
+    final client = _PendingGarminClient();
+    setup.files.selectedFile = XFile.fromData(
+      utf8.encode(File('test/fixtures/geojson_validation/hole.geojson')
+          .readAsStringSync()),
+      name: 'hole.geojson',
+    );
+    await tester.pumpWidget(ChangeNotifierProvider.value(
+      value: setup.controller,
+      child: MaterialApp(home: GarminTransferPage(client: client)),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ファイルを選ぶ'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('穴のあるPolygon'), findsOneWidget);
+    expect(find.text('argus'), findsOneWidget);
+    expect(client.sendCount, 0);
+    expect(setup.controller.isMonitoring, isTrue);
+  });
+
   testWidgets(
       'different Garmin course requires confirmation and leaves phone monitoring unchanged',
       (tester) async {
@@ -454,8 +503,7 @@ void main() {
     expect(find.text('GARMINのACKを待機中'), findsNothing);
     expect(find.byKey(const Key('garmin-ack-progress')), findsNothing);
     expect(notifications.shownIds, [1002]);
-    expect(notifications.showCalls.single.body,
-        'ForeAthlete 55にargusを保存しました。');
+    expect(notifications.showCalls.single.body, 'ForeAthlete 55にargusを保存しました。');
   });
 
   testWidgets('does not notify when GARMIN transfer fails', (tester) async {

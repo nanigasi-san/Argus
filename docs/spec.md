@@ -326,9 +326,10 @@ stateDiagram-v2
 - **対応形式**: GeoJSON FeatureCollection。`Polygon` と `MultiPolygon` をサポート。
 - **座標系**: GeoJSON標準の経度・緯度の順。パース時に`LatLng(latitude, longitude)`へ変換し、有限値・緯度±90・経度±180を検証する。短い配列や非数値、不正な構造は`FormatException`。高度など3要素目以降は無視する。
 - **ポリゴン処理**:
-  - ポリゴンが閉じていない場合（最初と最後の点が異なる）、自動的に閉じる。
-  - `Polygon` / `MultiPolygon`の各ポリゴンから外側リングのみを抽出。穴の扱いは従来どおり未対応。
-  - 3点未満のポリゴンは無視。
+  - ファイル読込・QR生成・QR復元に同じスマホ用validatorを適用する。未閉鎖ringは拒否し、自動補完しない。
+  - `Polygon` / `MultiPolygon`の各Polygonには外周ringを1本だけ許可する。2本目以降は空でも穴として拒否し、読み飛ばさない。
+  - 閉路の終点を除いて異なる3頂点以上、正の面積が必要。連続重複点、非隣接辺の交差・端点接触・重なりを拒否する。巻き方向のみでは拒否しない。
+  - 1m未満の辺、50km超の辺、100m²未満の面積は警告として扱う。詳細は[検証基準](geojson_validation.md)。
 - **プロパティ**: `name`は文字列、`version`は有限数値を整数化して保持（現在は未使用）。欠落は許容する。
 - **空間インデックス**: `AreaIndex.build()` が各ポリゴンの境界ボックスを計算し、インデックスを構築。
 
@@ -354,7 +355,7 @@ stateDiagram-v2
 - **Base64URLデコード**: パディングを自動補完してデコード。
 - **gzip展開**: Dart標準の`GZipCodec`で展開。
 - **ハッシュ検証**: `gjz1`では復元されたGeoJSONのハッシュをQRテキストと比較（`verifyHash=true`の場合）。
-- **GeoJSON検証**: 復元された文字列が有効なGeoJSONであることを確認（`type`フィールドの存在）。
+- **GeoJSON検証**: 復元されたGeoJSONをファイル読込・QR生成と共通のスマホ用validatorへ通す。`agz1`生成後は丸められた復元データも同じvalidatorで確認する。
 
 ### 5.1.3 エラーハンドリング
 

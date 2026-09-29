@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../app_controller.dart';
 import '../garmin/garmin_course_encoder.dart';
 import '../garmin/garmin_course_selection.dart';
+import '../geo/geojson_validation_messages.dart';
 import '../io/file_display_name.dart';
 import '../platform/garmin_transfer_client.dart';
 import '../theme/app_palette.dart';
@@ -58,6 +59,7 @@ class _GarminTransferPageState extends State<GarminTransferPage>
       _course = GarminCourseSelection(
         model: controller.geoModel,
         fileName: controller.geoJsonFileName ?? 'argus.geojson',
+        validation: controller.geoJsonValidation,
       );
     }
   }
@@ -187,6 +189,12 @@ class _GarminTransferPageState extends State<GarminTransferPage>
     if (_sending || course == null || device == null || !device.connected) {
       return;
     }
+    final courseValidation = course.garminValidation;
+    if (!courseValidation.validForGarmin) {
+      setState(() => _error =
+          GeoJsonValidationMessages.describe(courseValidation.issues.first));
+      return;
+    }
     if (controller.isMonitoring &&
         !course.hasSameGeometry(controller.geoModel)) {
       final confirmed = await showDialog<bool>(
@@ -221,8 +229,8 @@ class _GarminTransferPageState extends State<GarminTransferPage>
           // Notification setup must not prevent a course transfer.
         }
       }
-      final payload = GarminCourseEncoder().encode(
-        course.model,
+      final payload = GarminCourseEncoder().encodePrepared(
+        courseValidation.prepared!,
         fileName: course.fileName,
       );
       if (mounted) setState(() => _waitingForAck = true);
@@ -421,10 +429,11 @@ class _GarminTransferPageState extends State<GarminTransferPage>
           constraints: const BoxConstraints(minHeight: 56),
           child: FilledButton.icon(
             style: _primaryButtonStyle(),
-            onPressed:
-                _sending || _course == null || _selected?.connected != true
-                    ? null
-                    : _send,
+            onPressed: _sending ||
+                    _course?.garminValidation.validForGarmin != true ||
+                    _selected?.connected != true
+                ? null
+                : _send,
             icon: _sending
                 ? const SizedBox.square(
                     dimension: 18,
@@ -494,7 +503,9 @@ class _GarminTransferPageState extends State<GarminTransferPage>
                     Text(
                       course == null
                           ? '送信する範囲を選択してください。'
-                          : '境界データの読み込みが完了しました。',
+                          : course.garminValidation.validForGarmin
+                              ? '境界データの読み込みが完了しました。'
+                              : 'Garmin非対応: ${GeoJsonValidationMessages.describe(course.garminValidation.issues.first)}',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: _garminMuted,
                         fontWeight: FontWeight.w400,

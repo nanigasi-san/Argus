@@ -6,6 +6,9 @@ import 'package:provider/provider.dart';
 import '../app_controller.dart';
 import '../app_links.dart';
 import '../geo/geo_model.dart';
+import '../geo/geojson_validation_messages.dart';
+import '../geo/geojson_validator.dart';
+import '../garmin/garmin_course_validator.dart';
 import '../io/file_display_name.dart';
 import '../io/log_entry.dart';
 import '../state_machine/state.dart';
@@ -151,6 +154,11 @@ class _HomeScrollableContent extends StatelessWidget {
                           fileName: controller.geoJsonFileName,
                           loaded: controller.geoJsonLoaded,
                         ),
+                        if (controller.geoJsonValidation != null) ...[
+                          const SizedBox(height: 6),
+                          _ValidationSummary(
+                              validation: controller.geoJsonValidation!),
+                        ],
                         const SizedBox(height: 20),
                         _LargeStatusDisplay(
                           status: snapshot.status,
@@ -481,6 +489,33 @@ class _GpsAccuracyInfo extends StatelessWidget {
           style: TextStyle(fontSize: 13, color: color),
           textAlign: TextAlign.center,
         ),
+      ],
+    );
+  }
+}
+
+class _ValidationSummary extends StatelessWidget {
+  const _ValidationSummary({required this.validation});
+
+  final GeoJsonValidationResult validation;
+
+  @override
+  Widget build(BuildContext context) {
+    final garmin = const GarminCourseValidator().validate(validation);
+    final style = Theme.of(context).textTheme.bodySmall;
+    return Column(
+      children: [
+        Text('✓ スマホ対応', style: style),
+        Text(
+          garmin.validForGarmin
+              ? '✓ Garmin対応'
+              : '✕ Garmin非対応: ${GeoJsonValidationMessages.describe(garmin.issues.first)}',
+          style: style,
+          textAlign: TextAlign.center,
+        ),
+        for (final warning in validation.warnings)
+          Text('注意: ${GeoJsonValidationMessages.describe(warning)}',
+              style: style, textAlign: TextAlign.center),
       ],
     );
   }

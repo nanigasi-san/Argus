@@ -9,6 +9,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../io/file_display_name.dart';
+import '../geo/geojson_validation_messages.dart';
+import '../geo/geojson_validator.dart';
+import '../garmin/garmin_course_validator.dart';
 import '../qr/geojson_qr_codec.dart';
 
 typedef GeoJsonQrEncoder = Future<GeoJsonQrBundle> Function(
@@ -98,6 +101,10 @@ class _QrGeneratorPageState extends State<QrGeneratorPage> {
 
       setState(() {
         _isGenerating = false;
+        final validation = bundle.validation;
+        final garmin = validation == null
+            ? null
+            : const GarminCourseValidator().validate(validation);
         _generatedQr = _GeneratedQr(
           fileName: sourceFileName,
           imageBytes: bundle.pngImages.single,
@@ -106,6 +113,15 @@ class _QrGeneratorPageState extends State<QrGeneratorPage> {
           hashHex: bundle.hashHex,
           minimizedBytes: bundle.minimizedGeoJson.length,
           qrTextBytes: bundle.qrTexts.single.length,
+          phoneWarnings: validation?.warnings
+                  .map(GeoJsonValidationMessages.describe)
+                  .toList(growable: false) ??
+              const [],
+          garminMessage: garmin == null
+              ? null
+              : garmin.validForGarmin
+                  ? 'Garmin対応'
+                  : 'Garmin非対応: ${GeoJsonValidationMessages.describe(garmin.issues.first)}',
         );
       });
     } on GeoJsonQrException catch (e) {
@@ -114,7 +130,8 @@ class _QrGeneratorPageState extends State<QrGeneratorPage> {
       }
       setState(() {
         _isGenerating = false;
-        _errorMessage = 'QRコードの生成に失敗しました: ${e.message}';
+        _errorMessage = 'QRコードの生成に失敗しました: '
+            '${e.message.startsWith('E_') ? GeoJsonValidationMessages.describe(GeoJsonValidationIssue(e.message)) : e.message}';
       });
     } on FormatException catch (e) {
       if (!mounted) {
@@ -315,6 +332,10 @@ class _QrPreview extends StatelessWidget {
           ),
         _InfoRow(label: '最小化サイズ', value: '${generated.minimizedBytes} バイト'),
         _InfoRow(label: 'QRテキスト長', value: '${generated.qrTextBytes} 文字'),
+        if (generated.garminMessage != null)
+          _InfoRow(label: 'Garmin', value: generated.garminMessage!),
+        for (final warning in generated.phoneWarnings)
+          _InfoRow(label: '形状の警告', value: warning),
         if (hash != null)
           _InfoRow(
             label: 'ハッシュ',
@@ -411,6 +432,8 @@ class _GeneratedQr {
     required this.hashHex,
     required this.minimizedBytes,
     required this.qrTextBytes,
+    this.phoneWarnings = const [],
+    this.garminMessage,
   });
 
   final String fileName;
@@ -420,6 +443,8 @@ class _GeneratedQr {
   final String? hashHex;
   final int minimizedBytes;
   final int qrTextBytes;
+  final List<String> phoneWarnings;
+  final String? garminMessage;
 
   String get outputFileName {
     final withoutExtension = path.basenameWithoutExtension(fileName);

@@ -81,8 +81,9 @@
 - 圧縮展開に失敗した場合、適切なエラーを返却。
 
 ### FR-6: GeoJSON妥当性検査
-- `agz1` エンコード時は単一Feature、単一Polygon、穴なし、4点以上、閉じたリングであることを確認する。
-- `gjz1` 復元後は従来どおりGeoJSONのtypeを検証する。
+- ファイル読込、QR生成、`agz1` / `gjz1` 復元後の形状判定には同じ[スマホ用validator](geojson_validation.md)を使用する。穴・自己交差・未閉鎖ringは拒否する。
+- `agz1` エンコードでは追加で単一Feature・単一Polygonと単一QR容量を確認する。固定の100頂点上限は設けない。丸め後の復元GeoJSONも共通validatorで再検証する。
+- Garminの3〜100頂点とint16制約はQR生成を妨げない。生成画面にGarmin非対応の理由を表示する。
 
 ### FR-7: QR画像生成
 - 誤り訂正レベル: 既定**Q**、選択肢にL/M/Q/H。

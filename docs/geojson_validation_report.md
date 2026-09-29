@@ -1,0 +1,50 @@
+# GeoJSON検証レポート（Issue #102）
+
+2026-09-30。`test/fixtures/geojson_validation/` の17ファイルを共通スマホvalidator、AGZ1生成・復元、Garmin事前validatorへ通した。判定は `test/geo/geojson_validator_test.dart` の実行結果に基づく。
+
+![17種類のGeoJSONの形状図](images/geojson_validation_cases.png)
+
+図は形状の模式図で、各枠を別々の縮尺で描いた。青は外周、赤破線は2本目のringまたは2つ目のPolygon。緑の開始点と赤の終点は未閉鎖ring。`invalid-coordinate` の181°点は形が見えるよう図中だけ位置を縮め、値を注記した。元ファイルは変更していない。
+
+| ファイル | 形状・狙い | スマホ | AGZ1生成→復元 | Garmin事前検証 | 主な判定 |
+| --- | --- | --- | --- | --- | --- |
+| `valid-square` | 閉じた四角形 | 可 | 可 | 可 | 正常 |
+| `vertices-3` | 終点を除き3頂点の三角形 | 可 | 可 | 可 | 下限 |
+| `vertices-100` | 100頂点の多角形 | 可 | 可 | 可 | Garmin上限 |
+| `vertices-101` | 101頂点の多角形 | 可 | 可 | 不可 | `E_TOO_MANY_VERTICES`。QRは作れる |
+| `hole` | 内側ringのある四角形 | 不可 | 不可 | 対象外 | `E_HOLES_UNSUPPORTED` |
+| `empty-inner-ring` | 2本目が空のring | 不可 | 不可 | 対象外 | `E_HOLES_UNSUPPORTED` |
+| `bow-tie` | 辺が交差する蝶ネクタイ形 | 不可 | 不可 | 対象外 | `E_SELF_INTERSECTION` |
+| `vertex-touch` | 非隣接辺に頂点が接触 | 不可 | 不可 | 対象外 | `E_SELF_INTERSECTION` |
+| `overlapping-edge` | 辺の一部が重なる | 不可 | 不可 | 対象外 | `E_SELF_INTERSECTION` |
+| `duplicate-consecutive` | 連続する同一頂点 | 不可 | 不可 | 対象外 | `E_DUPLICATE_CONSECUTIVE_POINT` |
+| `open-ring` | 先頭と末尾が異なる | 不可 | 不可 | 対象外 | `E_POLYGON_NOT_CLOSED` |
+| `collinear` | 頂点が一直線で面積0 | 不可 | 不可 | 対象外 | `E_ZERO_AREA`、重なりも検出 |
+| `multi-polygon` | 離れた2つの四角形 | 可 | 不可 | 不可 | `agz1`は単一Polygonのみ。Garminは`E_GARMIN_SINGLE_POLYGON` |
+| `tiny-area` | 100m²未満の三角形 | 可（警告） | 可 | 可 | `W_TINY_AREA` |
+| `long-edge` | 50km超の辺を持つ四角形 | 可（警告） | 可 | 可 | `W_LONG_EDGE` |
+| `qr-precision-loss` | 約2cmの三角形 | 可（警告） | 不可 | 不可 | 6桁丸めで退化。`W_SHORT_EDGE` も表示 |
+| `invalid-coordinate` | 経度181°の頂点 | 不可 | 不可 | 対象外 | `E_INVALID_COORDINATE` |
+
+「対象外」はスマホ用検証で止まりGarminの形状判定へ進まないことを示す。`multi-polygon` はスマホで扱えるが、AGZ1の単一Polygon制約でQRを作れない。AGZ1以外のQR形式には別の容量制約がある。
+
+## 経路と境界の確認
+
+- 同じ正常GeoJSONをファイル読込、QR生成、QR復元から渡し、スマホ判定が一致することを確認した。
+- 17ファイルのAGZ1生成をすべて実行し、生成できた6ファイルは復元後に同じスマホvalidatorで再検証した。
+- `qr-precision-loss` は元データのスマホ判定に通るが、QRの小数6桁への丸めで三角形が退化するため生成を拒否した。
+- GarminのローカルXYのint16境界内外を別途検証した。101頂点はQRを生成でき、Garmin画面では送信不可、送信クライアント呼出し0回を確認した。
+- 穴付きファイルはGarmin画面のファイル選択で拒否され、選択済みコースを置き換えなかった。
+
+## 実行結果
+
+| 確認 | 結果 |
+| --- | --- |
+| ケース集 | `flutter test --no-pub --reporter expanded test/geo/geojson_validator_test.dart`：8件成功（全件実行に含む） |
+| 全単体・Widgetテスト | `flutter test --no-pub --reporter expanded`：404件成功 |
+| 静的解析 | `flutter analyze --no-pub`：指摘0件 |
+| Android E2E全件 | `./scripts/run_android_ui_checks.ps1 -CaptureScreenshots`：3ファイル成功 |
+
+E2Eは `Medium_Phone_API_36.0`（`emulator-5554`、API 36）で `integration_test/compass_navigation_test.dart`、`integration_test/core_monitoring_e2e_test.dart`、`integration_test/ui_smoke_test.dart` を実行した。`e2e/` ディレクトリはない。`SIMULATOR_GPS=true` などの任意モードは実行していない。テスト用に起動したEmulatorは終了した。
+
+図は `python scripts/plot_geojson_validation_cases.py` で再生成できる。

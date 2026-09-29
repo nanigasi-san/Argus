@@ -9,6 +9,8 @@ import 'package:path_provider/path_provider.dart';
 
 import 'geo/area_index.dart';
 import 'geo/geo_model.dart';
+import 'geo/geojson_validation_messages.dart';
+import 'geo/geojson_validator.dart';
 import 'io/config.dart';
 import 'io/file_manager.dart';
 import 'io/log_entry.dart';
@@ -63,6 +65,7 @@ class AppController extends ChangeNotifier {
 
   AppConfig? _config;
   GeoModel _geoModel = GeoModel.empty();
+  GeoJsonValidationResult? _geoJsonValidation;
   bool _developerMode = false;
   bool _navigationEnabled = true;
   AreaIndex _areaIndex = AreaIndex.empty();
@@ -91,6 +94,7 @@ class AppController extends ChangeNotifier {
   bool get geoJsonLoaded => _geoModel.hasGeometry;
   bool get isMonitoring => _subscription != null;
   GeoModel get geoModel => _geoModel;
+  GeoJsonValidationResult? get geoJsonValidation => _geoJsonValidation;
   String? get lastErrorMessage => _lastErrorMessage;
   String? get geoJsonFileName => _geoJsonFileName;
   List<AppLogEntry> get logs => List.unmodifiable(_logs);
@@ -363,9 +367,6 @@ class AppController extends ChangeNotifier {
   /// ファイルが正常に読み込まれた場合、状態マシンとエリアインデックスを更新します。
   /// エラーが発生した場合は、エラーメッセージを設定します。
   Future<void> reloadGeoJsonFromPicker() async {
-    // 先に監視を停止（ファイル操作前に停止）
-    await stopMonitoring();
-
     try {
       // ファイル名を取得するために、file_selectorを直接使用
       final file = await fileManager.pickGeoJsonFile();
@@ -375,10 +376,16 @@ class AppController extends ChangeNotifier {
       }
 
       final raw = await file.readAsString();
-      final model = GeoModel.fromGeoJson(raw);
-      _requireMonitorableGeometry(model);
+      final validation = const GeoJsonValidator().validate(raw);
+      if (!validation.validForPhone) {
+        throw FormatException(
+            GeoJsonValidationMessages.describe(validation.errors.first));
+      }
+      final model = validation.model!;
+      await stopMonitoring();
 
       _geoModel = model;
+      _geoJsonValidation = validation;
       // ファイル名をpathから抽出し、拡張子を.geojsonに統一
       final extractedName = _extractFileName(file.path) ?? file.name;
       _geoJsonFileName = _normalizeToGeoJson(extractedName);
@@ -424,9 +431,6 @@ class AppController extends ChangeNotifier {
   /// 状態マシンとエリアインデックスを更新します。
   /// エラーが発生した場合は、エラーメッセージを設定します。
   Future<bool> reloadGeoJsonFromQr(String qrText) async {
-    // 先に監視を停止（ファイル操作前に停止）
-    await stopMonitoring();
-
     try {
       // QRテキストが対応スキームで始まることを確認
       if (!isSupportedGeoJsonQrText(qrText)) {
@@ -440,8 +444,13 @@ class AppController extends ChangeNotifier {
       // QRテキストからGeoJSONを復元
       final decoded = await compute(_decodeGeoJsonQrText, qrText);
       final restoredGeoJson = decoded.geoJson;
-      final model = GeoModel.fromGeoJson(restoredGeoJson);
-      _requireMonitorableGeometry(model);
+      final validation = const GeoJsonValidator().validate(restoredGeoJson);
+      if (!validation.validForPhone) {
+        throw FormatException(
+            GeoJsonValidationMessages.describe(validation.errors.first));
+      }
+      final model = validation.model!;
+      await stopMonitoring();
 
       // 一時ディレクトリに保存
       final tempDir = await getTemporaryDirectory();
@@ -456,6 +465,7 @@ class AppController extends ChangeNotifier {
       _tempGeoJsonFilePath = tempFile.path;
 
       _geoModel = model;
+      _geoJsonValidation = validation;
       _geoJsonFileName = decoded.fileName ?? 'temp_geojson_$timestamp.geojson';
       _areaIndex = AreaIndex.build(model.polygons);
       stateMachine.updateGeometry(_geoModel, _areaIndex);
@@ -498,8 +508,6 @@ class AppController extends ChangeNotifier {
 
   /// QRコード画像ファイルからGeoJSONを読み込みます。
   Future<bool> reloadGeoJsonFromQrImagePicker() async {
-    await stopMonitoring();
-
     try {
       final file = await fileManager.pickQrImageFile();
       if (file == null) {
@@ -742,6 +750,7 @@ class AppController extends ChangeNotifier {
 
     if (geoJson != null) {
       _geoModel = geoJson;
+      _geoJsonValidation = null;
     }
 
     if (areaIndex != null) {
@@ -943,14 +952,6 @@ class AppController extends ChangeNotifier {
     final normalized = (bearing % 360 + 360) % 360;
     final index = ((normalized + 22.5) ~/ 45) % labels.length;
     return labels[index];
-  }
-}
-
-void _requireMonitorableGeometry(GeoModel model) {
-  if (!model.hasGeometry) {
-    throw const FormatException(
-      'GeoJSONに監視可能なPolygon/MultiPolygonがありません。',
-    );
   }
 }
 

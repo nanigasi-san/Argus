@@ -127,10 +127,12 @@ void main() {
       expect(() => GeoModel.fromGeoJson(raw), throwsFormatException);
     });
 
-    test('preserves exterior-only interpretation and optional altitude', () {
+    test('accepts optional altitude in a valid exterior ring', () {
       final model = GeoModel.fromGeoJson(jsonEncode({
+        'type': 'FeatureCollection',
         'features': [
           {
+            'type': 'Feature',
             'properties': {'name': 'area', 'version': 2},
             'geometry': {
               'type': 'Polygon',
@@ -138,12 +140,8 @@ void main() {
                 [
                   [139, 35, 5],
                   [139.01, 35, 6],
-                  [139, 35.01, 7]
-                ],
-                [
-                  [139.001, 35.001],
-                  [139.002, 35.001],
-                  [139.001, 35.002]
+                  [139, 35.01, 7],
+                  [139, 35, 5]
                 ],
               ]
             },
@@ -252,9 +250,7 @@ void main() {
       }
       ''';
 
-      final model = GeoModel.fromGeoJson(geoJson);
-      expect(model.polygons, isEmpty);
-      expect(model.hasGeometry, false);
+      expect(() => GeoModel.fromGeoJson(geoJson), throwsFormatException);
     });
 
     test('handles GeoJSON with unsupported geometry types', () {
@@ -301,9 +297,7 @@ void main() {
       }
       ''';
 
-      final model = GeoModel.fromGeoJson(geoJson);
-      // Should skip polygons with less than 3 points
-      expect(model.polygons, isEmpty);
+      expect(() => GeoModel.fromGeoJson(geoJson), throwsFormatException);
     });
 
     test('handles missing properties', () {
@@ -344,8 +338,7 @@ void main() {
       }
       ''';
 
-      final model = GeoModel.fromGeoJson(geoJson);
-      expect(model.polygons, isEmpty);
+      expect(() => GeoModel.fromGeoJson(geoJson), throwsFormatException);
     });
   });
 }
