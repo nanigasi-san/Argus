@@ -841,6 +841,45 @@ void main() {
       expect(find.textContaining('QR コードの復元に失敗しました'), findsOneWidget);
     });
 
+    testWidgets('custom QR receiver does not import into phone monitoring',
+        (WidgetTester tester) async {
+      final controller = _RecordingQrController();
+      var received = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppController>.value(
+            value: controller,
+            child: QrScannerPage(
+              permissionCoordinator: _FakePermissionCoordinator(),
+              scannerOverride: const SizedBox.shrink(),
+              onQrScanned: (qrText) async {
+                received += 1;
+                throw DecodeFailedException('bad payload');
+              },
+              scannerBuilder: (context, scannerController, onDetect) {
+                return Center(
+                  child: ElevatedButton(
+                    onPressed: () => onDetect(
+                      const BarcodeCapture(
+                        barcodes: [Barcode(rawValue: 'gjz1:error')],
+                      ),
+                    ),
+                    child: const Text('Emit Garmin QR'),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Emit Garmin QR'));
+      await tester.pumpAndSettle();
+      expect(received, 1);
+      expect(controller.scannedTexts, isEmpty);
+      expect(find.textContaining('QR コードの復元に失敗しました'), findsOneWidget);
+    });
+
     testWidgets('real scanner branch renders MobileScanner widget',
         (WidgetTester tester) async {
       final controller = _buildController();

@@ -24,6 +24,7 @@ class QrScannerPage extends StatefulWidget {
     this.startScannerOverride,
     this.stopScannerOverride,
     this.disposeScannerOverride,
+    this.onQrScanned,
   });
 
   final PermissionCoordinator? permissionCoordinator;
@@ -36,6 +37,9 @@ class QrScannerPage extends StatefulWidget {
   final Future<void> Function()? startScannerOverride;
   final Future<void> Function()? stopScannerOverride;
   final VoidCallback? disposeScannerOverride;
+
+  /// Overrides the phone course import for flows that only need the QR data.
+  final Future<void> Function(String qrText)? onQrScanned;
 
   @override
   State<QrScannerPage> createState() => _QrScannerPageState();
@@ -242,7 +246,9 @@ class _QrScannerPageState extends State<QrScannerPage>
         return;
       }
 
-      final loaded = await appController.reloadGeoJsonFromQr(qrText);
+      final loaded = widget.onQrScanned == null
+          ? await appController.reloadGeoJsonFromQr(qrText)
+          : await widget.onQrScanned!(qrText).then((_) => true);
 
       if (mounted && loaded) {
         Navigator.of(context).pop();
@@ -257,6 +263,12 @@ class _QrScannerPageState extends State<QrScannerPage>
     } on GeoJsonQrException catch (e) {
       setState(() {
         _errorMessage = 'QR コードの復元に失敗しました: ${e.message}';
+        _isProcessing = false;
+      });
+      unawaited(_resumeScanner());
+    } on FormatException catch (e) {
+      setState(() {
+        _errorMessage = 'GeoJSON の読込に失敗しました: ${e.message}';
         _isProcessing = false;
       });
       unawaited(_resumeScanner());

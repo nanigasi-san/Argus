@@ -1,5 +1,9 @@
+import 'package:argus/garmin/garmin_course_payload.dart';
+import 'package:argus/geo/geo_model.dart';
+import 'package:argus/platform/garmin_transfer_client.dart';
 import 'package:argus/platform/permission_coordinator.dart';
 import 'package:argus/state_machine/state.dart';
+import 'package:argus/theme/app_theme.dart';
 import 'package:argus/ui/qr_scanner_page.dart';
 import 'package:argus/ui/settings_page.dart';
 import 'package:argus/ui/garmin_transfer_page.dart';
@@ -18,6 +22,36 @@ void main() {
   group('Mobile UI smoke', () {
     setUpAll(() async {
       await binding.convertFlutterSurfaceToImage();
+    });
+
+    testWidgets('Garmin transfer before and after acknowledged send',
+        (tester) async {
+      final controller = HarnessBuilder.buildController();
+      controller.debugSeed(
+          geoJson: GeoModel([
+        GeoPolygon(points: const [
+          LatLng(35, 139),
+          LatLng(35, 139.001),
+          LatLng(35.001, 139),
+        ]),
+      ]));
+      await tester.pumpWidget(ChangeNotifierProvider.value(
+        value: controller,
+        child: MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.light(),
+          home: const GarminTransferPage(client: _ScreenshotGarminClient()),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      await _tryTakeScreenshot(binding, 'garmin-transfer-before-improved');
+
+      await tester.ensureVisible(find.text('GARMINに送信'));
+      await tester.tap(find.text('GARMINに送信'));
+      await tester.pumpAndSettle();
+      expect(find.text('GARMINへ転送しました'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 2));
+      await _tryTakeScreenshot(binding, 'garmin-transfer-after-improved');
     });
 
     testWidgets('entry screen opens the existing Garmin transfer flow',
@@ -177,6 +211,24 @@ void main() {
       expect(find.text('設定'), findsWidgets);
     });
   });
+}
+
+class _ScreenshotGarminClient extends GarminTransferClient {
+  const _ScreenshotGarminClient();
+
+  @override
+  Future<List<GarminDevice>> getDevices() async => const [
+        GarminDevice(id: 'fr55-mock', name: 'ForeAthlete 55', connected: true),
+      ];
+
+  @override
+  Future<GarminTransferResult> sendCourse(
+      GarminDevice device, GarminCoursePayload payload) async {
+    return const GarminTransferResult(
+      deviceName: 'ForeAthlete 55',
+      elapsedMs: 1480,
+    );
+  }
 }
 
 Future<void> _tryTakeScreenshot(

@@ -1,11 +1,15 @@
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:argus/app_controller.dart';
 import 'package:argus/garmin/garmin_course_payload.dart';
 import 'package:argus/geo/geo_model.dart';
 import 'package:argus/platform/garmin_transfer_client.dart';
 import 'package:argus/platform/notifier.dart';
 import 'package:argus/platform/permission_coordinator.dart';
+import 'package:argus/state_machine/state_machine.dart';
 import 'package:argus/ui/garmin_transfer_page.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/services.dart';
@@ -86,6 +90,63 @@ class _FailingNotifications extends FakeLocalNotificationsClient {
   }
 }
 
+class _SelectableFileManager extends FakeFileManager {
+  _SelectableFileManager({required super.config});
+
+  XFile? selectedFile;
+
+  @override
+  Future<XFile?> pickGeoJsonFile() async => selectedFile;
+}
+
+class _GrantedPermissionCoordinator extends PermissionCoordinator {
+  @override
+  Future<MonitoringPermissionState> refreshMonitoringPermissionState() async =>
+      const MonitoringPermissionState(
+        notificationStatus: PermissionStatus.granted,
+        locationWhenInUseStatus: PermissionStatus.granted,
+        locationAlwaysStatus: PermissionStatus.granted,
+        locationServicesEnabled: true,
+      );
+}
+
+const _phoneGeoJson = '''
+{"type":"FeatureCollection","features":[{"type":"Feature","properties":{},
+"geometry":{"type":"Polygon","coordinates":[[[139,35],[139.001,35],[139,35.001],[139,35]]]}}]}
+''';
+const _watchGeoJson = '''
+{"type":"FeatureCollection","features":[{"type":"Feature","properties":{},
+"geometry":{"type":"Polygon","coordinates":[[[140,36],[140.001,36],[140,36.001],[140,36]]]}}]}
+''';
+
+Future<
+    ({
+      AppController controller,
+      FakeLocationService location,
+      _SelectableFileManager files
+    })> _monitoringController() async {
+  final config = createTestConfig();
+  final files = _SelectableFileManager(config: config);
+  final location = FakeLocationService();
+  final controller = AppController(
+    stateMachine: StateMachine(config: config),
+    locationService: location,
+    fileManager: files,
+    logger: FakeEventLogger(),
+    notifier: Notifier(
+      notificationsClient: FakeLocalNotificationsClient(),
+      alarmPlayer: FakeAlarmPlayer(),
+      vibrationPlayer: FakeVibrationPlayer(),
+    ),
+    permissionCoordinator: _GrantedPermissionCoordinator(),
+    compassService: FakeCompassService(),
+  );
+  controller.debugSeed(
+      config: config, geoJson: GeoModel.fromGeoJson(_phoneGeoJson));
+  await controller.startMonitoring();
+  return (controller: controller, location: location, files: files);
+}
+
 Future<void> _startTransfer(
   WidgetTester tester,
   _PendingGarminClient client,
@@ -138,6 +199,93 @@ Future<void> _selectSecondWatch(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('cancelled Garmin file selection keeps phone monitoring active',
+      (tester) async {
+    final setup = await _monitoringController();
+    addTearDown(setup.controller.dispose);
+    expect(setup.controller.isMonitoring, isTrue);
+    await tester.pumpWidget(ChangeNotifierProvider.value(
+      value: setup.controller,
+      child:
+          MaterialApp(home: GarminTransferPage(client: _PendingGarminClient())),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('GeoJSONファイルを読み込む'));
+    await tester.pumpAndSettle();
+    expect(setup.controller.isMonitoring, isTrue);
+    expect(setup.location.hasStopped, isFalse);
+    expect(
+        setup.controller.geoModel.polygons.single.points.first.longitude, 139);
+  });
+
+  testWidgets(
+      'invalid Garmin file keeps the previous course and phone monitoring',
+      (tester) async {
+    final setup = await _monitoringController();
+    addTearDown(setup.controller.dispose);
+    setup.files.selectedFile = XFile.fromData(
+      utf8.encode('{invalid'),
+      name: 'bad.geojson',
+      mimeType: 'application/geo+json',
+    );
+    await tester.pumpWidget(ChangeNotifierProvider.value(
+      value: setup.controller,
+      child:
+          MaterialApp(home: GarminTransferPage(client: _PendingGarminClient())),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('GeoJSONファイルを読み込む'));
+    await tester.pumpAndSettle();
+    expect(setup.controller.isMonitoring, isTrue);
+    expect(setup.location.hasStopped, isFalse);
+    expect(find.text('argus.geojson'), findsOneWidget);
+  });
+
+  testWidgets(
+      'different Garmin course requires confirmation and leaves phone monitoring unchanged',
+      (tester) async {
+    final setup = await _monitoringController();
+    addTearDown(setup.controller.dispose);
+    final client = _PendingGarminClient();
+    setup.files.selectedFile = XFile.fromData(
+      utf8.encode(_watchGeoJson),
+      name: 'watch.geojson',
+      path: 'watch.geojson',
+      mimeType: 'application/geo+json',
+    );
+    await tester.pumpWidget(ChangeNotifierProvider.value(
+      value: setup.controller,
+      child: MaterialApp(home: GarminTransferPage(client: client)),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('GeoJSONファイルを読み込む'));
+    await tester.pumpAndSettle();
+    expect(find.text('watch.geojson'), findsOneWidget);
+    await tester.ensureVisible(find.text('GARMINに送信'));
+    await tester.tap(find.text('GARMINに送信'));
+    await tester.pumpAndSettle();
+    expect(find.text('スマホと異なる範囲を送りますか？'), findsOneWidget);
+    expect(client.sendCount, 0);
+    await tester.tap(find.text('キャンセル'));
+    await tester.pumpAndSettle();
+    expect(client.sendCount, 0);
+    expect(setup.controller.isMonitoring, isTrue);
+    await tester.tap(find.text('GARMINに送信'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'GARMINへ送信'));
+    await tester.pump();
+    expect(client.sendCount, 1);
+    expect(setup.controller.isMonitoring, isTrue);
+    expect(setup.location.hasStopped, isFalse);
+    expect(
+        setup.controller.geoModel.polygons.single.points.first.longitude, 139);
+    client.completion.complete(
+      const GarminTransferResult(deviceName: 'ForeAthlete 55', elapsedMs: 50),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('GARMINへ転送しました'), findsOneWidget);
+  });
+
   testWidgets('keeps the selected watch after refresh and app resume',
       (tester) async {
     final client = _MultipleGarminClient();
@@ -285,7 +433,7 @@ void main() {
       child: MaterialApp(home: GarminTransferPage(client: client)),
     ));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('GARMINの監視を停止'));
+    await tester.scrollUntilVisible(find.text('GARMINの監視を停止'), 200);
     await tester.tap(find.text('GARMINの監視を停止'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('監視を停止'));
