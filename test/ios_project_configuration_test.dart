@@ -170,10 +170,10 @@ void main() {
       expect(frameworkInfo, contains('<string>15.0</string>'));
     });
 
-    test('uses the 0.7.0 release version and update-check dependencies', () {
+    test('uses the 0.9.0 provisional version and update-check dependencies', () {
       final pubspec = File('pubspec.yaml').readAsStringSync();
 
-      expect(pubspec, contains('version: 0.7.0+1009'));
+      expect(pubspec, contains('version: 0.9.0+1013'));
       expect(pubspec, contains('package_info_plus: ^10.1.0'));
       expect(pubspec, contains('upgrader: ^13.5.0'));
       expect(pubspec, contains('share_plus: ^13.1.0'));

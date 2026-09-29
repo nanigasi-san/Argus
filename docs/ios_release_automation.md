@@ -31,7 +31,7 @@ Gemfile と lockfile による依存固定、既存 Flutter Archive の再利用
 | リポジトリ Secrets | `gh secret list` には Android と Codecov のみ | iOS 用 Secrets を準備する。Environment/Organization の全設定は未確認 |
 | Bundle ID / App ID | `com.argus.orienteering` / `6781527103` | API で取得したアプリ情報と一致確認 |
 | Developer Team | project は `DLJC9VB2SL` | 証明書・profile の Team と一致確認 |
-| バージョン | pubspec は `0.7.0+1009`、直近提出は `0.8.0 (1010)` | pubspec から配信番号を自動決定しない |
+| バージョン | 開発ブランチの pubspec は暫定 `0.9.0+1013`、直近の配布記録は `0.8.2 (1012)` | pubspec から配信番号を自動決定しない |
 | iOS 設定 | iOS 15.0、Background Modes の audio/location、Time Sensitive entitlement | profile と配布 IPA でも設定を検証 |
 | ローカルの実績 | 0.8.0 の IPA 作成、Xcode アカウントで upload、ブラウザで審査提出に成功 | API キーだけを使うクリーン runner での成功は未確認 |
 | main の保護 | 直接 push は拒否された | workflow から pubspec や提出記録を main に直接 push しない |
