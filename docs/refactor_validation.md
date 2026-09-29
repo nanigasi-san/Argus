@@ -42,7 +42,7 @@ Android端末: `Medium_Phone_API_36.0` / `emulator-5554` / `sdk_gphone64_x86_64`
 
 `e2e/`は未作成。`SIMULATOR_GPS=true`は実行していない。位置・権限・通知・時計通信はテスト実装を使うため、実GPS・OSの許可ダイアログ・実通知音・実時計通信の動作確認とは区別する。
 
-Pythonは`python -m unittest discover -s scripts -p 'test_*.py'`で全件実行した。`test_run_with_timeout.py`の`test_timeout_stops_descendants_holding_output_open`と`test_signal_stops_child`はPOSIXの`sleep`・プロセスグループ・SIGTERMを前提とし、Windowsでは失敗した。このwatchdogはLinux/macOS CI用で、今回その実装は変更していない。
+Pythonは`python -m unittest discover -s scripts -p 'test_*.py'`で全件実行した。`test_run_with_timeout.py`の`test_timeout_stops_descendants_holding_output_open`と`test_signal_stops_child`はPOSIXの`sleep`・プロセスグループ・SIGTERMを前提とし、Windowsでは失敗した。このwatchdogはLinux/macOS CI用で、今回その実装は変更していない。Linuxコンテナでも確認を試みたが、ローカルDocker Engineを起動できず未実行。
 
 ## CIの時間調査と変更
 
@@ -61,7 +61,16 @@ Androidはワークフロー名と依存設定をキーに含め、成功した�
 
 ### このブランチのCI確認
 
-コードコミット`0959f63`に対しAndroid Build/E2E・iOS Build/E2Eを手動起動。結果と再利用時の比較は確認後に追記する。
+コードコミット`0959f63`で全4ワークフローが成功。CIはFlutter 3.47.5、AndroidはAPI 36 / google_apis / x86_64、iOS E2EはiPhone Simulator / iOS 26.4を使用した。任意の`SIMULATOR_GPS`は無効。
+
+| ワークフロー | 初回（新キーでミス） | キャッシュ復元あり |
+| --- | --- | --- |
+| Android Build | [成功・423秒](https://github.com/nanigasi-san/Argus/actions/runs/36562064204)、build 340秒、保存39秒 | 確認中 |
+| Android E2E | [全件成功・630秒](https://github.com/nanigasi-san/Argus/actions/runs/36562067522)、E2E step 576秒、保存27秒 | 確認中 |
+| iOS Build | [成功・629秒](https://github.com/nanigasi-san/Argus/actions/runs/36562073594)、build/native test 511秒 | 確認中 |
+| iOS E2E | [全件成功・319秒](https://github.com/nanigasi-san/Argus/actions/runs/36562077240)、E2E step 260秒 | 確認中 |
+
+初回のAndroidはBuild/E2Eとも別キーへの保存に成功した。iOSは同じダウンロードを共有するキーでE2Eが先に保存したため、Build側の同時保存は予約競合で省略された（jobは成功）。最終評価はPRの通常5チェックで行い、キャッシュのヒット状況と実行時間を比較する。
 
 ## 参照
 
