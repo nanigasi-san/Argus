@@ -30,7 +30,7 @@ GeoJSONの穴をスマホが外周として扱う既存仕様は変更してい�
 | ローカル文書リンク | 全44 Markdownの143参照先と1アンカーを確認、欠落なし |
 | Mermaid構文検査 | 全Markdownの11図成功（Mermaidのparse APIで確認） |
 | スクリーンショット確認 | 選択画面、GARMIN送信前後を目視。ガイドに実画像5枚とGPT Image説明図2枚を保存 |
-| Pythonスクリプトの全52テスト（Windows） | 50成功、POSIX watchdogの2件はWindows非対応のため失敗。下記参照 |
+| Pythonスクリプトの全52テスト | WindowsはPOSIX専用の2件が非対応。PRのLinux CIでは全52件成功 |
 
 Android端末: `Medium_Phone_API_36.0` / `emulator-5554` / `sdk_gphone64_x86_64` / API 36。Flutter 3.44.2 / Dart 3.12.2。テスト用に起動したエミュレーターは完了後に終了した。
 
@@ -42,7 +42,7 @@ Android端末: `Medium_Phone_API_36.0` / `emulator-5554` / `sdk_gphone64_x86_64`
 
 `e2e/`は未作成。`SIMULATOR_GPS=true`は実行していない。位置・権限・通知・時計通信はテスト実装を使うため、実GPS・OSの許可ダイアログ・実通知音・実時計通信の動作確認とは区別する。
 
-Pythonは`python -m unittest discover -s scripts -p 'test_*.py'`で全件実行した。`test_run_with_timeout.py`の`test_timeout_stops_descendants_holding_output_open`と`test_signal_stops_child`はPOSIXの`sleep`・プロセスグループ・SIGTERMを前提とし、Windowsでは失敗した。このwatchdogはLinux/macOS CI用で、今回その実装は変更していない。Linuxコンテナでも確認を試みたが、ローカルDocker Engineを起動できず未実行。
+Pythonは`python -m unittest discover -s scripts -p 'test_*.py'`で全件実行した。`test_run_with_timeout.py`の`test_timeout_stops_descendants_holding_output_open`と`test_signal_stops_child`はPOSIXの`sleep`・プロセスグループ・SIGTERMを前提とし、Windowsでは失敗した。このwatchdogはLinux/macOS CI用で、今回その実装は変更していない。PR #108のLinux CIで全52件成功を確認した。Rubyのリリース回帰検証も15テスト・43 assertionsで成功した。
 
 ## CIの時間調査と変更
 
@@ -59,18 +59,25 @@ Androidはワークフロー名と依存設定をキーに含め、成功した�
 
 初回は新しいキーでキャッシュがなく、保存分だけ遅くなる場合がある。以後のヒット状況、取得・コンパイル・テスト・保存の時間を分けて確認する。runner負荷とFlutter stable/Xcode更新の影響があるため、1回の差を一般的な短縮率とは扱わない。
 
-### このブランチのCI確認
+### PR #108での評価
 
-コードコミット`0959f63`で全4ワークフローが成功。CIはFlutter 3.47.5、AndroidはAPI 36 / google_apis / x86_64、iOS E2EはiPhone Simulator / iOS 26.4を使用した。任意の`SIMULATOR_GPS`は無効。
+[PR #108](https://github.com/nanigasi-san/Argus/pull/108)の通常5チェックで評価する。比較元は作業開始時のmain `bcc7d03`（2026-09-29）の成功run。時間はキュー待ちを除くjob開始〜完了で、準備・保存・後片付けを含む。
 
-| ワークフロー | 初回（新キーでミス） | キャッシュ復元あり |
-| --- | --- | --- |
-| Android Build | [成功・423秒](https://github.com/nanigasi-san/Argus/actions/runs/36562064204)、build 340秒、保存39秒 | 確認中 |
-| Android E2E | [全件成功・630秒](https://github.com/nanigasi-san/Argus/actions/runs/36562067522)、E2E step 576秒、保存27秒 | 確認中 |
-| iOS Build | [成功・629秒](https://github.com/nanigasi-san/Argus/actions/runs/36562073594)、build/native test 511秒 | 確認中 |
-| iOS E2E | [全件成功・319秒](https://github.com/nanigasi-san/Argus/actions/runs/36562077240)、E2E step 260秒 | 確認中 |
+| ワークフロー | 変更前main | PR初回 `e264945` | 初回結果 |
+| --- | --- | --- | --- |
+| Flutter Tests | [2分02秒](https://github.com/nanigasi-san/Argus/actions/runs/36558512157) | [2分53秒](https://github.com/nanigasi-san/Argus/actions/runs/36563607053) | 成功、Dart 392・Python 52・Ruby 15テスト |
+| Android Build | [6分59秒](https://github.com/nanigasi-san/Argus/actions/runs/36558512151) | [7分06秒](https://github.com/nanigasi-san/Argus/actions/runs/36563607148) | 成功、Gradleミス→保存29秒 |
+| Android E2E | [9分59秒](https://github.com/nanigasi-san/Argus/actions/runs/36558512126) | [10分10秒](https://github.com/nanigasi-san/Argus/actions/runs/36563606988) | 全件成功、Gradleミス→保存27秒 |
+| iOS Build | [9分37秒](https://github.com/nanigasi-san/Argus/actions/runs/36558512313) | [6分53秒](https://github.com/nanigasi-san/Argus/actions/runs/36563607061) | native全件成功、依存キャッシュミス→保存 |
+| iOS E2E | [9分40秒](https://github.com/nanigasi-san/Argus/actions/runs/36558512154) | [12分23秒](https://github.com/nanigasi-san/Argus/actions/runs/36563607079) | 全件成功、初回実行の時間差あり |
 
-初回のAndroidはBuild/E2Eとも別キーへの保存に成功した。iOSは同じダウンロードを共有するキーでE2Eが先に保存したため、Build側の同時保存は予約競合で省略された（jobは成功）。最終評価はPRの通常5チェックで行い、キャッシュのヒット状況と実行時間を比較する。
+CIはFlutter 3.47.5。AndroidはAPI 36 / google_apis / x86_64、iOS E2EはiPhone Simulator / iOS 26.4。`SIMULATOR_GPS`は無効。CIの行カバレッジは3555 / 3608行、98.5%（ローカルSDKとの差があるため行数を分けて記録）。
+
+Androidは初回では短縮していない。Buildは355秒のビルドと29秒の保存、E2Eは552秒の実行と27秒の保存を含む。iOSも初回はヒットしておらず、この時点の増減をキャッシュの効果とは扱わない。Flutter Testsでは既存Ruby依存キャッシュの初回作成に53秒かかった。
+
+この記録をpushして起動する次のPR CIで、同じ依存設定のキーへのヒット、Androidの保存ステップ省略、同じビルド・全テストの成功を確認する。**最新pushでの所要時間と変更前との差は[PR本文のCI比較表](https://github.com/nanigasi-san/Argus/pull/108)に記録する。** ドキュメント追記によるpushも通常5チェックの対象にする。
+
+なお、PR作成前のコード`0959f63`の手動CIもAndroid Build/E2E・iOS Build/E2Eが全件成功した。PRでの評価へ切り替えた時点で、途中だった追加の手動runをキャンセルし、以後ローカルテストは追加実行していない。手動runのキャッシュとPRのキャッシュはスコープが異なるため、PR初回は新しい保存が必要だった。
 
 ## 参照
 
