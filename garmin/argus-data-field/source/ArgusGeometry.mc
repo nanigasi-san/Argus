@@ -2,6 +2,9 @@ import Toybox.Math;
 
 // The phone sends local east/north metres around a WGS84 origin. Keep only
 // two small vertex arrays in Data Field memory; parse ASCII in bounded chunks.
+// ArgusProtocol.valid() also constructs this class in the phone-message
+// background service before acknowledging a saved course.
+(:background)
 class ArgusGeometry {
     var _xs = [];
     var _ys = [];
