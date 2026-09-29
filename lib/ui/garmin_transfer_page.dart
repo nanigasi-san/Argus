@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../app_controller.dart';
 import '../garmin/garmin_course_encoder.dart';
 import '../garmin/garmin_course_selection.dart';
+import '../io/file_display_name.dart';
 import '../platform/garmin_transfer_client.dart';
 import '../theme/app_palette.dart';
 import 'qr_scanner_page.dart';
@@ -479,9 +480,9 @@ class _GarminTransferPageState extends State<GarminTransferPage>
                             ?.copyWith(color: _garminText)),
                     const SizedBox(height: 2),
                     Tooltip(
-                      message: course?.fileName ?? '未選択',
+                      message: fileDisplayName(course?.fileName ?? '未選択'),
                       child: Text(
-                        course?.fileName ?? '未選択',
+                        fileDisplayName(course?.fileName ?? '未選択'),
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.titleMedium?.copyWith(
                           color: _garminNavy,
@@ -708,7 +709,8 @@ class _GarminTransferPageState extends State<GarminTransferPage>
             children: [
               _summaryRow('送信先', _result!.deviceName),
               const Divider(height: 24),
-              _summaryRow('境界データ', _course?.fileName ?? 'GeoJSON'),
+              _summaryRow(
+                  '境界データ', fileDisplayName(_course?.fileName ?? 'GeoJSON')),
             ],
           ),
         ),

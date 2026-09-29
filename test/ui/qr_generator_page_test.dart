@@ -73,7 +73,7 @@ void main() {
     expect(requestedFileName, 'course.geojson');
     expect(find.text('保存'), findsOneWidget);
     expect(find.text('共有'), findsOneWidget);
-    expect(find.text('course.geojson'), findsOneWidget);
+    expect(find.text('course'), findsOneWidget);
     expect(find.text('agz1'), findsOneWidget);
 
     await tester.tap(find.text('保存'));
@@ -240,7 +240,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('generated_qr_image')), findsOneWidget);
-    expect(find.text('fallback.geojson'), findsOneWidget);
+    expect(find.text('fallback'), findsOneWidget);
     expect(find.text('Point'), findsOneWidget);
     expect(find.text('-'), findsOneWidget);
     expect(find.text('ハッシュ'), findsNothing);

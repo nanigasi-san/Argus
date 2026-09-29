@@ -396,7 +396,7 @@ void main() {
     await tester.pump();
 
     expect(controller.geoJsonLoaded, isTrue);
-    expect(find.textContaining('ファイル名: test_square.geojson'), findsOneWidget);
+    expect(find.text('ファイル名: test_square'), findsOneWidget);
   });
 
   testWidgets('file loader QR image choice decodes selected image',

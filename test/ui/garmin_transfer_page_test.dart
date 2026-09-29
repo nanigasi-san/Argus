@@ -315,7 +315,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(setup.controller.isMonitoring, isTrue);
     expect(setup.location.hasStopped, isFalse);
-    expect(find.text('argus.geojson'), findsOneWidget);
+    expect(find.text('argus'), findsOneWidget);
   });
 
   testWidgets(
@@ -326,8 +326,8 @@ void main() {
     final client = _PendingGarminClient();
     setup.files.selectedFile = XFile.fromData(
       utf8.encode(_watchGeoJson),
-      name: 'watch.geojson',
-      path: 'watch.geojson',
+      name: 'watch.v2.geojson',
+      path: 'watch.v2.geojson',
       mimeType: 'application/geo+json',
     );
     await tester.pumpWidget(ChangeNotifierProvider.value(
@@ -337,7 +337,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('ファイルを選ぶ'));
     await tester.pumpAndSettle();
-    expect(find.text('watch.geojson'), findsOneWidget);
+    expect(find.text('watch.v2'), findsOneWidget);
     await tester.ensureVisible(find.text('GARMINに送信'));
     await tester.tap(find.text('GARMINに送信'));
     await tester.pumpAndSettle();
@@ -455,7 +455,7 @@ void main() {
     expect(find.byKey(const Key('garmin-ack-progress')), findsNothing);
     expect(notifications.shownIds, [1002]);
     expect(notifications.showCalls.single.body,
-        'ForeAthlete 55にargus.geojsonを保存しました。');
+        'ForeAthlete 55にargusを保存しました。');
   });
 
   testWidgets('does not notify when GARMIN transfer fails', (tester) async {

@@ -45,13 +45,13 @@ void main() {
     expect(payload.vertexCount, 4);
     expect(payload.bytes, payload.data.length);
     expect(payload.courseId, startsWith('race.geojson_'));
-    expect(payload.displayName, 'race.geojson');
-    expect(payload.toMap()['displayName'], 'race.geojson');
+    expect(payload.displayName, 'race');
+    expect(payload.toMap()['displayName'], 'race');
     expect(payload.checksum, matches(RegExp(r'^\d+$')));
     expect(payload.toMap()['armedUntil'], 2000000000);
   });
 
-  test('preserves a Japanese basename for the watch display', () {
+  test('removes only the final extension before limiting the watch display', () {
     final model = GeoModel([
       GeoPolygon(points: const [
         LatLng(35, 139),
@@ -61,9 +61,27 @@ void main() {
     ]);
     final payload = GarminCourseEncoder().encode(
       model,
-      fileName: r'/courses/千葉大.geojson',
+      fileName: r'/courses/千葉大.v2.geojson',
     );
-    expect(payload.displayName, '千葉大.geojson');
+    expect(payload.displayName, '千葉大.v2');
+    for (final entry in const {
+      'course.geojson': 'course',
+      '公園.geojson': '公園',
+      '朝のランニング.geojson': '朝のランニング',
+      'course.json': 'course',
+      'course.GEOJSON': 'course',
+      'course.v2.geojson': 'course.v2',
+      '2026.09.29.geojson': '2026.09.29',
+      '公園.北側.修正版.geojson': '公園.北側.修正版',
+      'course.geojson.gz': 'course.geojson',
+      '拡張子なしコース': '拡張子なしコース',
+    }.entries) {
+      expect(
+        GarminCourseEncoder().encode(model, fileName: entry.key).displayName,
+        entry.value,
+        reason: entry.key,
+      );
+    }
     final longName = GarminCourseEncoder().encode(
       model,
       fileName: '${List.filled(20, '長い名前').join()}.geojson',

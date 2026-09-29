@@ -8,6 +8,7 @@ import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../io/file_display_name.dart';
 import '../qr/geojson_qr_codec.dart';
 
 typedef GeoJsonQrEncoder = Future<GeoJsonQrBundle> Function(
@@ -304,7 +305,7 @@ class _QrPreview extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
-        _InfoRow(label: 'ファイル名', value: generated.fileName),
+        _InfoRow(label: 'ファイル名', value: fileDisplayName(generated.fileName)),
         _InfoRow(label: 'スキーム', value: generated.schemeLabel),
         _InfoRow(label: 'GeoJSONタイプ', value: generated.info.type),
         if (generated.info.featureCount != null)

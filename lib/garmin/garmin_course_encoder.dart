@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import '../geo/geo_model.dart';
+import '../io/file_display_name.dart';
 import 'garmin_course_payload.dart';
 
 class GarminCourseEncoder {
@@ -68,7 +69,8 @@ class GarminCourseEncoder {
 
   String _displayName(String fileName) {
     final baseName = fileName.split(RegExp(r'[/\\]')).last.trim();
-    final nameCharacters = (baseName.isEmpty ? 'ARGUS' : baseName).runes;
+    final displayName = fileDisplayName(baseName);
+    final nameCharacters = (displayName.isEmpty ? 'ARGUS' : displayName).runes;
     final displayBuffer = StringBuffer();
     for (final character in nameCharacters) {
       final next =

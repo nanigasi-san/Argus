@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../app_controller.dart';
 import '../app_links.dart';
 import '../geo/geo_model.dart';
+import '../io/file_display_name.dart';
 import '../io/log_entry.dart';
 import '../state_machine/state.dart';
 import 'background_location_disclosure_page.dart';
@@ -494,7 +495,7 @@ class _FileNameInfo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = Theme.of(context).colorScheme.onSurfaceVariant;
-    final displayName = loaded ? (fileName ?? '-') : '-';
+    final displayName = loaded ? fileDisplayName(fileName ?? '-') : '-';
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
