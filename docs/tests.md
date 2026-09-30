@@ -47,6 +47,7 @@ Android 音量チェックの重要契約:
 - `Notifier`: channel ID / name / description / importance / playSound / vibration、OUTER 通知 ID `1001`、通知キャンセル、alarm / vibration stop の冪等性、通知・バイブなしの警告音preview。
 - `PermissionCoordinator`: refresh は要求しない、foreground から background の順に要求する、iOSは拒否後に設定を自動表示しない、Androidは既存の app / location settings 導線を維持する、camera denied/manual settings flow を維持する。
 - `GeolocatorLocationService`: Android foreground notification 文言、wake lock、ongoing、interval、iOS background update 設定を `LocationSettingsFactory` で検証する。
+- `FileManager`: iOSのQR画像は写真ライブラリを開き、不要な画像メタデータの権限を要求しない。キャンセルは未選択として返す。Androidの画像選択と両OSのGeoJSON選択はファイルピッカーを維持する。写真ライブラリの実UIからの選択はiPhone実機で確認する。
 
 ### UI
 

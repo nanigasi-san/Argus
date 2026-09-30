@@ -2,12 +2,17 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image_picker/image_picker.dart' show ImageSource;
 
 import 'package:argus/io/config.dart';
 import 'package:argus/io/file_manager.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  const imagePickerChannel = MethodChannel('plugins.flutter.io/image_picker');
   late Directory tempDir;
   late AppConfig defaultConfig;
 
@@ -24,6 +29,9 @@ void main() {
   });
 
   tearDown(() async {
+    debugDefaultTargetPlatformOverride = null;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(imagePickerChannel, null);
     if (await tempDir.exists()) {
       await tempDir.delete(recursive: true);
     }
@@ -45,7 +53,9 @@ void main() {
     expect(capturedGroups, isNull);
   });
 
-  test('pickQrImageFile opens picker with image filter', () async {
+  test('Android QR images keep using the file picker with image filter',
+      () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
     List<XTypeGroup>? capturedGroups;
     final manager = FileManager(
       filePicker: ({acceptedTypeGroups}) async {
@@ -69,6 +79,51 @@ void main() {
       capturedGroups!.single.uniformTypeIdentifiers,
       contains('public.image'),
     );
+  });
+
+  test('iOS QR images open the photo library without full metadata access',
+      () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    MethodCall? pickerCall;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(imagePickerChannel, (call) async {
+      pickerCall = call;
+      return '/tmp/selected-qr.png';
+    });
+    final manager = FileManager(
+      filePicker: ({acceptedTypeGroups}) async {
+        fail('QR selection on iOS must open Photos');
+      },
+    );
+
+    final image = await manager.pickQrImageFile();
+
+    expect(image?.path, '/tmp/selected-qr.png');
+    expect(pickerCall?.method, 'pickImage');
+    final arguments = pickerCall!.arguments as Map;
+    expect(arguments['source'], ImageSource.gallery.index);
+    expect(arguments['requestFullMetadata'], isFalse);
+    expect(arguments['maxWidth'], isNull);
+    expect(arguments['maxHeight'], isNull);
+    expect(arguments['imageQuality'], isNull);
+  });
+
+  test('cancelling iOS Photos selection returns no image', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(imagePickerChannel, (_) async => null);
+
+    expect(await FileManager().pickQrImageFile(), isNull);
+  });
+
+  test('iOS GeoJSON selection still opens the file picker', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    final selectedFile = XFile('/tmp/course.geojson');
+    final manager = FileManager(
+      filePicker: ({acceptedTypeGroups}) async => selectedFile,
+    );
+
+    expect(await manager.pickGeoJsonFile(), same(selectedFile));
   });
 
   test('getConfigFile creates config file with default config when missing',
