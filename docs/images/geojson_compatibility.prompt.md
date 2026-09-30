@@ -43,4 +43,3 @@ Show FOUR distinctly separated red outline mini illustrations, each with a red X
 4. open polygon with a visibly missing final edge connecting first to last and two separate endpoint dots, label "外周が閉じていない"
 Do not accidentally close illustration 4. The accepted polygons must have no self-crossing and no holes. A concave simple polygon is accepted. Do not imply multiple polygons are accepted on smartphone. Smartphone and QR max is 1,000; Garmin max is 100. Do not add fake precision guarantees or state that every 1,000-vertex file fits in a QR. No extra technical paragraphs. Accurate text and understandable geometry are the priority. All Japanese text above should be rendered verbatim and correctly, with comfortable readable size.
 ```
-
