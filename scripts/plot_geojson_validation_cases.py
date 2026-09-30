@@ -28,7 +28,7 @@ CASES = [
     ("duplicate-consecutive", "duplicate: phone NG", "#bb4040"),
     ("open-ring", "open: phone NG", "#bb4040"),
     ("collinear", "area 0: phone NG", "#bb4040"),
-    ("multi-polygon", "phone OK / Garmin NG", "#b57900"),
+    ("multi-polygon", "single Polygon required: phone NG", "#bb4040"),
     ("tiny-area", "area warning", "#16805d"),
     ("long-edge", "edge warning", "#16805d"),
     ("qr-precision-loss", "QR rounding: NG", "#b57900"),

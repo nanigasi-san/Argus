@@ -63,6 +63,9 @@ class GeoJsonQrBundle {
   final String minimizedGeoJson;
   final String? hashHex;
   final GeoJsonInfo info;
+
+  /// Validation of the geometry restored from the generated QR, including
+  /// AGZ1 coordinate rounding, so compatibility describes the shared data.
   final GeoJsonValidationResult? validation;
 }
 
@@ -243,6 +246,7 @@ Future<GeoJsonQrBundle> encodeGeoJson(GeoJsonQrEncodeInput input) async {
 
   var qrTexts =
       _buildQrTexts(input.scheme, payload, hashHex, input.maxQrTextLength);
+  var qrValidation = validation;
   if (input.scheme == GeoJsonQrScheme.agz1) {
     final restored =
         await decodeGeoJsonWithMetadata(GeoJsonQrDecodeInput(qrTexts: qrTexts));
@@ -251,6 +255,7 @@ Future<GeoJsonQrBundle> encodeGeoJson(GeoJsonQrEncodeInput input) async {
     if (!restoredValidation.validForPhone) {
       _throwPhoneValidationError(restoredValidation.errors.first);
     }
+    qrValidation = restoredValidation;
   }
   var pngImages = <Uint8List>[];
 
@@ -279,7 +284,7 @@ Future<GeoJsonQrBundle> encodeGeoJson(GeoJsonQrEncodeInput input) async {
     minimizedGeoJson: minifyResult.minimized,
     hashHex: hashHex,
     info: minifyResult.info,
-    validation: validation,
+    validation: qrValidation,
   );
 }
 
@@ -296,6 +301,7 @@ Never _throwPhoneValidationError(GeoJsonValidationIssue issue) {
     case 'E_INVALID_FEATURE_COLLECTION':
     case 'E_INVALID_FEATURE':
     case 'E_INVALID_GEOMETRY':
+    case 'E_SINGLE_FEATURE_POLYGON_REQUIRED':
       throw UnsupportedGeometryException(issue.code);
     default:
       throw GeoJsonValidationException(issue.code);

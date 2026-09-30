@@ -4,6 +4,8 @@ ARGUSはGeoJSONやQRから復元した境界をスマホ上で変換し、GARMIN
 
 ## 対応する形状と変換
 
+![スマホ・QR・GarminのGeoJSON対応早見表](images/geojson_compatibility.png)
+
 - 想定形状は穴のない単一Polygon、3〜100頂点。GeoJSONで先頭点を末尾に重複させた閉路は、重複する末尾点を除いて数える。複数Polygonと101頂点以上はAGW1生成前と送信直前に拒否する。頂点の自動間引きはしない。穴付き入力は共通の[スマホ用validator](geojson_validation.md)で拒否する。
 - 緯度・経度は有限値で、緯度±90・経度±180以内であることを送信前に検証する。
 - 原点は頂点の緯度・経度の算術平均。東を `x`、北を `y` とし、各頂点を `x = round((lon - originLon) × 111320 × cos(originLat))`、`y = round((lat - originLat) × 110540)` で整数メートルへ変換する。原点の緯度・経度は `originLatE7` / `originLonE7` に保存する。

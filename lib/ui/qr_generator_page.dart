@@ -117,11 +117,7 @@ class _QrGeneratorPageState extends State<QrGeneratorPage> {
                   .map(GeoJsonValidationMessages.describe)
                   .toList(growable: false) ??
               const [],
-          garminMessage: garmin == null
-              ? null
-              : garmin.validForGarmin
-                  ? 'Garmin対応'
-                  : 'Garmin非対応: ${GeoJsonValidationMessages.describe(garmin.issues.first)}',
+          garminValidation: garmin,
         );
       });
     } on GeoJsonQrException catch (e) {
@@ -323,29 +319,68 @@ class _QrPreview extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         _InfoRow(label: 'ファイル名', value: fileDisplayName(generated.fileName)),
-        _InfoRow(label: 'スキーム', value: generated.schemeLabel),
-        _InfoRow(label: 'GeoJSONタイプ', value: generated.info.type),
-        if (generated.info.featureCount != null)
-          _InfoRow(
-            label: 'フィーチャ数',
-            value: generated.info.featureCount.toString(),
+        if (generated.garminValidation case final garmin?) ...[
+          Row(
+            children: [
+              Icon(Icons.check_circle_outline,
+                  color: theme.colorScheme.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  garmin.validForGarmin ? 'スマホ・Garminで使えます' : 'スマホで使えます',
+                  style: theme.textTheme.titleSmall,
+                ),
+              ),
+            ],
           ),
-        _InfoRow(label: '最小化サイズ', value: '${generated.minimizedBytes} バイト'),
-        _InfoRow(label: 'QRテキスト長', value: '${generated.qrTextBytes} 文字'),
-        if (generated.garminMessage != null)
-          _InfoRow(label: 'Garmin', value: generated.garminMessage!),
-        for (final warning in generated.phoneWarnings)
-          _InfoRow(label: '形状の警告', value: warning),
-        if (hash != null)
-          _InfoRow(
-            label: 'ハッシュ',
-            value: hash,
-            monospace: true,
+          if (!garmin.validForGarmin)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text('Garmin非対応: ${_garminReason(garmin.issues.first)}'),
+            ),
+        ],
+        if (generated.phoneWarnings.isNotEmpty)
+          const Padding(
+            padding: EdgeInsets.only(top: 8),
+            child: Text('形状に注意点があります。詳細で確認できます。'),
           ),
+        ExpansionTile(
+          title: const Text('詳細'),
+          tilePadding: EdgeInsets.zero,
+          children: [
+            _InfoRow(label: 'スキーム', value: generated.schemeLabel),
+            _InfoRow(label: 'GeoJSONタイプ', value: generated.info.type),
+            if (generated.info.featureCount != null)
+              _InfoRow(
+                label: 'フィーチャ数',
+                value: generated.info.featureCount.toString(),
+              ),
+            _InfoRow(label: '最小化サイズ', value: '${generated.minimizedBytes} バイト'),
+            _InfoRow(label: 'QRテキスト長', value: '${generated.qrTextBytes} 文字'),
+            if (generated.garminValidation case final garmin?)
+              for (final issue in garmin.issues)
+                _InfoRow(
+                    label: 'Garmin',
+                    value: GeoJsonValidationMessages.describe(issue)),
+            for (final warning in generated.phoneWarnings)
+              _InfoRow(label: '形状の警告', value: warning),
+            if (hash != null)
+              _InfoRow(label: 'ハッシュ', value: hash, monospace: true),
+          ],
+        ),
       ],
     );
   }
 }
+
+String _garminReason(GeoJsonValidationIssue issue) => switch (issue.code) {
+      'E_TOO_MANY_VERTICES' => '${issue.actual?.toInt()}点あります。Garminは100点までです。',
+      'E_GARMIN_QUANTIZED_GEOMETRY' => '細い部分があるため、Garminでは範囲を再現できません。',
+      'E_LOCAL_COORD_OVERFLOW' => '範囲が広すぎるため、Garminへ送れません。',
+      'E_GARMIN_SINGLE_POLYGON' => 'Garminでは1つの範囲だけ使えます。',
+      'E_PAYLOAD_TOO_LARGE' => 'データ量が多いため、Garminへ送れません。',
+      _ => GeoJsonValidationMessages.describe(issue),
+    };
 
 class _InfoRow extends StatelessWidget {
   const _InfoRow({
@@ -433,7 +468,7 @@ class _GeneratedQr {
     required this.minimizedBytes,
     required this.qrTextBytes,
     this.phoneWarnings = const [],
-    this.garminMessage,
+    this.garminValidation,
   });
 
   final String fileName;
@@ -444,7 +479,7 @@ class _GeneratedQr {
   final int minimizedBytes;
   final int qrTextBytes;
   final List<String> phoneWarnings;
-  final String? garminMessage;
+  final GarminCourseValidationResult? garminValidation;
 
   String get outputFileName {
     final withoutExtension = path.basenameWithoutExtension(fileName);

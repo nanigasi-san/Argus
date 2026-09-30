@@ -74,6 +74,7 @@ class GeoJsonValidator {
   static const double shortEdgeMeters = 1;
   static const double longEdgeMeters = 50000;
   static const double tinyAreaSquareMeters = 100;
+  static const int maxVertices = 1000;
 
   GeoJsonValidationResult validate(String raw) {
     final issues = <GeoJsonValidationIssue>[];
@@ -92,11 +93,19 @@ class GeoJsonValidator {
     }
 
     final features = decoded['features'] as List;
+    if (features.isEmpty) {
+      return _result(issues: [const GeoJsonValidationIssue('E_NO_POLYGON')]);
+    }
+    if (features.length != 1) {
+      return _result(issues: [
+        const GeoJsonValidationIssue('E_SINGLE_FEATURE_POLYGON_REQUIRED')
+      ]);
+    }
     final polygons = <GeoPolygon>[];
     var polygonCount = 0;
-    var hasMultiPolygon = false;
     var areaSquareMeters = 0.0;
     var singleFeaturePolygon = false;
+    var vertexCount = 0;
 
     for (var featureIndex = 0; featureIndex < features.length; featureIndex++) {
       final feature = features[featureIndex];
@@ -113,22 +122,25 @@ class GeoJsonValidator {
         continue;
       }
       final type = geometry['type'];
-      if (type != 'Polygon' && type != 'MultiPolygon') continue;
-      if (type == 'MultiPolygon') hasMultiPolygon = true;
+      if (type != 'Polygon') {
+        issues.add(GeoJsonValidationIssue('E_SINGLE_FEATURE_POLYGON_REQUIRED',
+            featureIndex: featureIndex));
+        continue;
+      }
       final coordinates = geometry['coordinates'];
       if (coordinates is! List) {
         issues.add(GeoJsonValidationIssue('E_INVALID_GEOMETRY',
             featureIndex: featureIndex));
         continue;
       }
-      final polygonArrays = type == 'Polygon' ? [coordinates] : coordinates;
+      final polygonArrays = [coordinates];
       if (polygonArrays.isEmpty) {
         issues.add(GeoJsonValidationIssue('E_MISSING_RING',
             featureIndex: featureIndex));
       }
       for (final polygonArray in polygonArrays) {
         final polygonIndex = polygonCount++;
-        if (polygonArray is! List || polygonArray.isEmpty) {
+        if (polygonArray.isEmpty) {
           issues.add(GeoJsonValidationIssue('E_MISSING_RING',
               featureIndex: featureIndex, polygonIndex: polygonIndex));
           continue;
@@ -150,6 +162,15 @@ class GeoJsonValidator {
           issues.add(GeoJsonValidationIssue('E_TOO_FEW_POINTS',
               featureIndex: featureIndex, polygonIndex: polygonIndex));
           continue;
+        }
+        // Count exterior vertices before the
+        // quadratic intersection check. The closing point is not a vertex.
+        vertexCount += ring.length - 1;
+        if (vertexCount > maxVertices) {
+          return _result(issues: [
+            GeoJsonValidationIssue('E_PHONE_TOO_MANY_VERTICES',
+                actual: vertexCount, limit: maxVertices)
+          ]);
         }
         final points = <LatLng>[];
         var malformed = false;
@@ -281,7 +302,7 @@ class GeoJsonValidator {
       issues: issues,
       featureCount: features.length,
       polygonCount: polygonCount,
-      hasMultiPolygon: hasMultiPolygon,
+      hasMultiPolygon: false,
       singleFeaturePolygon: singleFeaturePolygon,
       areaSquareMeters: areaSquareMeters,
     );
@@ -320,6 +341,9 @@ double _distanceMeters(LatLng a, LatLng b) {
 }
 
 double _areaSquareMeters(List<LatLng> points) {
+  if (points.skip(2).every((p) => _orientation(points[0], points[1], p) == 0)) {
+    return 0;
+  }
   final meanLat =
       points.map((p) => p.latitude).reduce((a, b) => a + b) / points.length;
   final lonScale = 111320.0 * math.cos(meanLat * math.pi / 180);
@@ -365,7 +389,7 @@ bool _adjacentBacktrack(LatLng a, LatLng b, LatLng c, LatLng d) {
   if (shared == null) return false;
   final first = _samePoint(shared, b) ? a : b;
   final second = _samePoint(shared, c) ? d : c;
-  if (_cross(first, shared, second) != 0) return false;
+  if (_orientation(first, shared, second) != 0) return false;
   final ux = first.longitude - shared.longitude;
   final uy = first.latitude - shared.latitude;
   final vx = second.longitude - shared.longitude;
@@ -374,20 +398,42 @@ bool _adjacentBacktrack(LatLng a, LatLng b, LatLng c, LatLng d) {
 }
 
 bool _segmentsIntersect(LatLng a, LatLng b, LatLng c, LatLng d) {
-  final abC = _cross(a, b, c);
-  final abD = _cross(a, b, d);
-  final cdA = _cross(c, d, a);
-  final cdB = _cross(c, d, b);
+  final abC = _orientation(a, b, c);
+  final abD = _orientation(a, b, d);
+  final cdA = _orientation(c, d, a);
+  final cdB = _orientation(c, d, b);
   if (abC == 0 && _onSegment(a, b, c)) return true;
   if (abD == 0 && _onSegment(a, b, d)) return true;
   if (cdA == 0 && _onSegment(c, d, a)) return true;
   if (cdB == 0 && _onSegment(c, d, b)) return true;
-  return (abC > 0) != (abD > 0) && (cdA > 0) != (cdB > 0);
+  return abC * abD < 0 && cdA * cdB < 0;
 }
 
-double _cross(LatLng a, LatLng b, LatLng c) =>
-    (b.longitude - a.longitude) * (c.latitude - a.latitude) -
-    (b.latitude - a.latitude) * (c.longitude - a.longitude);
+/// Account for rounding both geographic coordinates and the determinant.
+/// The bound scales with the inputs; it does not round coordinates or apply
+/// a fixed geographic epsilon that could erase small, valid polygons.
+int _orientation(LatLng a, LatLng b, LatLng c) {
+  const epsilon = 2.220446049250313e-16;
+  final abX = b.longitude - a.longitude;
+  final abY = b.latitude - a.latitude;
+  final acX = c.longitude - a.longitude;
+  final acY = c.latitude - a.latitude;
+  final left = abX * acY;
+  final right = abY * acX;
+  final scale = math.max(
+    math.max(a.longitude.abs(), a.latitude.abs()),
+    math.max(math.max(b.longitude.abs(), b.latitude.abs()),
+        math.max(c.longitude.abs(), c.latitude.abs())),
+  );
+  final error = 4 *
+      epsilon *
+      (scale * (abX.abs() + abY.abs() + acX.abs() + acY.abs()) +
+          left.abs() +
+          right.abs());
+  final cross = left - right;
+  if (cross.abs() <= error) return 0;
+  return cross < 0 ? -1 : 1;
+}
 
 bool _onSegment(LatLng a, LatLng b, LatLng p) =>
     p.longitude >= math.min(a.longitude, b.longitude) &&

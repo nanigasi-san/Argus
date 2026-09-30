@@ -20,13 +20,13 @@
 | `duplicate-consecutive` | 連続する同一頂点 | 不可 | 不可 | 対象外 | `E_DUPLICATE_CONSECUTIVE_POINT` |
 | `open-ring` | 先頭と末尾が異なる | 不可 | 不可 | 対象外 | `E_POLYGON_NOT_CLOSED` |
 | `collinear` | 頂点が一直線で面積0 | 不可 | 不可 | 対象外 | `E_ZERO_AREA`、重なりも検出 |
-| `multi-polygon` | 離れた2つの四角形 | 可 | 不可 | 不可 | `agz1`は単一Polygonのみ。Garminは`E_GARMIN_SINGLE_POLYGON` |
+| `multi-polygon` | 離れた2つの四角形 | 不可 | 不可 | 対象外 | `E_SINGLE_FEATURE_POLYGON_REQUIRED`。スマホも単一Polygonのみ |
 | `tiny-area` | 100m²未満の三角形 | 可（警告） | 可 | 可 | `W_TINY_AREA` |
 | `long-edge` | 50km超の辺を持つ四角形 | 可（警告） | 可 | 可 | `W_LONG_EDGE` |
 | `qr-precision-loss` | 約2cmの三角形 | 可（警告） | 不可 | 不可 | 6桁丸めで退化。`W_SHORT_EDGE` も表示 |
 | `invalid-coordinate` | 経度181°の頂点 | 不可 | 不可 | 対象外 | `E_INVALID_COORDINATE` |
 
-「対象外」はスマホ用検証で止まりGarminの形状判定へ進まないことを示す。`multi-polygon` はスマホで扱えるが、AGZ1の単一Polygon制約でQRを作れない。AGZ1以外のQR形式には別の容量制約がある。
+「対象外」はスマホ用検証で止まりGarminの形状判定へ進まないことを示す。`multi-polygon` はスマホとQRに共通の単一Polygon制約で拒否する。AGZ1以外のQR形式には別の容量制約がある。
 
 ## 経路と境界の確認
 
@@ -36,15 +36,21 @@
 - GarminのローカルXYのint16境界内外を別途検証した。101頂点はQRを生成でき、Garmin画面では送信不可、送信クライアント呼出し0回を確認した。
 - 穴付きファイルはGarmin画面のファイル選択で拒否され、選択済みコースを置き換えなかった。
 
+## レビュー後の回帰確認
+
+- 小数座標の隣接辺の折り返し、非隣接辺の端点接触、一直線の面積0を検証した。開始頂点と巻き方向を変えた場合も不正な形状を拒否する。丸め誤差の許容幅は入力座標に応じて計算し、約2cmの有効な三角形は引き続きスマホで利用できる。
+- 経度 `139.00000051〜139.00001149`、緯度 `35〜35.00005` の細い四角形は、元ファイルでGarmin対応でもAGZ1復元後には非対応になる。生成結果の検証情報を復元後の形状に揃え、画面は「スマホで使えます」と短い理由を表示する。詳細な警告・形式情報は「詳細」に折りたたむ。
+- スマホとQRは単一Feature・単一Polygonに統一し、複数FeatureとMultiPolygon（中身が1個でも）は拒否する。外周頂点は閉路の終点を除き1,000点まで。1,000点は許可し、1,001点・50,000点は交差判定へ進む前に上限エラーで拒否する。交差判定自体は同期処理のままで、入力上限により全辺比較の対象を制限する。
+
 ## 実行結果
 
 | 確認 | 結果 |
 | --- | --- |
-| ケース集 | `flutter test --no-pub --reporter expanded test/geo/geojson_validator_test.dart`：8件成功（全件実行に含む） |
-| 全単体・Widgetテスト | `flutter test --no-pub --reporter expanded`：404件成功 |
+| ケース集 | `flutter test --no-pub --reporter expanded test/geo/geojson_validator_test.dart`：14件成功（全件実行に含む） |
+| 全単体・Widgetテスト | `flutter test --no-pub --reporter expanded`：412件成功 |
 | 静的解析 | `flutter analyze --no-pub`：指摘0件 |
-| Android E2E全件 | `./scripts/run_android_ui_checks.ps1 -CaptureScreenshots`：3ファイル成功 |
+| Android E2E全件 | `bash scripts/run_android_e2e.sh emulator-5554`：3ファイル成功（1 / 8 / 7件） |
 
-E2Eは `Medium_Phone_API_36.0`（`emulator-5554`、API 36）で `integration_test/compass_navigation_test.dart`、`integration_test/core_monitoring_e2e_test.dart`、`integration_test/ui_smoke_test.dart` を実行した。`e2e/` ディレクトリはない。`SIMULATOR_GPS=true` などの任意モードは実行していない。テスト用に起動したEmulatorは終了した。
+E2Eは macOSの `argus_pr_review_api36`（Pixel 7 Pro、arm64-v8a、`emulator-5554`、API 36）で `integration_test/compass_navigation_test.dart`、`integration_test/core_monitoring_e2e_test.dart`、`integration_test/ui_smoke_test.dart` を実行した。`e2e/` ディレクトリはない。`SIMULATOR_GPS=true` などの任意モードは実行していない。テスト用に起動したEmulatorは終了した。
 
 図は `python scripts/plot_geojson_validation_cases.py` で再生成できる。

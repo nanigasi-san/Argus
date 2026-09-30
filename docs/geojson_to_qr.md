@@ -81,9 +81,12 @@
 - 圧縮展開に失敗した場合、適切なエラーを返却。
 
 ### FR-6: GeoJSON妥当性検査
+
+![スマホ・QR・GarminのGeoJSON対応早見表](images/geojson_compatibility.png)
+
 - ファイル読込、QR生成、`agz1` / `gjz1` 復元後の形状判定には同じ[スマホ用validator](geojson_validation.md)を使用する。穴・自己交差・未閉鎖ringは拒否する。
-- `agz1` エンコードでは追加で単一Feature・単一Polygonと単一QR容量を確認する。固定の100頂点上限は設けない。丸め後の復元GeoJSONも共通validatorで再検証する。
-- Garminの3〜100頂点とint16制約はQR生成を妨げない。生成画面にGarmin非対応の理由を表示する。
+- `agz1` エンコードでは追加で単一Feature・単一Polygonと単一QR容量を確認する。GeoJSON全体で閉路の終点を除き1,000頂点までとし、Garmin固有の100頂点上限はQR生成に適用しない。丸め後の復元GeoJSONも共通validatorで再検証する。
+- Garminの3〜100頂点とint16制約はQR生成を妨げない。生成画面は復元後データの対応端末とGarmin非対応の短い理由を表示し、詳しい検証情報は「詳細」に折りたたむ。
 
 ### FR-7: QR画像生成
 - 誤り訂正レベル: 既定**Q**、選択肢にL/M/Q/H。

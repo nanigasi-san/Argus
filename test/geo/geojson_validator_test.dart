@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:argus/garmin/garmin_course_selection.dart';
 import 'package:argus/garmin/garmin_course_validator.dart';
@@ -19,6 +20,138 @@ Set<String> codes(GeoJsonValidationResult result) =>
 void main() {
   const phone = GeoJsonValidator();
   const garmin = GarminCourseValidator();
+
+  test(
+      'decimal backtracking and zero-area rings are rejected in either winding',
+      () {
+    final rings = [
+      [
+        [139.1, 35.1],
+        [139.3, 35.3],
+        [139.2, 35.2],
+        [139.0, 35.4],
+      ],
+      [
+        [139.001, 35.001],
+        [139.002, 35.002],
+        [139.003, 35.003],
+      ],
+    ];
+    for (final vertices in rings) {
+      for (var start = 0; start < vertices.length; start++) {
+        final rotated = [...vertices.skip(start), ...vertices.take(start)];
+        for (final ordered in [rotated, rotated.reversed.toList()]) {
+          final result = phone.validate(_document([
+            [...ordered, ordered.first]
+          ]));
+          expect(result.validForPhone, isFalse);
+          expect(codes(result), contains('E_SELF_INTERSECTION'));
+          if (vertices.length == 3) {
+            expect(codes(result), contains('E_ZERO_AREA'));
+          }
+        }
+      }
+    }
+  });
+
+  test('decimal non-adjacent vertex contact is rejected', () {
+    final result = phone.validate(_document([
+      [
+        [139.1, 35.1],
+        [139.3, 35.3],
+        [139.1, 35.4],
+        [139.2, 35.2],
+        [139.0, 35.3],
+        [139.1, 35.1],
+      ],
+    ]));
+    expect(result.validForPhone, isFalse);
+    expect(codes(result), contains('E_SELF_INTERSECTION'));
+  });
+
+  test('roundoff handling preserves small non-collinear geometry', () {
+    final result = phone.validate(fixture('qr-precision-loss'));
+    expect(result.validForPhone, isTrue);
+    expect(codes(result), isNot(contains('E_ZERO_AREA')));
+  });
+
+  test('phone vertex limit excludes the closing point', () {
+    expect(
+        phone.validate(_document([_regularRing(1000)])).validForPhone, isTrue);
+    for (final rings in [
+      [_regularRing(1001)],
+      [_regularRing(50000)],
+    ]) {
+      final result = phone.validate(_document(rings));
+      expect(result.validForPhone, isFalse);
+      expect(result.errors.single.code, 'E_PHONE_TOO_MANY_VERTICES');
+      expect(result.errors.single.limit, 1000);
+    }
+  });
+
+  test('phone, file and QR reject multiple features and even one MultiPolygon',
+      () async {
+    final singleMultiPolygon =
+        jsonDecode(_document([_regularRing(3)])) as Map<String, dynamic>;
+    final geometry =
+        singleMultiPolygon['features'][0]['geometry'] as Map<String, dynamic>;
+    geometry['type'] = 'MultiPolygon';
+    geometry['coordinates'] = [geometry['coordinates']];
+    for (final raw in [
+      _document([_regularRing(3), _regularRing(3)]),
+      jsonEncode(singleMultiPolygon),
+    ]) {
+      final result = phone.validate(raw);
+      expect(result.validForPhone, isFalse);
+      expect(codes(result), contains('E_SINGLE_FEATURE_POLYGON_REQUIRED'));
+      expect(() => GeoModel.fromGeoJson(raw), throwsFormatException);
+      await expectLater(
+          GarminCourseSelection.fromFile(
+              XFile.fromData(utf8.encode(raw), name: 'multiple.geojson')),
+          throwsFormatException);
+      for (final scheme in GeoJsonQrScheme.values) {
+        await expectLater(
+          encodeGeoJson(GeoJsonQrEncodeInput(
+              geoJson: raw,
+              sourceFileName: 'multiple.geojson',
+              scheme: scheme,
+              generatePng: false)),
+          throwsA(isA<UnsupportedGeometryException>()),
+        );
+      }
+      final legacyQr =
+          'gjz1:${base64UrlEncodeNoPad(gzipCompress(Uint8List.fromList(utf8.encode(raw))))}';
+      await expectLater(
+          GarminCourseSelection.fromQrText(legacyQr), throwsFormatException);
+    }
+  });
+
+  test('QR compatibility follows the restored geometry after AGZ1 rounding',
+      () async {
+    final raw = _document([
+      [
+        [139.00000051, 35],
+        [139.00001149, 35],
+        [139.00001149, 35.00005],
+        [139.00000051, 35.00005],
+        [139.00000051, 35],
+      ],
+    ]);
+    expect(garmin.validate(phone.validate(raw)).validForGarmin, isTrue);
+    final bundle = await encodeGeoJson(GeoJsonQrEncodeInput(
+        geoJson: raw,
+        sourceFileName: 'narrow.geojson',
+        scheme: GeoJsonQrScheme.agz1,
+        generatePng: false));
+    final restored =
+        await GarminCourseSelection.fromQrText(bundle.qrTexts.single);
+    expect(bundle.validation!.validForPhone, isTrue);
+    expect(garmin.validate(bundle.validation!).validForGarmin, isFalse);
+    expect(garmin.validate(bundle.validation!).issues.single.code,
+        restored.garminValidation.issues.single.code);
+    expect(restored.garminValidation.issues.single.code,
+        'E_GARMIN_QUANTIZED_GEOMETRY');
+  });
 
   test('saved GeoJSON cases have the expected phone and Garmin decisions', () {
     const expected =
@@ -67,9 +200,9 @@ void main() {
         code: 'E_SELF_INTERSECTION'
       ),
       'multi-polygon': (
-        phoneValid: true,
+        phoneValid: false,
         garminValid: false,
-        code: 'E_GARMIN_SINGLE_POLYGON'
+        code: 'E_SINGLE_FEATURE_POLYGON_REQUIRED'
       ),
       'tiny-area': (phoneValid: true, garminValid: true, code: 'W_TINY_AREA'),
       'qr-precision-loss': (
@@ -264,4 +397,29 @@ void main() {
     expect(result.validForPhone, isTrue);
     expect(garmin.validate(result).validForGarmin, isTrue);
   });
+}
+
+String _document(List<List<List<num>>> rings) => jsonEncode({
+      'type': 'FeatureCollection',
+      'features': [
+        for (final ring in rings)
+          {
+            'type': 'Feature',
+            'properties': {},
+            'geometry': {
+              'type': 'Polygon',
+              'coordinates': [ring]
+            },
+          },
+      ],
+    });
+
+List<List<num>> _regularRing(int count) {
+  final vertices = List.generate(
+      count,
+      (i) => <num>[
+            139 + 0.01 * math.cos(2 * math.pi * i / count),
+            35 + 0.01 * math.sin(2 * math.pi * i / count),
+          ]);
+  return [...vertices, vertices.first];
 }

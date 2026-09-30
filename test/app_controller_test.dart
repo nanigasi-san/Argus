@@ -1152,8 +1152,7 @@ void main() {
       await controller.reloadGeoJsonFromPicker();
 
       expect(controller.geoJsonLoaded, isFalse);
-      expect(controller.lastErrorMessage,
-          contains('監視可能なPolygon/MultiPolygonがありません'));
+      expect(controller.lastErrorMessage, contains('監視可能なPolygonがありません'));
     });
 
     test('file and QR loading reject the same invalid geometry', () async {
@@ -1211,8 +1210,7 @@ void main() {
 
       expect(loaded, isFalse);
       expect(controller.geoJsonLoaded, isFalse);
-      expect(controller.lastErrorMessage,
-          contains('監視可能なPolygon/MultiPolygonがありません'));
+      expect(controller.lastErrorMessage, contains('監視可能なPolygonがありません'));
     });
 
     test('reloadGeoJsonFromPicker ignores user cancellation', () async {

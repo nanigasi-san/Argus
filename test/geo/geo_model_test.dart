@@ -215,7 +215,7 @@ void main() {
       expect(model.polygons.first.version, 1);
     });
 
-    test('parses GeoJSON FeatureCollection with MultiPolygon', () {
+    test('rejects GeoJSON FeatureCollection with MultiPolygon', () {
       const geoJson = '''
       {
         "type": "FeatureCollection",
@@ -237,9 +237,7 @@ void main() {
       }
       ''';
 
-      final model = GeoModel.fromGeoJson(geoJson);
-      expect(model.polygons.length, 2);
-      expect(model.hasGeometry, true);
+      expect(() => GeoModel.fromGeoJson(geoJson), throwsFormatException);
     });
 
     test('handles empty FeatureCollection', () {
@@ -276,9 +274,7 @@ void main() {
       }
       ''';
 
-      final model = GeoModel.fromGeoJson(geoJson);
-      // Should only include Polygon, skip Point
-      expect(model.polygons.length, 1);
+      expect(() => GeoModel.fromGeoJson(geoJson), throwsFormatException);
     });
 
     test('handles polygons with insufficient points', () {

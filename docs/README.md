@@ -7,6 +7,7 @@
 | スマホで範囲を監視する | [スマホ初心者ガイド](guides/phone.md) |
 | 時計へ範囲を送りRunで使う | [GARMIN初心者ガイド](guides/garmin.md) |
 | 時計を選ぶ・制限を確認する | [対応機種](garmin_supported_devices.md)・[複数機種の評価](garmin_multi_device_assessment.md) |
+| スマホ・QR・Garminで使えるGeoJSONを確認する | [画像と対応条件の比較](geojson_validation.md)・[形状ごとの検証結果](geojson_validation_report.md) |
 | データの扱いを確認する | [プライバシーポリシー](../privacy.md) |
 
 ## 開発・テスト

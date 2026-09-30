@@ -13,10 +13,14 @@ class GeoJsonValidationMessages {
       'E_INVALID_FEATURE' => 'Featureの形式またはpropertiesが不正です。',
       'E_INVALID_GEOMETRY' => 'Geometryまたはcoordinatesの形式が不正です。',
       'E_UNSUPPORTED_GEOMETRY' => 'このQR形式で扱えるのは単一Featureの単一Polygonだけです。',
-      'E_NO_POLYGON' => 'GeoJSONに監視可能なPolygon/MultiPolygonがありません。',
+      'E_SINGLE_FEATURE_POLYGON_REQUIRED' =>
+        'GeoJSONは1つのFeatureに1つのPolygonを持つ形式にしてください。複数の範囲やMultiPolygonには対応していません。',
+      'E_NO_POLYGON' => 'GeoJSONに監視可能なPolygonがありません。',
       'E_MISSING_RING' => 'Polygonの外周ringがありません。',
       'E_HOLES_UNSUPPORTED' => '穴のあるPolygonには対応していません。内側ringを取り除いてください。',
       'E_TOO_FEW_POINTS' => '外周ringには閉路の終点を除いて異なる3頂点以上が必要です。',
+      'E_PHONE_TOO_MANY_VERTICES' =>
+        'GeoJSON全体の頂点数が${_number(issue.actual)}点です。上限${_number(issue.limit)}点以内に減らしてください（閉路の終点は除きます）。',
       'E_INVALID_COORDINATE' => '座標は有限な[経度, 緯度]とし、経度±180・緯度±90以内にしてください。',
       'E_POLYGON_NOT_CLOSED' => '外周ringの末尾を先頭と同じ座標にして閉じてください。',
       'E_DUPLICATE_CONSECUTIVE_POINT' => '連続する同じ座標を取り除いてください。',

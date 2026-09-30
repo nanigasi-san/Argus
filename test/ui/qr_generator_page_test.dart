@@ -75,7 +75,7 @@ void main() {
     expect(find.text('保存'), findsOneWidget);
     expect(find.text('共有'), findsOneWidget);
     expect(find.text('course'), findsOneWidget);
-    expect(find.text('agz1'), findsOneWidget);
+    expect(find.text('agz1'), findsNothing);
 
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
@@ -109,6 +109,71 @@ void main() {
     expect(find.byKey(const ValueKey('generated_qr_image')), findsOneWidget);
     expect(find.textContaining('Garmin非対応'), findsOneWidget);
     expect(find.textContaining('101点'), findsOneWidget);
+    expect(find.text('スマホで使えます'), findsOneWidget);
+    expect(find.text('頂点数が101点です。Garmin上限は100点です。'), findsNothing);
+  });
+
+  testWidgets(
+      'QR rounding shows a short compatibility reason with details hidden',
+      (tester) async {
+    final raw = jsonEncode({
+      'type': 'FeatureCollection',
+      'features': [
+        {
+          'type': 'Feature',
+          'properties': {},
+          'geometry': {
+            'type': 'Polygon',
+            'coordinates': [
+              [
+                [139.00000051, 35],
+                [139.00001149, 35],
+                [139.00001149, 35.00005],
+                [139.00000051, 35.00005],
+                [139.00000051, 35],
+              ]
+            ],
+          },
+        },
+      ],
+    });
+    await tester.pumpWidget(MaterialApp(
+        home: QrGeneratorPage(
+      filePicker: () async => XFile.fromData(utf8.encode(raw),
+          name: 'narrow.geojson', path: 'narrow.geojson'),
+    )));
+    await tester.tap(find.text('GeoJSONを選択'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('generated_qr_image')), findsOneWidget);
+    expect(find.text('スマホで使えます'), findsOneWidget);
+    expect(find.text('スマホ・Garminで使えます'), findsNothing);
+    expect(
+        find.text('Garmin非対応: 細い部分があるため、Garminでは範囲を再現できません。'), findsOneWidget);
+    expect(find.textContaining('1m座標'), findsNothing);
+    expect(find.textContaining('Feature 1'), findsNothing);
+    expect(find.text('スキーム'), findsNothing);
+    await tester.ensureVisible(find.text('詳細'));
+    await tester.tap(find.text('詳細'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('1m座標'), findsOneWidget);
+    expect(find.text('形状の警告'), findsWidgets);
+  });
+
+  testWidgets('compatible QR shows one device summary', (tester) async {
+    final raw = File('test/fixtures/geojson_validation/valid-square.geojson')
+        .readAsStringSync();
+    await tester.pumpWidget(MaterialApp(
+        home: QrGeneratorPage(
+      filePicker: () async => XFile.fromData(utf8.encode(raw),
+          name: 'square.geojson', path: 'square.geojson'),
+    )));
+    await tester.tap(find.text('GeoJSONを選択'));
+    await tester.pumpAndSettle();
+    expect(find.text('スマホ・Garminで使えます'), findsOneWidget);
+    expect(find.textContaining('Garmin非対応'), findsNothing);
+    expect(find.text('スキーム'), findsNothing);
+    expect(find.text('保存'), findsOneWidget);
+    expect(find.text('共有'), findsOneWidget);
   });
 
   testWidgets('rejects encoder output without a single PNG image',
@@ -264,6 +329,9 @@ void main() {
 
     expect(find.byKey(const ValueKey('generated_qr_image')), findsOneWidget);
     expect(find.text('fallback'), findsOneWidget);
+    await tester.ensureVisible(find.text('詳細'));
+    await tester.tap(find.text('詳細'));
+    await tester.pumpAndSettle();
     expect(find.text('Point'), findsOneWidget);
     expect(find.text('-'), findsOneWidget);
     expect(find.text('ハッシュ'), findsNothing);
