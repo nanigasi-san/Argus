@@ -164,10 +164,13 @@ class _GarminTransferPageState extends State<GarminTransferPage>
 
   Future<void> _scanQr() async {
     await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => QrScannerPage(onQrScanned: (qrText) async {
-        final course = await GarminCourseSelection.fromQrText(qrText);
-        _setCourse(course);
-      }),
+      builder: (_) => QrScannerPage(
+          onQrScanned: (qrText) async {
+            final course = await GarminCourseSelection.fromQrText(qrText);
+            _setCourse(course);
+          },
+          permissionCoordinator:
+              context.read<AppController>().permissionCoordinator),
     ));
   }
 

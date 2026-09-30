@@ -506,23 +506,38 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  /// 画像からQRテキストを取り出す。スマホの監視範囲は変更しない。
+  Future<String?> pickQrTextFromImage() async {
+    try {
+      final file = await fileManager.pickQrImageFile();
+      if (file == null) return null;
+      final qrText = await _qrImageAnalyzer(file.path);
+      if (qrText == null || qrText.trim().isEmpty) {
+        throw const FormatException('QRコード画像からQRコードを読み取れませんでした。');
+      }
+      return qrText;
+    } catch (e) {
+      final message = e.toString().toLowerCase();
+      if (message.contains('cancel') ||
+          message.contains('user') ||
+          message.contains('abort')) {
+        return null;
+      }
+      rethrow;
+    }
+  }
+
   /// QRコード画像ファイルからGeoJSONを読み込みます。
   Future<bool> reloadGeoJsonFromQrImagePicker() async {
     try {
-      final file = await fileManager.pickQrImageFile();
-      if (file == null) {
-        return false;
-      }
-
-      final qrText = await _qrImageAnalyzer(file.path);
-      if (qrText == null || qrText.trim().isEmpty) {
-        _lastErrorMessage = 'QRコード画像からQRコードを読み取れませんでした。';
-        _logError('APP', _lastErrorMessage!);
-        notifyListeners();
-        return false;
-      }
-
+      final qrText = await pickQrTextFromImage();
+      if (qrText == null) return false;
       return await reloadGeoJsonFromQr(qrText);
+    } on FormatException catch (e) {
+      _lastErrorMessage = e.message;
+      _logError('APP', _lastErrorMessage!);
+      notifyListeners();
+      return false;
     } catch (e) {
       final errorMessage = e.toString().toLowerCase();
       if (errorMessage.contains('cancel') ||

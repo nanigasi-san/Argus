@@ -75,6 +75,8 @@ Widget test はユーザーから見える文言と導線を守る。
 
 Android / iOSの全E2Eは現在CIで実行する。対象は `integration_test/` および追加された場合の `e2e/` 配下の全 `*_test.dart` で、個別のsmokeだけでは全件検証にならない。
 
+QR画像のケースはOSの画像解析を呼び出す。Androidでは復元・Garmin転送候補への反映を確認する。`mobile_scanner` はiOS Simulatorで画像解析を明示的に無効化しているため、Simulatorではエラー表示・選択済み範囲の保持・戻る操作を確認し、iPhoneでの画像解析は実機確認として区別する。iOS E2Eスクリプトは `ARGUS_IOS_SIMULATOR=true` をDartのビルド定義として渡す。これはSimulatorの識別用であり、`SIMULATOR_GPS` とは別の設定である。
+
 ## 実行コマンド
 
 通常確認:

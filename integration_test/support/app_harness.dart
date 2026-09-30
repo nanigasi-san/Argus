@@ -40,14 +40,15 @@ class HarnessBuilder {
     PermissionCoordinator? permissionCoordinator,
     LocationService? locationService,
     CompassService? compassService,
+    FileManager? fileManager,
   }) {
     final config = createConfig();
     final stateMachine = StateMachine(config: config);
-    final fileManager = HarnessFileManager(config: config);
+    final files = fileManager ?? HarnessFileManager(config: config);
     final controller = AppController(
       stateMachine: stateMachine,
       locationService: locationService ?? HarnessLocationService(),
-      fileManager: fileManager,
+      fileManager: files,
       logger: HarnessEventLogger(),
       notifier: Notifier(
         notificationsClient: HarnessLocalNotificationsClient(),

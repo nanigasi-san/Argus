@@ -21,6 +21,76 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('QrScannerPage', () {
+    testWidgets(
+        'image cancellation and errors resume camera and preserve the error',
+        (tester) async {
+      final controller = _RecordingQrController();
+      addTearDown(controller.dispose);
+      var starts = 0;
+      var stops = 0;
+      await tester.pumpWidget(ChangeNotifierProvider<AppController>.value(
+        value: controller,
+        child: MaterialApp(
+            home: QrScannerPage(
+          permissionCoordinator: _FakePermissionCoordinator(),
+          scannerBuilder: (context, scanner, onDetect) =>
+              const ColoredBox(color: Colors.black),
+          startScannerOverride: () async {
+            starts++;
+          },
+          stopScannerOverride: () async {
+            stops++;
+          },
+        )),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('QR画像を選択'));
+      await tester.pumpAndSettle();
+      expect(stops, 1);
+      expect(starts, 2);
+      expect(controller.scannedTexts, isEmpty);
+      controller.imageError = const FormatException('画像にQRがありません。');
+      await tester.tap(find.text('QR画像を選択'));
+      await tester.pumpAndSettle();
+      expect(stops, 2);
+      expect(starts, 3);
+      expect(find.textContaining('画像にQRがありません。'), findsOneWidget);
+      expect(find.text('閉じる'), findsOneWidget);
+    });
+
+    testWidgets('image selection imports phone QR and returns to previous page',
+        (tester) async {
+      final controller = _RecordingQrController()
+        ..imageQrText = 'agz1:phone-test';
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(ChangeNotifierProvider<AppController>.value(
+        value: controller,
+        child: MaterialApp(
+            home: Builder(
+                builder: (context) => Scaffold(
+                      body: TextButton(
+                          onPressed: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                    builder: (_) => QrScannerPage(
+                                          permissionCoordinator:
+                                              _DeniedCameraPermissionCoordinator(),
+                                          scannerOverride: const ColoredBox(
+                                              color: Colors.black),
+                                        )),
+                              ),
+                          child: const Text('Open scanner')),
+                    ))),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Open scanner'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('QR画像を選択'));
+      await tester.pumpAndSettle();
+      expect(controller.scannedTexts, ['agz1:phone-test']);
+      expect(find.text('Open scanner'), findsOneWidget);
+      expect(find.text('QR画像を選択'), findsNothing);
+    });
+
     testWidgets('displays scanner page with app bar',
         (WidgetTester tester) async {
       final config = _testConfig();
@@ -1070,6 +1140,14 @@ class _RecordingQrController extends AppController {
   bool loadedResult = true;
   String? reloadErrorMessage;
   Object? reloadError;
+  String? imageQrText;
+  Object? imageError;
+
+  @override
+  Future<String?> pickQrTextFromImage() async {
+    if (imageError != null) throw imageError!;
+    return imageQrText;
+  }
 
   @override
   Future<bool> reloadGeoJsonFromQr(String qrText) async {
