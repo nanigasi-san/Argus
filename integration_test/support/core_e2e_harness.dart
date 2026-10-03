@@ -43,9 +43,10 @@ class CoreE2eHarness {
   late final AppController controller;
 
   static Future<CoreE2eHarness> create({bool permissionsGranted = true}) async {
-    final temp = await getTemporaryDirectory();
+    // Config fixtures must survive Android reclaiming cache during updates.
+    final support = await getApplicationSupportDirectory();
     final harness = CoreE2eHarness._(
-      await temp.createTemp('core_e2e_'),
+      await support.createTemp('core_e2e_'),
     );
     harness.permissions.granted = permissionsGranted;
     final config = await AppConfig.loadDefault();

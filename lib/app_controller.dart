@@ -13,6 +13,7 @@ import 'geo/geojson_validation_messages.dart';
 import 'geo/geojson_validator.dart';
 import 'io/config.dart';
 import 'io/file_manager.dart';
+import 'io/file_picker_cancellation.dart';
 import 'io/log_entry.dart';
 import 'io/logger.dart';
 import 'platform/location_service.dart';
@@ -413,10 +414,7 @@ class AppController extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       // ファイルピッカーをキャンセルした場合などはエラーログを出さない
-      final errorMessage = e.toString().toLowerCase();
-      if (errorMessage.contains('cancel') ||
-          errorMessage.contains('user') ||
-          errorMessage.contains('abort')) {
+      if (isFilePickerCancellation(e)) {
         return;
       }
       _lastErrorMessage = 'Unable to open file: ${e.toString()}';
@@ -450,13 +448,13 @@ class AppController extends ChangeNotifier {
             GeoJsonValidationMessages.describe(validation.errors.first));
       }
       final model = validation.model!;
-      await stopMonitoring();
 
       // 一時ディレクトリに保存
       final tempDir = await getTemporaryDirectory();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final tempFile = File('${tempDir.path}/temp_geojson_$timestamp.geojson');
       await tempFile.writeAsString(restoredGeoJson);
+      await stopMonitoring();
 
       // 既存の一時ファイルがあれば削除
       await cleanupTempGeoJsonFile();
@@ -517,10 +515,7 @@ class AppController extends ChangeNotifier {
       }
       return qrText;
     } catch (e) {
-      final message = e.toString().toLowerCase();
-      if (message.contains('cancel') ||
-          message.contains('user') ||
-          message.contains('abort')) {
+      if (isFilePickerCancellation(e)) {
         return null;
       }
       rethrow;
@@ -539,10 +534,7 @@ class AppController extends ChangeNotifier {
       notifyListeners();
       return false;
     } catch (e) {
-      final errorMessage = e.toString().toLowerCase();
-      if (errorMessage.contains('cancel') ||
-          errorMessage.contains('user') ||
-          errorMessage.contains('abort')) {
+      if (isFilePickerCancellation(e)) {
         return false;
       }
       _lastErrorMessage =

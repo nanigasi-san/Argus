@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:argus/geo/geo_model.dart';
+import 'package:argus/geo/geojson_validator.dart';
 
 void main() {
   group('GeoPolygon', () {
@@ -103,28 +104,42 @@ void main() {
           'type': 'FeatureCollection',
           'features': [
             {
+              'type': 'Feature',
               'geometry': {
                 'type': 'Polygon',
                 'coordinates': [
                   [
-                    pair,
                     [139, 35],
-                    [139.01, 35.01]
+                    pair,
+                    [139.01, 35.01],
+                    [139, 35.01],
+                    [139, 35],
                   ]
                 ]
               }
             }
           ],
         });
+        final result = const GeoJsonValidator().validate(raw);
+        expect(result.errors.single.code, 'E_INVALID_COORDINATE',
+            reason: '$pair');
         expect(() => GeoModel.fromGeoJson(raw), throwsFormatException,
             reason: '$pair');
       }
     });
 
     test('rejects nonfinite coordinates decoded from JSON exponents', () {
-      const raw = '{"features":[{"geometry":{"type":"Polygon",'
-          '"coordinates":[[[1e400,35],[139,35],[139,36]]]}}]}';
-      expect(() => GeoModel.fromGeoJson(raw), throwsFormatException);
+      for (final position in ['[1e400,35]', '[139,1e400]']) {
+        final raw = '{"type":"FeatureCollection","features":'
+            '[{"type":"Feature","geometry":{"type":"Polygon",'
+            '"coordinates":[[[139,35],$position,[139.01,35.01],'
+            '[139,35.01],[139,35]]]}}]}';
+        final result = const GeoJsonValidator().validate(raw);
+        expect(result.errors.single.code, 'E_INVALID_COORDINATE',
+            reason: position);
+        expect(() => GeoModel.fromGeoJson(raw), throwsFormatException,
+            reason: position);
+      }
     });
 
     test('accepts optional altitude in a valid exterior ring', () {

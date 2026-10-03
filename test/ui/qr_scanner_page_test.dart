@@ -531,6 +531,42 @@ void main() {
       expect(find.text('アプリ設定を開く'), findsNothing);
     });
 
+    testWidgets('settings return rechecks an initially denied camera',
+        (tester) async {
+      final controller = _buildController();
+      addTearDown(controller.dispose);
+      final coordinator = _SequenceCameraPermissionCoordinator(
+        states: const [
+          CameraPermissionState(status: PermissionStatus.permanentlyDenied),
+          CameraPermissionState(status: PermissionStatus.granted),
+        ],
+      );
+      var startCount = 0;
+      await tester.pumpWidget(MaterialApp(
+        home: ChangeNotifierProvider<AppController>.value(
+          value: controller,
+          child: QrScannerPage(
+            permissionCoordinator: coordinator,
+            scannerBuilder: (context, scannerController, onDetect) =>
+                const ColoredBox(color: Colors.black),
+            startScannerOverride: () async => startCount++,
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(startCount, 0);
+      await tester.tap(find.text('アプリ設定を開く'));
+      await tester.pumpAndSettle();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+
+      expect(coordinator.ensureCameraPermissionCount, 2);
+      expect(startCount, 1);
+      expect(find.text('アプリ設定を開く'), findsNothing);
+      expect(find.text('再試行'), findsNothing);
+    });
+
     testWidgets('hidden and detached lifecycle states stop scanner',
         (WidgetTester tester) async {
       final controller = _buildController();

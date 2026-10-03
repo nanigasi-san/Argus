@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:argus/garmin/garmin_course_selection.dart';
 import 'package:argus/garmin/garmin_course_validator.dart';
 import 'package:argus/geo/geo_model.dart';
+import 'package:argus/geo/geojson_validation_messages.dart';
 import 'package:argus/geo/geojson_validator.dart';
 import 'package:argus/qr/geojson_qr_codec.dart';
 import 'package:file_selector/file_selector.dart';
@@ -20,6 +21,79 @@ Set<String> codes(GeoJsonValidationResult result) =>
 void main() {
   const phone = GeoJsonValidator();
   const garmin = GarminCourseValidator();
+
+  test('out-of-range coordinates identify the vertex, axis, value and boundary',
+      () {
+    const cases = [
+      (position: [181, 35], coordinateIndex: 0, actual: 181, limit: 180),
+      (position: [-181, 35], coordinateIndex: 0, actual: -181, limit: -180),
+      (position: [139, 91], coordinateIndex: 1, actual: 91, limit: 90),
+      (position: [139, -91], coordinateIndex: 1, actual: -91, limit: -90),
+      (
+        position: [180.0000001, 35],
+        coordinateIndex: 0,
+        actual: 180.0000001,
+        limit: 180,
+      ),
+    ];
+    for (final entry in cases) {
+      final result = phone.validate(_document([
+        [
+          [139, 35],
+          [139.01, 35],
+          entry.position,
+          [139, 35.01],
+          [139, 35],
+        ],
+      ]));
+      final issue = result.errors.single;
+      expect(issue.code, 'E_INVALID_COORDINATE');
+      expect(issue.featureIndex, 0);
+      expect(issue.polygonIndex, 0);
+      expect(issue.ringIndex, 0);
+      expect(issue.vertexIndex, 2);
+      expect(issue.coordinateIndex, entry.coordinateIndex);
+      expect(issue.actual, entry.actual);
+      expect(issue.limit, entry.limit);
+      final message = GeoJsonValidationMessages.describe(issue);
+      expect(message, contains('頂点 3'));
+      expect(message, contains(entry.coordinateIndex == 0 ? '経度' : '緯度'));
+      expect(message, contains('${entry.actual}°'));
+      expect(message, contains('${entry.limit}°'));
+    }
+  });
+
+  test('malformed and nonfinite coordinates retain their vertex location', () {
+    final document =
+        jsonDecode(fixture('valid-square')) as Map<String, dynamic>;
+    final ring = document['features'][0]['geometry']['coordinates'][0] as List;
+    for (final position in <Object>[
+      [],
+      [139],
+      ['139', 35],
+      [139, null],
+    ]) {
+      ring[2] = position;
+      final result = phone.validate(jsonEncode(document));
+      final issue = result.errors.single;
+      expect(issue.code, 'E_INVALID_COORDINATE');
+      expect(issue.ringIndex, 0);
+      expect(issue.vertexIndex, 2);
+      expect(issue.limit, isNull);
+      expect(GeoJsonValidationMessages.describe(issue), contains('頂点 3'));
+    }
+    for (final position in ['[1e400,35]', '[139,1e400]']) {
+      final raw = '{"type":"FeatureCollection","features":'
+          '[{"type":"Feature","geometry":{"type":"Polygon",'
+          '"coordinates":[[[139,35],[139.01,35],$position,'
+          '[139,35.01],[139,35]]]}}]}';
+      final issue = phone.validate(raw).errors.single;
+      expect(issue.code, 'E_INVALID_COORDINATE');
+      expect(issue.vertexIndex, 2);
+      expect(issue.limit, isNull);
+      expect(GeoJsonValidationMessages.describe(issue), contains('有限の数値'));
+    }
+  });
 
   test(
       'decimal backtracking and zero-area rings are rejected in either winding',

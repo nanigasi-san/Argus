@@ -85,18 +85,19 @@ class _QrScannerPageState extends State<QrScannerPage>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    if (!_usesRealScanner || !_cameraGranted || _isProcessing) {
+    if (!_usesRealScanner || _isProcessing) {
       return;
     }
+    if (state == AppLifecycleState.resumed && _awaitingSettingsReturn) {
+      _awaitingSettingsReturn = false;
+      unawaited(_prepareScanner());
+      return;
+    }
+    if (!_cameraGranted) return;
 
     switch (state) {
       case AppLifecycleState.resumed:
-        if (_awaitingSettingsReturn) {
-          _awaitingSettingsReturn = false;
-          unawaited(_prepareScanner());
-        } else {
-          unawaited(_resumeScanner());
-        }
+        unawaited(_resumeScanner());
       case AppLifecycleState.inactive:
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:

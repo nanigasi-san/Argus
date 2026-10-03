@@ -21,7 +21,7 @@ class GeoJsonValidationMessages {
       'E_TOO_FEW_POINTS' => '外周ringには閉路の終点を除いて異なる3頂点以上が必要です。',
       'E_PHONE_TOO_MANY_VERTICES' =>
         'GeoJSON全体の頂点数が${_number(issue.actual)}点です。上限${_number(issue.limit)}点以内に減らしてください（閉路の終点は除きます）。',
-      'E_INVALID_COORDINATE' => '座標は有限な[経度, 緯度]とし、経度±180・緯度±90以内にしてください。',
+      'E_INVALID_COORDINATE' => _invalidCoordinate(issue),
       'E_POLYGON_NOT_CLOSED' => '外周ringの末尾を先頭と同じ座標にして閉じてください。',
       'E_DUPLICATE_CONSECUTIVE_POINT' => '連続する同じ座標を取り除いてください。',
       'E_SELF_INTERSECTION' => 'Polygonの辺が自己交差または接触しています。交差付近を修正してください。',
@@ -45,6 +45,23 @@ class GeoJsonValidationMessages {
       _ => issue.code,
     };
     return '$location$reason';
+  }
+
+  static String _invalidCoordinate(GeoJsonValidationIssue issue) {
+    final axis = switch (issue.coordinateIndex) {
+      0 => '経度',
+      1 => '緯度',
+      _ => null,
+    };
+    if (axis != null && issue.actual != null && issue.limit != null) {
+      final comparison = issue.limit! < 0 ? '以上' : '以下';
+      return '$axisが${issue.actual}°です。'
+          '${_number(issue.limit)}°$comparisonにしてください。';
+    }
+    if (axis != null) {
+      return '$axisは有限の数値にしてください。';
+    }
+    return '座標は有限な[経度, 緯度]とし、経度±180・緯度±90以内にしてください。';
   }
 
   static String _location(GeoJsonValidationIssue issue) {

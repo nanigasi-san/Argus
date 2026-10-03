@@ -115,9 +115,13 @@ class _SelectableFileManager extends FakeFileManager {
 
   XFile? selectedFile;
   XFile? selectedImage;
+  Object? fileError;
 
   @override
-  Future<XFile?> pickGeoJsonFile() async => selectedFile;
+  Future<XFile?> pickGeoJsonFile() async {
+    if (fileError != null) throw fileError!;
+    return selectedFile;
+  }
 
   @override
   Future<XFile?> pickQrImageFile() async => selectedImage;
@@ -415,6 +419,35 @@ void main() {
     expect(
         setup.controller.geoModel.polygons.single.points.first.longitude, 139);
   });
+
+  for (final cancelled in [false, true]) {
+    testWidgets(
+        cancelled
+            ? 'platform file cancellation keeps the Garmin page error-free'
+            : 'Garmin file errors in a Users path are shown', (tester) async {
+      final setup = await _monitoringController();
+      addTearDown(setup.controller.dispose);
+      setup.files.fileError = cancelled
+          ? PlatformException(code: 'user_cancelled')
+          : const FileSystemException(
+              'Unable to read file', r'C:\Users\kaito\course.geojson');
+      await tester.pumpWidget(ChangeNotifierProvider.value(
+        value: setup.controller,
+        child: MaterialApp(
+            home: GarminTransferPage(client: _PendingGarminClient())),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('ファイルを選ぶ'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Unable to read file'),
+          cancelled ? findsNothing : findsOneWidget);
+      expect(find.textContaining(r'C:\Users\kaito\course.geojson'),
+          cancelled ? findsNothing : findsOneWidget);
+      expect(setup.controller.isMonitoring, isTrue);
+      expect(setup.location.hasStopped, isFalse);
+    });
+  }
 
   testWidgets(
       'invalid Garmin file keeps the previous course and phone monitoring',

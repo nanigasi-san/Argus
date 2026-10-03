@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../app_controller.dart';
+import '../io/file_picker_cancellation.dart';
 import '../garmin/garmin_course_encoder.dart';
 import '../garmin/garmin_course_selection.dart';
 import '../geo/geojson_validation_messages.dart';
@@ -152,10 +153,7 @@ class _GarminTransferPageState extends State<GarminTransferPage>
     } on FormatException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } catch (e) {
-      final message = e.toString().toLowerCase();
-      if (message.contains('cancel') ||
-          message.contains('user') ||
-          message.contains('abort')) {
+      if (isFilePickerCancellation(e)) {
         return;
       }
       if (mounted) setState(() => _error = 'GeoJSONを読み込めませんでした: $e');

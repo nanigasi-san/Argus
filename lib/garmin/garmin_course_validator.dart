@@ -12,8 +12,8 @@ class GarminLocalPoint {
 }
 
 /// Numeric data prepared before any AGW1 serialization takes place.
-class GarminPreparedCourse {
-  GarminPreparedCourse({
+final class GarminPreparedCourse {
+  GarminPreparedCourse._({
     required this.originLat,
     required this.originLon,
     required List<GarminLocalPoint> points,
@@ -147,7 +147,7 @@ class GarminCourseValidator {
       ]);
     }
     return GarminCourseValidationResult(
-      prepared: GarminPreparedCourse(
+      prepared: GarminPreparedCourse._(
         originLat: originLat,
         originLon: originLon,
         points: local,

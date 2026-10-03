@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:file_selector/file_selector.dart';
@@ -7,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:argus/qr/geojson_qr_codec.dart';
+import 'package:argus/geo/geojson_validator.dart';
 import 'package:argus/ui/qr_generator_page.dart';
 
 void main() {
@@ -250,6 +252,51 @@ void main() {
 
     expect(find.textContaining('QRコードの生成に失敗しました'), findsOneWidget);
     expect(find.textContaining('too large'), findsOneWidget);
+    expect(find.byKey(const ValueKey('generated_qr_image')), findsNothing);
+  });
+
+  testWidgets('self-intersection errors identify the feature, ring and edges',
+      (tester) async {
+    final raw = File('test/fixtures/geojson_validation/bow-tie.geojson')
+        .readAsStringSync();
+    await tester.pumpWidget(MaterialApp(
+      home: QrGeneratorPage(
+        filePicker: () async => XFile.fromData(utf8.encode(raw),
+            name: 'bow-tie.geojson', path: 'bow-tie.geojson'),
+      ),
+    ));
+    await tester.tap(find.text('GeoJSONを選択'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Feature 1 / Polygon 1 / ring 1 / 辺 1 / 辺 3'),
+        findsOneWidget);
+    expect(find.textContaining('自己交差または接触'), findsOneWidget);
+    expect(find.byKey(const ValueKey('generated_qr_image')), findsNothing);
+  });
+
+  testWidgets('vertex limit errors display actual and maximum counts',
+      (tester) async {
+    final count = GeoJsonValidator.maxVertices + 1;
+    final decoded = jsonDecode(_squareGeoJson) as Map<String, dynamic>;
+    final ring = List.generate(count, (index) {
+      final angle = index * 2 * math.pi / count;
+      return [139 + 0.001 * math.cos(angle), 35 + 0.001 * math.sin(angle)];
+    });
+    ring.add(ring.first);
+    decoded['features'][0]['geometry']['coordinates'] = [ring];
+    await tester.pumpWidget(MaterialApp(
+      home: QrGeneratorPage(
+        filePicker: () async => XFile.fromData(utf8.encode(jsonEncode(decoded)),
+            name: 'large.geojson', path: 'large.geojson'),
+      ),
+    ));
+    await tester.tap(find.text('GeoJSONを選択'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('頂点数が$count点'), findsOneWidget);
+    expect(find.textContaining('上限${GeoJsonValidator.maxVertices}点'),
+        findsOneWidget);
+    expect(find.textContaining('?点'), findsNothing);
     expect(find.byKey(const ValueKey('generated_qr_image')), findsNothing);
   });
 

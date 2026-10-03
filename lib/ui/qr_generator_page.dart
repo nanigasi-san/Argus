@@ -124,10 +124,15 @@ class _QrGeneratorPageState extends State<QrGeneratorPage> {
       if (!mounted) {
         return;
       }
+      final issue = e.validationIssue ??
+          (e.message.startsWith('E_')
+              ? GeoJsonValidationIssue(e.message)
+              : null);
+      final reason =
+          issue == null ? e.message : GeoJsonValidationMessages.describe(issue);
       setState(() {
         _isGenerating = false;
-        _errorMessage = 'QRコードの生成に失敗しました: '
-            '${e.message.startsWith('E_') ? GeoJsonValidationMessages.describe(GeoJsonValidationIssue(e.message)) : e.message}';
+        _errorMessage = 'QRコードの生成に失敗しました: $reason';
       });
     } on FormatException catch (e) {
       if (!mounted) {

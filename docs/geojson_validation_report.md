@@ -64,3 +64,32 @@ E2Eは macOSの `argus_pr_review_api36`（Pixel 7 Pro、arm64-v8a、`emulator-55
 iOSは既存のiPhone 17 Pro Simulator（iOS 26.5、arm64）を使用した。通常のSimulatorビルドはFlutterのフレームワーク準備で複数CPU形式の扱いに失敗したため、一時xcconfigに `ARCHS = arm64` と `ONLY_ACTIVE_ARCH = YES` を指定して全件実行した。リポジトリのビルド設定は変更していない。`mobile_scanner` はiOS Simulatorの画像解析を非対応としているため、画像のケースはエラー表示・範囲保持・戻る操作を確認した。iPhoneの実際の画像解析は上記の利用者による実機操作で成功を確認した。AndroidとiPhoneへの通常アプリの更新インストール・起動確認は成功した。
 
 図は `python scripts/plot_geojson_validation_cases.py` で再生成できる。
+
+## 2026-10-03の再レビューと修正
+
+共通の形状判定、QRの生成・復元・画像読込、Garminの量子化と送信前検証を再レビューした。次の不具合を修正し、再現条件を回帰テストに追加した。
+
+| 問題 | 修正と確認 |
+| --- | --- |
+| QRの一時ファイル保存に失敗すると監視が停止する | 保存が成功してから監視を停止する。保存先の取得失敗と書込失敗の両方で、元の範囲と監視を維持する |
+| QR生成のエラーで頂点数や交差辺の情報が失われる | validatorの結果を例外に保持する。1,001点に対する1,000点上限と、交差する辺の位置を画面に表示する |
+| 範囲外座標の位置・実際の値・上限が分からない | Feature・Polygon・ring・頂点・経緯度を記録する。180.0000001°など、小数の超過値も省略せず表示する |
+| `C:\Users`を含む実際のエラーをキャンセル扱いにする | PlatformExceptionの既知のキャンセルコードだけを判定する。ファイルとQR画像の読込失敗を表示する |
+| 設定画面でカメラを許可して戻ってもスキャナが再開しない | 設定から戻った時点で権限を再確認する。最初は恒久拒否だった場合も回帰テストで確認する |
+| AGZ1復元側にも閉路・頂点数の形状判定がある | 復元は形式の解析を行い、形状は共通validatorで判定する。未閉鎖・頂点不足の判定がファイルとQRの経路で一致することを確認する |
+| 検証前の座標からGarmin準備済みデータを作れる | 準備済みデータのコンストラクタを非公開にし、継承・実装も禁止する。両軸のint16境界と、丸め後の自己交差・面積0を検証する |
+| Androidがテスト用設定の保存先を削除してE2Eが失敗する | キャッシュからアプリのサポート領域へ保存先を変更する。試験後には従来どおりテスト専用ディレクトリを削除する |
+
+不正な座標を確認する既存テストにも誤りがあった。Featureの種別や閉路が不足しており、座標の検証に進む前に失敗していたため、入力を修正して`E_INVALID_COORDINATE`を明示的に確認する。
+
+`flutter test --no-pub --reporter expanded`は445件すべて成功した。`flutter analyze --no-pub`の指摘は0件。今回の修正で、単一Feature・単一Polygon、スマホ1,000頂点、Garmin100頂点の基準は変更していない。
+
+Windowsで`./scripts/run_android_ui_checks.ps1 -CaptureScreenshots`を実行した。`Medium_Phone_API_36.0`、`emulator-5554`、x86_64、API 36で、次の全3ファイルが成功した。任意の`SIMULATOR_GPS=true`モードは実行していない。テスト用に起動したEmulatorは終了した。
+
+| 実行ファイル | 結果 |
+| --- | --- |
+| `integration_test/compass_navigation_test.dart` | 1件成功 |
+| `integration_test/core_monitoring_e2e_test.dart` | 8件成功 |
+| `integration_test/ui_smoke_test.dart` | 8件成功 |
+
+初回はAPKインストールの容量エラー後に自動再試行で起動したが、`core_monitoring_e2e_test.dart`の`stop-restart-clears-alarm`の後片付けが失敗した。`installd`のログには、試験中の`cache/core_e2e_PHSTNJ`を削除した記録がある。テスト用設定の保存先をサポート領域へ移し、全3ファイルを再実行して成功を確認した。初回を全件成功には数えていない。

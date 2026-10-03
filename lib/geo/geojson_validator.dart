@@ -14,6 +14,7 @@ class GeoJsonValidationIssue {
     this.polygonIndex,
     this.ringIndex,
     this.vertexIndex,
+    this.coordinateIndex,
     this.edgeIndex,
     this.otherEdgeIndex,
     this.actual,
@@ -26,6 +27,9 @@ class GeoJsonValidationIssue {
   final int? polygonIndex;
   final int? ringIndex;
   final int? vertexIndex;
+
+  /// The position component: 0 for longitude and 1 for latitude.
+  final int? coordinateIndex;
   final int? edgeIndex;
   final int? otherEdgeIndex;
   final num? actual;
@@ -173,26 +177,47 @@ class GeoJsonValidator {
           ]);
         }
         final points = <LatLng>[];
-        var malformed = false;
-        for (final position in ring) {
-          if (position is! List ||
-              position.length < 2 ||
-              position[0] is! num ||
-              position[1] is! num) {
-            malformed = true;
+        GeoJsonValidationIssue? coordinateIssue;
+        for (var vertexIndex = 0; vertexIndex < ring.length; vertexIndex++) {
+          final position = ring[vertexIndex];
+          if (position is! List || position.length < 2) {
+            coordinateIssue = GeoJsonValidationIssue('E_INVALID_COORDINATE',
+                featureIndex: featureIndex,
+                polygonIndex: polygonIndex,
+                ringIndex: 0,
+                vertexIndex: vertexIndex);
             break;
           }
-          final point = LatLng(
-              (position[1] as num).toDouble(), (position[0] as num).toDouble());
-          if (!isValidCoordinate(point)) {
-            malformed = true;
+          for (var coordinateIndex = 0;
+              coordinateIndex < 2;
+              coordinateIndex++) {
+            final value = position[coordinateIndex];
+            final limit = coordinateIndex == 0 ? 180 : 90;
+            if (value is! num ||
+                !value.isFinite ||
+                value < -limit ||
+                value > limit) {
+              coordinateIssue = GeoJsonValidationIssue('E_INVALID_COORDINATE',
+                  featureIndex: featureIndex,
+                  polygonIndex: polygonIndex,
+                  ringIndex: 0,
+                  vertexIndex: vertexIndex,
+                  coordinateIndex: coordinateIndex,
+                  actual: value is num ? value : null,
+                  limit: value is num && value.isFinite
+                      ? (value < 0 ? -limit : limit)
+                      : null);
+              break;
+            }
+          }
+          if (coordinateIssue != null) {
             break;
           }
-          points.add(point);
+          points.add(LatLng((position[1] as num).toDouble(),
+              (position[0] as num).toDouble()));
         }
-        if (malformed) {
-          issues.add(GeoJsonValidationIssue('E_INVALID_COORDINATE',
-              featureIndex: featureIndex, polygonIndex: polygonIndex));
+        if (coordinateIssue != null) {
+          issues.add(coordinateIssue);
           continue;
         }
         if (!_samePoint(points.first, points.last)) {

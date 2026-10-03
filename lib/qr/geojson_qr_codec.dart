@@ -87,11 +87,13 @@ class GeoJsonInfo {
 
 /// 共通の例外クラス。
 abstract class GeoJsonQrException implements Exception {
-  GeoJsonQrException(this.code, this.message, [this.cause]);
+  GeoJsonQrException(this.code, this.message,
+      [this.cause, this.validationIssue]);
 
   final String code;
   final String message;
   final Object? cause;
+  final GeoJsonValidationIssue? validationIssue;
 
   @override
   String toString() => '$code: $message${cause != null ? ' ($cause)' : ''}';
@@ -100,6 +102,9 @@ abstract class GeoJsonQrException implements Exception {
 class GeoJsonValidationException extends GeoJsonQrException {
   GeoJsonValidationException(String message, [Object? cause])
       : super('E_INVALID_GEOJSON', message, cause);
+
+  GeoJsonValidationException.fromIssue(GeoJsonValidationIssue issue)
+      : super('E_INVALID_GEOJSON', issue.code, null, issue);
 }
 
 class CompressFailedException extends GeoJsonQrException {
@@ -144,20 +149,32 @@ class InvalidScaleException extends GeoJsonQrException {
 class InvalidCoordinateException extends GeoJsonQrException {
   InvalidCoordinateException(String message, [Object? cause])
       : super('E_INVALID_COORDINATE', message, cause);
+
+  InvalidCoordinateException.fromIssue(GeoJsonValidationIssue issue)
+      : super('E_INVALID_COORDINATE', issue.code, null, issue);
 }
 
 class TooFewPointsException extends GeoJsonQrException {
   TooFewPointsException(String message) : super('E_TOO_FEW_POINTS', message);
+
+  TooFewPointsException.fromIssue(GeoJsonValidationIssue issue)
+      : super('E_TOO_FEW_POINTS', issue.code, null, issue);
 }
 
 class PolygonNotClosedException extends GeoJsonQrException {
   PolygonNotClosedException(String message)
       : super('E_POLYGON_NOT_CLOSED', message);
+
+  PolygonNotClosedException.fromIssue(GeoJsonValidationIssue issue)
+      : super('E_POLYGON_NOT_CLOSED', issue.code, null, issue);
 }
 
 class UnsupportedGeometryException extends GeoJsonQrException {
   UnsupportedGeometryException(String message)
       : super('E_UNSUPPORTED_GEOMETRY', message);
+
+  UnsupportedGeometryException.fromIssue(GeoJsonValidationIssue issue)
+      : super('E_UNSUPPORTED_GEOMETRY', issue.code, null, issue);
 }
 
 class InvalidFileNameException extends GeoJsonQrException {
@@ -291,20 +308,20 @@ Future<GeoJsonQrBundle> encodeGeoJson(GeoJsonQrEncodeInput input) async {
 Never _throwPhoneValidationError(GeoJsonValidationIssue issue) {
   switch (issue.code) {
     case 'E_TOO_FEW_POINTS':
-      throw TooFewPointsException(issue.code);
+      throw TooFewPointsException.fromIssue(issue);
     case 'E_POLYGON_NOT_CLOSED':
-      throw PolygonNotClosedException(issue.code);
+      throw PolygonNotClosedException.fromIssue(issue);
     case 'E_INVALID_COORDINATE':
-      throw InvalidCoordinateException(issue.code);
+      throw InvalidCoordinateException.fromIssue(issue);
     case 'E_HOLES_UNSUPPORTED':
     case 'E_NO_POLYGON':
     case 'E_INVALID_FEATURE_COLLECTION':
     case 'E_INVALID_FEATURE':
     case 'E_INVALID_GEOMETRY':
     case 'E_SINGLE_FEATURE_POLYGON_REQUIRED':
-      throw UnsupportedGeometryException(issue.code);
+      throw UnsupportedGeometryException.fromIssue(issue);
     default:
-      throw GeoJsonValidationException(issue.code);
+      throw GeoJsonValidationException.fromIssue(issue);
   }
 }
 
@@ -657,18 +674,6 @@ DecodedGeoJson _agzDiffTextToGeoJson(String diffText) {
     points.add(current);
     previous = current;
   }
-  if (points.length < 4) {
-    throw TooFewPointsException(
-      'Polygon must contain at least four points including closure',
-    );
-  }
-  if (points.first.lon != points.last.lon ||
-      points.first.lat != points.last.lat) {
-    throw PolygonNotClosedException(
-      'Polygon final point must match its first point',
-    );
-  }
-
   var factor = 1.0;
   for (var i = 0; i < scale; i++) {
     factor *= 10;
