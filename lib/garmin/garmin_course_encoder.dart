@@ -1,13 +1,14 @@
 import 'dart:convert';
-import 'dart:math' as math;
 
 import '../geo/geo_model.dart';
+import '../geo/geojson_validation_messages.dart';
 import '../io/file_display_name.dart';
 import 'garmin_course_payload.dart';
+import 'garmin_course_validator.dart';
 
 class GarminCourseEncoder {
-  static const int maxVertices = 100;
-  static const int maxDataBytes = 2048;
+  static const int maxVertices = GarminCourseValidator.maxVertices;
+  static const int maxDataBytes = GarminCourseValidator.maxDataBytes;
   static const int maxDisplayNameBytes = 48;
 
   GarminCoursePayload encode(
@@ -15,40 +16,23 @@ class GarminCourseEncoder {
     required String fileName,
     DateTime? armedUntil,
   }) {
-    if (model.polygons.length != 1) {
-      throw const FormatException('Garminへ送信できるのは単一Polygonのみです。');
+    final validation = const GarminCourseValidator().validateModel(model);
+    if (!validation.validForGarmin) {
+      throw FormatException(
+          GeoJsonValidationMessages.describe(validation.issues.first));
     }
-    var points = model.polygons.single.points;
-    if (points.length > 1 &&
-        points.first.latitude == points.last.latitude &&
-        points.first.longitude == points.last.longitude) {
-      points = points.sublist(0, points.length - 1);
-    }
-    if (points.length < 3 || points.length > maxVertices) {
-      throw FormatException('頂点数は3〜$maxVertices点にしてください（現在${points.length}点）。');
-    }
-    if (points.any((point) => !isValidCoordinate(point))) {
-      throw const FormatException('Garminへ送る座標の緯度・経度が不正です。');
-    }
+    return encodePrepared(validation.prepared!,
+        fileName: fileName, armedUntil: armedUntil);
+  }
 
-    final originLat =
-        points.map((p) => p.latitude).reduce((a, b) => a + b) / points.length;
-    final originLon =
-        points.map((p) => p.longitude).reduce((a, b) => a + b) / points.length;
-    final metersPerLon = 111320.0 * math.cos(originLat * math.pi / 180);
-    final encoded = <String>[];
-    for (final point in points) {
-      final x = ((point.longitude - originLon) * metersPerLon).round();
-      final y = ((point.latitude - originLat) * 110540.0).round();
-      if (x < -32768 || x > 32767 || y < -32768 || y > 32767) {
-        throw const FormatException('競技エリアがGarmin用座標の範囲を超えています。');
-      }
-      encoded.add('$x,$y');
-    }
-    final data = 'AGW1|${encoded.join(';')}';
-    if (data.length > maxDataBytes) {
-      throw const FormatException('Garmin用データが2KBを超えています。頂点を簡略化してください。');
-    }
+  GarminCoursePayload encodePrepared(
+    GarminPreparedCourse prepared, {
+    required String fileName,
+    DateTime? armedUntil,
+  }) {
+    final data =
+        'AGW1|${prepared.points.map((p) => '${p.x},${p.y}').join(';')}';
+    assert(data.length == prepared.dataBytes);
     final normalizedName = fileName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
     final checksum = _checksum(data);
     final courseId = '${normalizedName}_$checksum';
@@ -59,9 +43,9 @@ class GarminCourseEncoder {
           : courseId.substring(courseId.length - 64),
       displayName: _displayName(fileName),
       armedUntil: expiry.millisecondsSinceEpoch ~/ 1000,
-      vertexCount: points.length,
-      originLatE7: (originLat * 1e7).round(),
-      originLonE7: (originLon * 1e7).round(),
+      vertexCount: prepared.vertexCount,
+      originLatE7: (prepared.originLat * 1e7).round(),
+      originLonE7: (prepared.originLon * 1e7).round(),
       data: data,
       checksum: checksum,
     );

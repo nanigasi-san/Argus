@@ -9,8 +9,11 @@ import 'package:path_provider/path_provider.dart';
 
 import 'geo/area_index.dart';
 import 'geo/geo_model.dart';
+import 'geo/geojson_validation_messages.dart';
+import 'geo/geojson_validator.dart';
 import 'io/config.dart';
 import 'io/file_manager.dart';
+import 'io/file_picker_cancellation.dart';
 import 'io/log_entry.dart';
 import 'io/logger.dart';
 import 'platform/location_service.dart';
@@ -63,6 +66,7 @@ class AppController extends ChangeNotifier {
 
   AppConfig? _config;
   GeoModel _geoModel = GeoModel.empty();
+  GeoJsonValidationResult? _geoJsonValidation;
   bool _developerMode = false;
   bool _navigationEnabled = true;
   AreaIndex _areaIndex = AreaIndex.empty();
@@ -91,6 +95,7 @@ class AppController extends ChangeNotifier {
   bool get geoJsonLoaded => _geoModel.hasGeometry;
   bool get isMonitoring => _subscription != null;
   GeoModel get geoModel => _geoModel;
+  GeoJsonValidationResult? get geoJsonValidation => _geoJsonValidation;
   String? get lastErrorMessage => _lastErrorMessage;
   String? get geoJsonFileName => _geoJsonFileName;
   List<AppLogEntry> get logs => List.unmodifiable(_logs);
@@ -363,9 +368,6 @@ class AppController extends ChangeNotifier {
   /// ファイルが正常に読み込まれた場合、状態マシンとエリアインデックスを更新します。
   /// エラーが発生した場合は、エラーメッセージを設定します。
   Future<void> reloadGeoJsonFromPicker() async {
-    // 先に監視を停止（ファイル操作前に停止）
-    await stopMonitoring();
-
     try {
       // ファイル名を取得するために、file_selectorを直接使用
       final file = await fileManager.pickGeoJsonFile();
@@ -375,10 +377,16 @@ class AppController extends ChangeNotifier {
       }
 
       final raw = await file.readAsString();
-      final model = GeoModel.fromGeoJson(raw);
-      _requireMonitorableGeometry(model);
+      final validation = const GeoJsonValidator().validate(raw);
+      if (!validation.validForPhone) {
+        throw FormatException(
+            GeoJsonValidationMessages.describe(validation.errors.first));
+      }
+      final model = validation.model!;
+      await stopMonitoring();
 
       _geoModel = model;
+      _geoJsonValidation = validation;
       // ファイル名をpathから抽出し、拡張子を.geojsonに統一
       final extractedName = _extractFileName(file.path) ?? file.name;
       _geoJsonFileName = _normalizeToGeoJson(extractedName);
@@ -406,10 +414,7 @@ class AppController extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       // ファイルピッカーをキャンセルした場合などはエラーログを出さない
-      final errorMessage = e.toString().toLowerCase();
-      if (errorMessage.contains('cancel') ||
-          errorMessage.contains('user') ||
-          errorMessage.contains('abort')) {
+      if (isFilePickerCancellation(e)) {
         return;
       }
       _lastErrorMessage = 'Unable to open file: ${e.toString()}';
@@ -424,9 +429,6 @@ class AppController extends ChangeNotifier {
   /// 状態マシンとエリアインデックスを更新します。
   /// エラーが発生した場合は、エラーメッセージを設定します。
   Future<bool> reloadGeoJsonFromQr(String qrText) async {
-    // 先に監視を停止（ファイル操作前に停止）
-    await stopMonitoring();
-
     try {
       // QRテキストが対応スキームで始まることを確認
       if (!isSupportedGeoJsonQrText(qrText)) {
@@ -440,14 +442,19 @@ class AppController extends ChangeNotifier {
       // QRテキストからGeoJSONを復元
       final decoded = await compute(_decodeGeoJsonQrText, qrText);
       final restoredGeoJson = decoded.geoJson;
-      final model = GeoModel.fromGeoJson(restoredGeoJson);
-      _requireMonitorableGeometry(model);
+      final validation = const GeoJsonValidator().validate(restoredGeoJson);
+      if (!validation.validForPhone) {
+        throw FormatException(
+            GeoJsonValidationMessages.describe(validation.errors.first));
+      }
+      final model = validation.model!;
 
       // 一時ディレクトリに保存
       final tempDir = await getTemporaryDirectory();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final tempFile = File('${tempDir.path}/temp_geojson_$timestamp.geojson');
       await tempFile.writeAsString(restoredGeoJson);
+      await stopMonitoring();
 
       // 既存の一時ファイルがあれば削除
       await cleanupTempGeoJsonFile();
@@ -456,6 +463,7 @@ class AppController extends ChangeNotifier {
       _tempGeoJsonFilePath = tempFile.path;
 
       _geoModel = model;
+      _geoJsonValidation = validation;
       _geoJsonFileName = decoded.fileName ?? 'temp_geojson_$timestamp.geojson';
       _areaIndex = AreaIndex.build(model.polygons);
       stateMachine.updateGeometry(_geoModel, _areaIndex);
@@ -496,30 +504,37 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  /// QRコード画像ファイルからGeoJSONを読み込みます。
-  Future<bool> reloadGeoJsonFromQrImagePicker() async {
-    await stopMonitoring();
-
+  /// 画像からQRテキストを取り出す。スマホの監視範囲は変更しない。
+  Future<String?> pickQrTextFromImage() async {
     try {
       final file = await fileManager.pickQrImageFile();
-      if (file == null) {
-        return false;
-      }
-
+      if (file == null) return null;
       final qrText = await _qrImageAnalyzer(file.path);
       if (qrText == null || qrText.trim().isEmpty) {
-        _lastErrorMessage = 'QRコード画像からQRコードを読み取れませんでした。';
-        _logError('APP', _lastErrorMessage!);
-        notifyListeners();
-        return false;
+        throw const FormatException('QRコード画像からQRコードを読み取れませんでした。');
       }
-
-      return await reloadGeoJsonFromQr(qrText);
+      return qrText;
     } catch (e) {
-      final errorMessage = e.toString().toLowerCase();
-      if (errorMessage.contains('cancel') ||
-          errorMessage.contains('user') ||
-          errorMessage.contains('abort')) {
+      if (isFilePickerCancellation(e)) {
+        return null;
+      }
+      rethrow;
+    }
+  }
+
+  /// QRコード画像ファイルからGeoJSONを読み込みます。
+  Future<bool> reloadGeoJsonFromQrImagePicker() async {
+    try {
+      final qrText = await pickQrTextFromImage();
+      if (qrText == null) return false;
+      return await reloadGeoJsonFromQr(qrText);
+    } on FormatException catch (e) {
+      _lastErrorMessage = e.message;
+      _logError('APP', _lastErrorMessage!);
+      notifyListeners();
+      return false;
+    } catch (e) {
+      if (isFilePickerCancellation(e)) {
         return false;
       }
       _lastErrorMessage =
@@ -742,6 +757,7 @@ class AppController extends ChangeNotifier {
 
     if (geoJson != null) {
       _geoModel = geoJson;
+      _geoJsonValidation = null;
     }
 
     if (areaIndex != null) {
@@ -943,14 +959,6 @@ class AppController extends ChangeNotifier {
     final normalized = (bearing % 360 + 360) % 360;
     final index = ((normalized + 22.5) ~/ 45) % labels.length;
     return labels[index];
-  }
-}
-
-void _requireMonitorableGeometry(GeoModel model) {
-  if (!model.hasGeometry) {
-    throw const FormatException(
-      'GeoJSONに監視可能なPolygon/MultiPolygonがありません。',
-    );
   }
 }
 

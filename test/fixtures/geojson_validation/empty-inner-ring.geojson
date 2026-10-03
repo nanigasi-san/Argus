@@ -1,0 +1,39 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "empty-inner-ring"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              139,
+              35
+            ],
+            [
+              139.004,
+              35
+            ],
+            [
+              139.004,
+              35.004
+            ],
+            [
+              139,
+              35.004
+            ],
+            [
+              139,
+              35
+            ]
+          ],
+          []
+        ]
+      }
+    }
+  ]
+}

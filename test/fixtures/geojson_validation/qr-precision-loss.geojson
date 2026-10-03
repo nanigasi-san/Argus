@@ -1,0 +1,34 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "qr-precision-loss"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              139,
+              35
+            ],
+            [
+              139.0000002,
+              35
+            ],
+            [
+              139,
+              35.0000002
+            ],
+            [
+              139,
+              35
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}

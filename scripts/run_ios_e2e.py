@@ -75,6 +75,7 @@ def run_e2e(device, report, boot_simulator=False):
     print("[build] Building all iOS E2E suites", flush=True)
     started_build = time.monotonic()
     subprocess.run(["flutter", "build", "ios", "--simulator", "--debug",
+                    "--dart-define=ARGUS_IOS_SIMULATOR=true",
                     f"--target={TARGET}"], check=True)
     build_seconds = time.monotonic() - started_build
     if boot_simulator:

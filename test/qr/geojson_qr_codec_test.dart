@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:argus/geo/geojson_validator.dart';
 import 'package:argus/qr/geojson_qr_codec.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -198,6 +200,53 @@ void main() {
     );
   });
 
+  test('encoding preserves the self-intersection location in its exception',
+      () async {
+    final raw = File('test/fixtures/geojson_validation/bow-tie.geojson')
+        .readAsStringSync();
+    await expectLater(
+      encodeGeoJson(GeoJsonQrEncodeInput(
+        geoJson: raw,
+        sourceFileName: 'bow-tie.geojson',
+        scheme: GeoJsonQrScheme.agz1,
+        generatePng: false,
+      )),
+      throwsA(isA<GeoJsonValidationException>()
+          .having((e) => e.validationIssue?.code, 'issue code',
+              'E_SELF_INTERSECTION')
+          .having((e) => e.validationIssue?.featureIndex, 'feature', 0)
+          .having((e) => e.validationIssue?.polygonIndex, 'polygon', 0)
+          .having((e) => e.validationIssue?.ringIndex, 'ring', 0)
+          .having((e) => e.validationIssue?.edgeIndex, 'first edge', 0)
+          .having((e) => e.validationIssue?.otherEdgeIndex, 'second edge', 2)),
+    );
+  });
+
+  test('encoding preserves the phone vertex limit and actual count', () async {
+    final count = GeoJsonValidator.maxVertices + 1;
+    final decoded = jsonDecode(_agzGeoJson) as Map<String, dynamic>;
+    final ring = List.generate(count, (index) {
+      final angle = index * 2 * math.pi / count;
+      return [139 + 0.001 * math.cos(angle), 35 + 0.001 * math.sin(angle)];
+    });
+    ring.add(ring.first);
+    decoded['features'][0]['geometry']['coordinates'] = [ring];
+    await expectLater(
+      encodeGeoJson(GeoJsonQrEncodeInput(
+        geoJson: jsonEncode(decoded),
+        sourceFileName: 'large.geojson',
+        scheme: GeoJsonQrScheme.agz1,
+        generatePng: false,
+      )),
+      throwsA(isA<GeoJsonValidationException>()
+          .having((e) => e.validationIssue?.code, 'issue code',
+              'E_PHONE_TOO_MANY_VERTICES')
+          .having((e) => e.validationIssue?.actual, 'actual count', count)
+          .having((e) => e.validationIssue?.limit, 'limit',
+              GeoJsonValidator.maxVertices)),
+    );
+  });
+
   test('agz1 reports corrupt payload categories', () async {
     await expectLater(
       decodeGeoJsonWithMetadata(
@@ -299,29 +348,13 @@ void main() {
     );
   });
 
-  test('agz1 rejects malformed decoded polygons and filenames', () async {
+  test('agz1 rejects malformed coordinate syntax and filenames', () async {
     const name = 'aG9nZS5nZW9qc29u';
     await expectLater(
       decodeGeoJsonWithMetadata(
         GeoJsonQrDecodeInput(qrTexts: [_agzQrText('a3:6:$name:1,1')]),
       ),
       throwsA(isA<InvalidDiffTextException>()),
-    );
-    await expectLater(
-      decodeGeoJsonWithMetadata(
-        GeoJsonQrDecodeInput(
-          qrTexts: [_agzQrText('a3:6:$name:1,1|1,0;-1,0')],
-        ),
-      ),
-      throwsA(isA<TooFewPointsException>()),
-    );
-    await expectLater(
-      decodeGeoJsonWithMetadata(
-        GeoJsonQrDecodeInput(
-          qrTexts: [_agzQrText('a3:6:$name:1,1|1,0;0,1;0,1')],
-        ),
-      ),
-      throwsA(isA<PolygonNotClosedException>()),
     );
     await expectLater(
       decodeGeoJsonWithMetadata(
@@ -379,6 +412,56 @@ void main() {
       ),
       throwsA(isA<InvalidCoordinateException>()),
     );
+  });
+
+  test('file and restored AGZ1 use the same shape rejection and location',
+      () async {
+    const name = 'aG9nZS5nZW9qc29u';
+    const cases = [
+      (
+        diff: '1,1|1,0;-1,0',
+        ring: '[[0.000001,0.000001],[0.000002,0.000001],'
+            '[0.000001,0.000001]]',
+        code: 'E_TOO_FEW_POINTS',
+      ),
+      (
+        diff: '1,1|1,0;0,1;0,1',
+        ring: '[[0.000001,0.000001],[0.000002,0.000001],'
+            '[0.000002,0.000002],[0.000002,0.000003]]',
+        code: 'E_POLYGON_NOT_CLOSED',
+      ),
+    ];
+    for (final fixture in cases) {
+      final restored = await decodeGeoJsonWithMetadata(GeoJsonQrDecodeInput(
+        qrTexts: [_agzQrText('a3:6:$name:${fixture.diff}')],
+      ));
+      final fromFile =
+          const GeoJsonValidator().validate(_polygonGeoJson(fixture.ring));
+      final fromQr = const GeoJsonValidator().validate(restored.geoJson);
+      expect(fromFile.validForPhone, isFalse);
+      expect(fromQr.validForPhone, isFalse);
+      expect(fromQr.errors.single.code, fixture.code);
+      expect(fromQr.errors.single.featureIndex,
+          fromFile.errors.single.featureIndex);
+      expect(fromQr.errors.single.polygonIndex,
+          fromFile.errors.single.polygonIndex);
+      expect(fromQr.errors.single.ringIndex, fromFile.errors.single.ringIndex);
+      expect(fromQr.errors.single.edgeIndex, fromFile.errors.single.edgeIndex);
+      await expectLater(
+        encodeGeoJson(GeoJsonQrEncodeInput(
+          geoJson: _polygonGeoJson(fixture.ring),
+          sourceFileName: 'hoge.geojson',
+          scheme: GeoJsonQrScheme.agz1,
+          generatePng: false,
+        )),
+        throwsA(isA<GeoJsonQrException>()
+            .having((e) => e.validationIssue?.code, 'issue code', fixture.code)
+            .having((e) => e.validationIssue?.featureIndex, 'feature',
+                fromQr.errors.single.featureIndex)
+            .having((e) => e.validationIssue?.polygonIndex, 'polygon',
+                fromQr.errors.single.polygonIndex)),
+      );
+    }
   });
 
   test('encode rejects payloads that exceed max text length', () async {

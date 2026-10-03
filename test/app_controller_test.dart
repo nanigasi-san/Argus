@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/services.dart';
 
 import 'package:argus/app_controller.dart';
 import 'package:argus/geo/geo_model.dart';
@@ -1152,8 +1152,40 @@ void main() {
       await controller.reloadGeoJsonFromPicker();
 
       expect(controller.geoJsonLoaded, isFalse);
-      expect(controller.lastErrorMessage,
-          contains('監視可能なPolygon/MultiPolygonがありません'));
+      expect(controller.lastErrorMessage, contains('監視可能なPolygonがありません'));
+    });
+
+    test('file and QR loading reject the same invalid geometry', () async {
+      for (final (name, message) in [
+        ('hole', '穴のあるPolygon'),
+        ('bow-tie', '自己交差'),
+      ]) {
+        final raw = File('test/fixtures/geojson_validation/$name.geojson')
+            .readAsStringSync();
+        final config = _testConfig();
+        final controller = AppController(
+          stateMachine: StateMachine(config: config),
+          locationService: FakeLocationService(),
+          fileManager: _RawGeoJsonFileManager(config: config, raw: raw),
+          logger: FakeEventLogger(),
+          notifier: Notifier(
+            notificationsClient: FakeLocalNotificationsClient(),
+            alarmPlayer: FakeAlarmPlayer(),
+          ),
+        );
+        controller.debugSeed(geoJson: _squareModel());
+        await controller.reloadGeoJsonFromPicker();
+        expect(controller.lastErrorMessage, contains(message), reason: name);
+        expect(controller.geoModel.polygons, hasLength(1));
+
+        final legacyQr = 'gjz1:${base64UrlEncodeNoPad(gzipCompress(
+          Uint8List.fromList(utf8.encode(raw)),
+        ))}';
+        expect(await controller.reloadGeoJsonFromQr(legacyQr), isFalse,
+            reason: name);
+        expect(controller.lastErrorMessage, contains(message), reason: name);
+        expect(controller.geoModel.polygons, hasLength(1));
+      }
     });
 
     test('reloadGeoJsonFromQr rejects GeoJSON without polygons', () async {
@@ -1168,19 +1200,17 @@ void main() {
           alarmPlayer: FakeAlarmPlayer(),
         ),
       );
-      final bundle = await encodeGeoJson(
-        const GeoJsonQrEncodeInput(
-          geoJson: '{"type":"FeatureCollection","features":[]}',
-          scheme: GeoJsonQrScheme.gjz1,
-        ),
-      );
+      // A legacy QR can contain data that the new creation filter rejects.
+      final legacyQr = 'gjz1:${base64UrlEncodeNoPad(gzipCompress(
+        Uint8List.fromList(
+            utf8.encode('{"type":"FeatureCollection","features":[]}')),
+      ))}';
 
-      final loaded = await controller.reloadGeoJsonFromQr(bundle.qrTexts.first);
+      final loaded = await controller.reloadGeoJsonFromQr(legacyQr);
 
       expect(loaded, isFalse);
       expect(controller.geoJsonLoaded, isFalse);
-      expect(controller.lastErrorMessage,
-          contains('監視可能なPolygon/MultiPolygonがありません'));
+      expect(controller.lastErrorMessage, contains('監視可能なPolygonがありません'));
     });
 
     test('reloadGeoJsonFromPicker ignores user cancellation', () async {
@@ -1189,7 +1219,7 @@ void main() {
         locationService: FakeLocationService(),
         fileManager: _ThrowingGeoJsonFileManager(
           config: _testConfig(),
-          error: Exception('user cancel'),
+          error: PlatformException(code: 'user_cancelled'),
         ),
         logger: FakeEventLogger(),
         notifier: Notifier(
@@ -1221,6 +1251,31 @@ void main() {
       await controller.reloadGeoJsonFromPicker();
 
       expect(controller.lastErrorMessage, contains('Unable to open file'));
+    });
+
+    test('file errors in a Users path are reported instead of cancelled',
+        () async {
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: FakeLocationService(),
+        fileManager: _ThrowingGeoJsonFileManager(
+          config: _testConfig(),
+          error: const FileSystemException(
+              'Unable to read file', r'C:\Users\kaito\course.geojson'),
+        ),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+      );
+      addTearDown(controller.dispose);
+
+      await controller.reloadGeoJsonFromPicker();
+
+      expect(controller.lastErrorMessage, contains('Unable to read file'));
+      expect(controller.lastErrorMessage,
+          contains(r'C:\Users\kaito\course.geojson'));
     });
 
     test('reloadGeoJsonFromQr handles decode errors gracefully', () async {
@@ -1279,6 +1334,57 @@ void main() {
       expect(loaded, isFalse);
       expect(controller.lastErrorMessage, contains('Failed to decode QR code'));
     });
+
+    for (final failure in ['lookup', 'write']) {
+      test('QR temporary storage $failure failure keeps monitoring active',
+          () async {
+        final originalProvider = PathProviderPlatform.instance;
+        final tempDir =
+            await Directory.systemTemp.createTemp('argus_qr_storage_failure_');
+        addTearDown(() async {
+          PathProviderPlatform.instance = originalProvider;
+          await tempDir.delete(recursive: true);
+        });
+        final notDirectory = File('${tempDir.path}/not_a_directory');
+        await notDirectory.writeAsString('existing file');
+        PathProviderPlatform.instance = failure == 'lookup'
+            ? _FailingPathProviderPlatform()
+            : _FakePathProviderPlatform(notDirectory.path);
+        final config = _testConfig();
+        final location = FakeLocationService();
+        final controller = AppController(
+          stateMachine: StateMachine(config: config),
+          locationService: location,
+          fileManager: FakeFileManager(config: config),
+          logger: FakeEventLogger(),
+          notifier: Notifier(
+            notificationsClient: FakeLocalNotificationsClient(),
+            alarmPlayer: FakeAlarmPlayer(),
+          ),
+          permissionCoordinator: _GrantedPermissionCoordinator(),
+        );
+        addTearDown(controller.dispose);
+        controller.debugSeed(
+          config: config,
+          geoJson: _squareModel(),
+          permissionState: _grantedMonitoringPermissionState(),
+        );
+        await controller.startMonitoring();
+        final originalModel = controller.geoModel;
+        final bundle = await encodeGeoJson(const GeoJsonQrEncodeInput(
+          geoJson: _squareGeoJson,
+          generatePng: false,
+        ));
+
+        expect(await controller.reloadGeoJsonFromQr(bundle.qrTexts.single),
+            isFalse);
+        expect(controller.lastErrorMessage, isNotNull);
+        expect(controller.isMonitoring, isTrue);
+        expect(location.stopped, isFalse);
+        expect(controller.geoModel, same(originalModel));
+        expect(await notDirectory.readAsString(), 'existing file');
+      });
+    }
 
     test('reloadGeoJsonFromQrImagePicker loads QR image selection', () async {
       final tempDir =
@@ -1367,7 +1473,8 @@ void main() {
           notificationsClient: FakeLocalNotificationsClient(),
           alarmPlayer: FakeAlarmPlayer(),
         ),
-        qrImageAnalyzer: (_) async => throw Exception('user abort'),
+        qrImageAnalyzer: (_) async =>
+            throw PlatformException(code: 'cancelled'),
       );
 
       final loaded = await controller.reloadGeoJsonFromQrImagePicker();
@@ -1393,6 +1500,28 @@ void main() {
 
       expect(loaded, isFalse);
       expect(controller.lastErrorMessage, contains('Unable to load GeoJSON'));
+    });
+
+    test('QR analyzer errors in a Users path are reported instead of cancelled',
+        () async {
+      final controller = AppController(
+        stateMachine: StateMachine(config: _testConfig()),
+        locationService: FakeLocationService(),
+        fileManager: _QrImageFileManager(config: _testConfig()),
+        logger: FakeEventLogger(),
+        notifier: Notifier(
+          notificationsClient: FakeLocalNotificationsClient(),
+          alarmPlayer: FakeAlarmPlayer(),
+        ),
+        qrImageAnalyzer: (_) async => throw const FileSystemException(
+            'Unable to read image', r'C:\Users\kaito\Pictures\qr.png'),
+      );
+      addTearDown(controller.dispose);
+
+      expect(await controller.reloadGeoJsonFromQrImagePicker(), isFalse);
+      expect(controller.lastErrorMessage, contains('Unable to read image'));
+      expect(controller.lastErrorMessage,
+          contains(r'C:\Users\kaito\Pictures\qr.png'));
     });
 
     test('log list is capped at 200 entries', () {
@@ -1735,6 +1864,19 @@ class _InvalidGeoJsonFileManager extends FakeFileManager {
   }
 }
 
+class _RawGeoJsonFileManager extends FakeFileManager {
+  _RawGeoJsonFileManager({required super.config, required this.raw});
+
+  final String raw;
+
+  @override
+  Future<XFile?> pickGeoJsonFile() async => XFile.fromData(
+        utf8.encode(raw),
+        name: 'case.geojson',
+        mimeType: 'application/geo+json',
+      );
+}
+
 class _EmptyGeoJsonFileManager extends FakeFileManager {
   _EmptyGeoJsonFileManager({required super.config});
 
@@ -1769,6 +1911,12 @@ class _FakePathProviderPlatform extends PathProviderPlatform {
 
   @override
   Future<String?> getTemporaryPath() async => temporaryPath;
+}
+
+class _FailingPathProviderPlatform extends PathProviderPlatform {
+  @override
+  Future<String?> getTemporaryPath() async =>
+      throw StateError('Temporary directory unavailable');
 }
 
 class FakeEventLogger extends EventLogger {

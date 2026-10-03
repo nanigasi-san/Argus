@@ -16,6 +16,20 @@ ARGUSはGeoJSON／QRから読み込んだ範囲をスマホ上で監視する。
 - [GARMINで使う（画像付き）](docs/guides/garmin.md)
 - [ドキュメント一覧](docs/README.md)
 
+## 対応するGeoJSON
+
+スマホ・QR・Garminは、**FeatureCollection内の単一Feature・単一Polygon**を使用します。外周は閉じた穴なしの形状とし、自己交差・辺の重なり・面積0は拒否します。複数FeatureとMultiPolygonはスマホでも使えません。
+
+![スマホ・QR・Garminで使えるGeoJSONの形状と制限](docs/images/geojson_compatibility.png)
+
+| 利用先 | 頂点数 | 追加条件 |
+| --- | --- | --- |
+| スマホ | 3〜1,000点 | ファイル・QRから読み込み。短い辺・小さい面積は警告として表示 |
+| QR（AGZ1） | 3〜1,000点 | 1枚のQRの容量内で、小数6桁への丸め後も有効な形状 |
+| Garmin | 3〜100点 | 約1m単位への丸め後も有効な形状。ローカルXYがint16範囲内、AGW1データが2,048バイト以内 |
+
+頂点数は、先頭と重なる閉路の終点を除いて数えます。1,000点以内でもQRの容量に収まらない場合は生成できません。QR生成画面の対応表示は、QRから復元されるデータに基づきます。詳しい判定と形状例は[GeoJSON検証基準](docs/geojson_validation.md)・[検証レポート](docs/geojson_validation_report.md)を参照してください。
+
 ## 開発する
 
 [現行仕様](docs/spec.md)・[構成図とクラス図](docs/architecture.md)・[テスト手順](docs/tests.md)を参照してください。

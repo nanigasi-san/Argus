@@ -6,6 +6,8 @@ import 'package:crypto/crypto.dart';
 import 'package:image/image.dart' as img;
 import 'package:qr/qr.dart';
 
+import '../geo/geojson_validator.dart';
+
 /// 入力GeoJSONをQRへ変換する際の設定値。
 class GeoJsonQrEncodeInput {
   const GeoJsonQrEncodeInput({
@@ -52,6 +54,7 @@ class GeoJsonQrBundle {
     required this.minimizedGeoJson,
     required this.hashHex,
     required this.info,
+    this.validation,
   })  : qrTexts = List.unmodifiable(qrTexts),
         pngImages = List.unmodifiable(pngImages);
 
@@ -60,6 +63,10 @@ class GeoJsonQrBundle {
   final String minimizedGeoJson;
   final String? hashHex;
   final GeoJsonInfo info;
+
+  /// Validation of the geometry restored from the generated QR, including
+  /// AGZ1 coordinate rounding, so compatibility describes the shared data.
+  final GeoJsonValidationResult? validation;
 }
 
 /// QRから復元したGeoJSONと、ペイロードに含まれる元ファイル名。
@@ -80,11 +87,13 @@ class GeoJsonInfo {
 
 /// 共通の例外クラス。
 abstract class GeoJsonQrException implements Exception {
-  GeoJsonQrException(this.code, this.message, [this.cause]);
+  GeoJsonQrException(this.code, this.message,
+      [this.cause, this.validationIssue]);
 
   final String code;
   final String message;
   final Object? cause;
+  final GeoJsonValidationIssue? validationIssue;
 
   @override
   String toString() => '$code: $message${cause != null ? ' ($cause)' : ''}';
@@ -93,6 +102,9 @@ abstract class GeoJsonQrException implements Exception {
 class GeoJsonValidationException extends GeoJsonQrException {
   GeoJsonValidationException(String message, [Object? cause])
       : super('E_INVALID_GEOJSON', message, cause);
+
+  GeoJsonValidationException.fromIssue(GeoJsonValidationIssue issue)
+      : super('E_INVALID_GEOJSON', issue.code, null, issue);
 }
 
 class CompressFailedException extends GeoJsonQrException {
@@ -137,20 +149,32 @@ class InvalidScaleException extends GeoJsonQrException {
 class InvalidCoordinateException extends GeoJsonQrException {
   InvalidCoordinateException(String message, [Object? cause])
       : super('E_INVALID_COORDINATE', message, cause);
+
+  InvalidCoordinateException.fromIssue(GeoJsonValidationIssue issue)
+      : super('E_INVALID_COORDINATE', issue.code, null, issue);
 }
 
 class TooFewPointsException extends GeoJsonQrException {
   TooFewPointsException(String message) : super('E_TOO_FEW_POINTS', message);
+
+  TooFewPointsException.fromIssue(GeoJsonValidationIssue issue)
+      : super('E_TOO_FEW_POINTS', issue.code, null, issue);
 }
 
 class PolygonNotClosedException extends GeoJsonQrException {
   PolygonNotClosedException(String message)
       : super('E_POLYGON_NOT_CLOSED', message);
+
+  PolygonNotClosedException.fromIssue(GeoJsonValidationIssue issue)
+      : super('E_POLYGON_NOT_CLOSED', issue.code, null, issue);
 }
 
 class UnsupportedGeometryException extends GeoJsonQrException {
   UnsupportedGeometryException(String message)
       : super('E_UNSUPPORTED_GEOMETRY', message);
+
+  UnsupportedGeometryException.fromIssue(GeoJsonValidationIssue issue)
+      : super('E_UNSUPPORTED_GEOMETRY', issue.code, null, issue);
 }
 
 class InvalidFileNameException extends GeoJsonQrException {
@@ -209,8 +233,15 @@ extension GeoJsonQrSchemeName on GeoJsonQrScheme {
 
 /// GeoJSON文字列をQRテキスト(とPNG)へ変換する。
 Future<GeoJsonQrBundle> encodeGeoJson(GeoJsonQrEncodeInput input) async {
+  final validation = const GeoJsonValidator().validate(input.geoJson);
+  if (!validation.validForPhone) {
+    _throwPhoneValidationError(validation.errors.first);
+  }
+  if (input.scheme == GeoJsonQrScheme.agz1 && validation.hasMultiPolygon) {
+    throw UnsupportedGeometryException('E_UNSUPPORTED_GEOMETRY');
+  }
   final agzDiffText = input.scheme == GeoJsonQrScheme.agz1
-      ? _geoJsonToAgzDiffText(input.geoJson, input.sourceFileName)
+      ? _geoJsonToAgzDiffText(validation, input.sourceFileName)
       : null;
   final minifyResult = minifyGeoJson(input.geoJson);
   final minimizedBytes =
@@ -232,6 +263,17 @@ Future<GeoJsonQrBundle> encodeGeoJson(GeoJsonQrEncodeInput input) async {
 
   var qrTexts =
       _buildQrTexts(input.scheme, payload, hashHex, input.maxQrTextLength);
+  var qrValidation = validation;
+  if (input.scheme == GeoJsonQrScheme.agz1) {
+    final restored =
+        await decodeGeoJsonWithMetadata(GeoJsonQrDecodeInput(qrTexts: qrTexts));
+    final restoredValidation =
+        const GeoJsonValidator().validate(restored.geoJson);
+    if (!restoredValidation.validForPhone) {
+      _throwPhoneValidationError(restoredValidation.errors.first);
+    }
+    qrValidation = restoredValidation;
+  }
   var pngImages = <Uint8List>[];
 
   if (input.generatePng) {
@@ -259,7 +301,28 @@ Future<GeoJsonQrBundle> encodeGeoJson(GeoJsonQrEncodeInput input) async {
     minimizedGeoJson: minifyResult.minimized,
     hashHex: hashHex,
     info: minifyResult.info,
+    validation: qrValidation,
   );
+}
+
+Never _throwPhoneValidationError(GeoJsonValidationIssue issue) {
+  switch (issue.code) {
+    case 'E_TOO_FEW_POINTS':
+      throw TooFewPointsException.fromIssue(issue);
+    case 'E_POLYGON_NOT_CLOSED':
+      throw PolygonNotClosedException.fromIssue(issue);
+    case 'E_INVALID_COORDINATE':
+      throw InvalidCoordinateException.fromIssue(issue);
+    case 'E_HOLES_UNSUPPORTED':
+    case 'E_NO_POLYGON':
+    case 'E_INVALID_FEATURE_COLLECTION':
+    case 'E_INVALID_FEATURE':
+    case 'E_INVALID_GEOMETRY':
+    case 'E_SINGLE_FEATURE_POLYGON_REQUIRED':
+      throw UnsupportedGeometryException.fromIssue(issue);
+    default:
+      throw GeoJsonValidationException.fromIssue(issue);
+  }
 }
 
 bool isSupportedGeoJsonQrText(String text) {
@@ -546,59 +609,20 @@ class QrPayload {
 
 const int _agzScale = 6;
 
-String _geoJsonToAgzDiffText(String geoJson, String? sourceFileName) {
+String _geoJsonToAgzDiffText(
+    GeoJsonValidationResult validation, String? sourceFileName) {
   final fileName = _normalizeGeoJsonFileName(sourceFileName);
-  final dynamic decoded = jsonDecode(geoJson);
-  if (decoded is! Map<String, dynamic> ||
-      decoded['type'] != 'FeatureCollection') {
-    throw UnsupportedGeometryException(
-      'agz1 requires a FeatureCollection',
-    );
+  if (!validation.singleFeaturePolygon) {
+    throw UnsupportedGeometryException('E_UNSUPPORTED_GEOMETRY');
   }
-  final features = decoded['features'];
-  if (features is! List || features.length != 1) {
-    throw UnsupportedGeometryException(
-      'agz1 requires exactly one Feature',
-    );
-  }
-  final feature = features.single;
-  if (feature is! Map<String, dynamic>) {
-    throw UnsupportedGeometryException('Feature must be an object');
-  }
-  final geometry = feature['geometry'];
-  if (geometry is! Map<String, dynamic> || geometry['type'] != 'Polygon') {
-    throw UnsupportedGeometryException('agz1 supports only Polygon geometry');
-  }
-  final coordinates = geometry['coordinates'];
-  if (coordinates is! List || coordinates.length != 1) {
-    throw UnsupportedGeometryException(
-      'agz1 supports exactly one exterior ring and no holes',
-    );
-  }
-  final ring = coordinates.single;
-  if (ring is! List) {
-    throw InvalidCoordinateException('Polygon ring must be a list');
-  }
-  if (ring.length < 4) {
-    throw TooFewPointsException(
-      'Polygon must contain at least four points including closure',
-    );
-  }
-
-  final points = ring.map(_readCoordinate).toList(growable: false);
-  if (points.first.lon != points.last.lon ||
-      points.first.lat != points.last.lat) {
-    throw PolygonNotClosedException(
-      'Polygon final point must match its first point',
-    );
-  }
+  final points = validation.model!.polygons.single.points;
 
   const factor = 1000000;
   final integerPoints = points
       .map(
         (point) => _IntegerCoordinate(
-          (point.lon * factor).round(),
-          (point.lat * factor).round(),
+          (point.longitude * factor).round(),
+          (point.latitude * factor).round(),
         ),
       )
       .toList(growable: false);
@@ -650,18 +674,6 @@ DecodedGeoJson _agzDiffTextToGeoJson(String diffText) {
     points.add(current);
     previous = current;
   }
-  if (points.length < 4) {
-    throw TooFewPointsException(
-      'Polygon must contain at least four points including closure',
-    );
-  }
-  if (points.first.lon != points.last.lon ||
-      points.first.lat != points.last.lat) {
-    throw PolygonNotClosedException(
-      'Polygon final point must match its first point',
-    );
-  }
-
   var factor = 1.0;
   for (var i = 0; i < scale; i++) {
     factor *= 10;
@@ -720,23 +732,6 @@ String _normalizeGeoJsonFileName(String? value) {
   return normalized;
 }
 
-_Coordinate _readCoordinate(dynamic value) {
-  if (value is! List || value.length < 2) {
-    throw InvalidCoordinateException('Coordinate must contain lon and lat');
-  }
-  final lon = value[0];
-  final lat = value[1];
-  if (lon is! num || lat is! num) {
-    throw InvalidCoordinateException('Coordinate values must be numbers');
-  }
-  final lonValue = lon.toDouble();
-  final latValue = lat.toDouble();
-  if (!lonValue.isFinite || !latValue.isFinite) {
-    throw InvalidCoordinateException('Coordinate values must be finite');
-  }
-  return _Coordinate(lonValue, latValue);
-}
-
 _IntegerCoordinate _parseIntegerCoordinate(String value) {
   final parts = value.split(',');
   if (parts.length != 2) {
@@ -748,13 +743,6 @@ _IntegerCoordinate _parseIntegerCoordinate(String value) {
     throw InvalidCoordinateException('Coordinate values must be integers');
   }
   return _IntegerCoordinate(lon, lat);
-}
-
-class _Coordinate {
-  const _Coordinate(this.lon, this.lat);
-
-  final double lon;
-  final double lat;
 }
 
 class _IntegerCoordinate {

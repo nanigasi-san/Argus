@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:argus/garmin/garmin_course_payload.dart';
+import 'package:argus/qr/geojson_qr_codec.dart';
 import 'package:argus/geo/geo_model.dart';
 import 'package:argus/platform/garmin_transfer_client.dart';
 import 'package:argus/platform/permission_coordinator.dart';
@@ -13,6 +16,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
+import 'package:file_selector/file_selector.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'support/app_harness.dart';
 
@@ -22,6 +27,71 @@ void main() {
   group('Mobile UI smoke', () {
     setUpAll(() async {
       await binding.convertFlutterSurfaceToImage();
+    });
+
+    testWidgets(
+        'Garmin QR image uses native analysis and preserves the phone course',
+        (tester) async {
+      final bundle = await encodeGeoJson(const GeoJsonQrEncodeInput(
+        geoJson:
+            '{"type":"FeatureCollection","features":[{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[140,36],[140.001,36],[140,36.001],[140,36]]]}}]}',
+        sourceFileName: 'image_course.geojson',
+        scheme: GeoJsonQrScheme.agz1,
+        generatePng: true,
+      ));
+      final image =
+          File('${(await getTemporaryDirectory()).path}/argus_e2e_qr.png');
+      await image.writeAsBytes(bundle.pngImages.single);
+      final controller = HarnessBuilder.buildController(
+        hasGeoJson: true,
+        fileManager: _QrImageFileManager(image.path),
+        permissionCoordinator: HarnessPermissionCoordinator(
+          gateway: const HarnessPermissionGateway(
+              cameraStatusValue: PermissionStatus.denied),
+        ),
+      );
+      final phoneModel = controller.geoModel;
+      addTearDown(() async {
+        controller.dispose();
+        if (await image.exists()) await image.delete();
+      });
+      await tester.pumpWidget(ChangeNotifierProvider.value(
+        value: controller,
+        child: MaterialApp(
+            theme: AppTheme.light(),
+            home: const GarminTransferPage(client: _ScreenshotGarminClient())),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('QRで復元'));
+      await tester.pumpAndSettle();
+      expect(find.text('QR画像を選択'), findsOneWidget);
+      await _tryTakeScreenshot(binding, 'garmin-qr-image-selection');
+      await tester.tap(find.text('QR画像を選択'));
+      const isIosSimulator = bool.fromEnvironment('ARGUS_IOS_SIMULATOR');
+      // Image analysis is performed by the OS plugin, outside Flutter frames.
+      for (var i = 0;
+          i < 100 &&
+              find.text('image_course').evaluate().isEmpty &&
+              find.textContaining('iOS Simulator').evaluate().isEmpty;
+          i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await tester.pumpAndSettle();
+      expect(identical(controller.geoModel, phoneModel), isTrue);
+      if (isIosSimulator) {
+        // mobile_scanner explicitly disables Vision image analysis in Simulator.
+        expect(find.textContaining('iOS Simulator'), findsOneWidget);
+        await tester.tap(find.byType(BackButton));
+        await tester.pumpAndSettle();
+        expect(find.text('argus'), findsOneWidget);
+        expect(find.text('GARMINへ転送しました'), findsNothing);
+        return;
+      }
+      expect(find.text('image_course'), findsOneWidget);
+      await tester.ensureVisible(find.text('GARMINに送信'));
+      await tester.tap(find.text('GARMINに送信'));
+      await tester.pumpAndSettle();
+      expect(find.text('GARMINへ転送しました'), findsOneWidget);
     });
 
     testWidgets('Garmin transfer before and after acknowledged send',
@@ -219,6 +289,14 @@ void main() {
       expect(find.text('設定'), findsWidgets);
     });
   });
+}
+
+class _QrImageFileManager extends HarnessFileManager {
+  _QrImageFileManager(this.imagePath)
+      : super(config: HarnessBuilder.createConfig());
+  final String imagePath;
+  @override
+  Future<XFile?> pickQrImageFile() async => XFile(imagePath);
 }
 
 class _ScreenshotGarminClient extends GarminTransferClient {

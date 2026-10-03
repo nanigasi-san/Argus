@@ -85,18 +85,19 @@ class _QrScannerPageState extends State<QrScannerPage>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    if (!_usesRealScanner || !_cameraGranted || _isProcessing) {
+    if (!_usesRealScanner || _isProcessing) {
       return;
     }
+    if (state == AppLifecycleState.resumed && _awaitingSettingsReturn) {
+      _awaitingSettingsReturn = false;
+      unawaited(_prepareScanner());
+      return;
+    }
+    if (!_cameraGranted) return;
 
     switch (state) {
       case AppLifecycleState.resumed:
-        if (_awaitingSettingsReturn) {
-          _awaitingSettingsReturn = false;
-          unawaited(_prepareScanner());
-        } else {
-          unawaited(_resumeScanner());
-        }
+        unawaited(_resumeScanner());
       case AppLifecycleState.inactive:
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
@@ -134,7 +135,7 @@ class _QrScannerPageState extends State<QrScannerPage>
     await _startScanner();
   }
 
-  Future<void> _startScanner() async {
+  Future<void> _startScanner({bool clearError = true}) async {
     if (!mounted) {
       return;
     }
@@ -150,7 +151,7 @@ class _QrScannerPageState extends State<QrScannerPage>
 
     setState(() {
       _scannerState = _QrScannerState.preparingScanner;
-      _errorMessage = null;
+      if (clearError) _errorMessage = null;
     });
     _isStartingScanner = true;
 
@@ -187,7 +188,7 @@ class _QrScannerPageState extends State<QrScannerPage>
     if (!mounted || !_cameraGranted || _scannerState == _QrScannerState.error) {
       return;
     }
-    await _startScanner();
+    await _startScanner(clearError: false);
   }
 
   Future<void> _retry() async {
@@ -228,57 +229,79 @@ class _QrScannerPageState extends State<QrScannerPage>
       return;
     }
 
-    final appController = Provider.of<AppController>(context, listen: false);
-
     setState(() {
       _isProcessing = true;
       _errorMessage = null;
     });
-    await _stopScanner();
-
     try {
-      if (!isSupportedGeoJsonQrText(qrText)) {
-        setState(() {
-          _errorMessage = 'GeoJSON QR コードではありません。';
-          _isProcessing = false;
-        });
+      await _stopScanner();
+      if (!mounted) return;
+      await _importQrText(qrText);
+    } catch (e) {
+      _handleImportError(e);
+    }
+  }
+
+  Future<void> _selectQrImage() async {
+    if (_isProcessing) return;
+    final appController = context.read<AppController>();
+    setState(() {
+      _isProcessing = true;
+      if (_scannerState == _QrScannerState.ready) _errorMessage = null;
+    });
+    try {
+      if (_cameraGranted) await _stopScanner();
+      if (!mounted) return;
+      final qrText = await appController.pickQrTextFromImage();
+      if (!mounted) return;
+      if (qrText == null) {
+        setState(() => _isProcessing = false);
         unawaited(_resumeScanner());
         return;
       }
-
-      final loaded = widget.onQrScanned == null
-          ? await appController.reloadGeoJsonFromQr(qrText)
-          : await widget.onQrScanned!(qrText).then((_) => true);
-
-      if (mounted && loaded) {
-        Navigator.of(context).pop();
-      } else if (mounted && !loaded) {
-        setState(() {
-          _errorMessage =
-              appController.lastErrorMessage ?? 'GeoJSON の読込に失敗しました。';
-          _isProcessing = false;
-        });
-        unawaited(_resumeScanner());
-      }
-    } on GeoJsonQrException catch (e) {
-      setState(() {
-        _errorMessage = 'QR コードの復元に失敗しました: ${e.message}';
-        _isProcessing = false;
-      });
-      unawaited(_resumeScanner());
-    } on FormatException catch (e) {
-      setState(() {
-        _errorMessage = 'GeoJSON の読込に失敗しました: ${e.message}';
-        _isProcessing = false;
-      });
-      unawaited(_resumeScanner());
+      await _importQrText(qrText);
     } catch (e) {
+      _handleImportError(e);
+    }
+  }
+
+  Future<void> _importQrText(String qrText) async {
+    final appController = context.read<AppController>();
+    if (!isSupportedGeoJsonQrText(qrText)) {
       setState(() {
-        _errorMessage = 'QR コードの処理中にエラーが発生しました: $e';
+        _errorMessage = 'GeoJSON QR コードではありません。';
+        _isProcessing = false;
+      });
+      unawaited(_resumeScanner());
+      return;
+    }
+
+    final loaded = widget.onQrScanned == null
+        ? await appController.reloadGeoJsonFromQr(qrText)
+        : await widget.onQrScanned!(qrText).then((_) => true);
+
+    if (mounted && loaded) {
+      Navigator.of(context).pop();
+    } else if (mounted && !loaded) {
+      setState(() {
+        _errorMessage = appController.lastErrorMessage ?? 'GeoJSON の読込に失敗しました。';
         _isProcessing = false;
       });
       unawaited(_resumeScanner());
     }
+  }
+
+  void _handleImportError(Object error) {
+    if (!mounted) return;
+    setState(() {
+      _errorMessage = switch (error) {
+        GeoJsonQrException() => 'QR コードの復元に失敗しました: ${error.message}',
+        FormatException() => 'GeoJSON の読込に失敗しました: ${error.message}',
+        _ => 'QR コードの処理中にエラーが発生しました: $error',
+      };
+      _isProcessing = false;
+    });
+    unawaited(_resumeScanner());
   }
 
   String _scannerErrorMessage(MobileScannerException error) {
@@ -303,6 +326,21 @@ class _QrScannerPageState extends State<QrScannerPage>
     return Scaffold(
       appBar: AppBar(
         title: const Text('QRコードを読み込む'),
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          child: FilledButton.icon(
+            onPressed: _isProcessing ||
+                    _scannerState == _QrScannerState.checkingPermission ||
+                    _scannerState == _QrScannerState.preparingScanner
+                ? null
+                : _selectQrImage,
+            icon: const Icon(Icons.image_search_outlined),
+            label: const Text('QR画像を選択'),
+          ),
+        ),
       ),
       body: Stack(
         children: [
