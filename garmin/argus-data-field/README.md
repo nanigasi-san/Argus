@@ -2,11 +2,13 @@
 
 利用者向けの操作手順は[GARMIN初心者ガイド](../../docs/guides/garmin.md)、設計は[構成図](../../docs/architecture.md)を参照。
 
-Connect IQ Storeへの初回提出版は0.1.0で、対象はForeAthlete 55 / Forerunner 55のみ。現在は審査待ち。
-開発用manifestの0.6.0から提出用manifestを作成して書き出しており、監視と削除ACKの実装は同じ。
-提出URL、対象機種、署名検証は[0.1.0の提出記録](../../docs/garmin_store/0.1.0_submission.md)を参照。
+Connect IQ Storeへの初回提出版0.1.0はForeAthlete 55 / Forerunner 55向け。
+機種追加の更新版0.1.1は、Forerunner・fēnix系37製品IDを試験的な対象に含める。
+Forerunner 55 / ForeAthlete 55では実機でテストしている。他の対応機種は実機未検証。
+開発用manifestは0.6.0で、提出用manifestのバージョンだけを変更して書き出す。監視と削除ACKの実装は共通。
+初回の[0.1.0提出記録](../../docs/garmin_store/0.1.0_submission.md)と、[0.1.1の機種追加・提出記録](../../docs/garmin_store/2026-10-07_experimental_devices.md)を参照。
 
-Forerunner 55・165・255・265・945 LTE・955・965とfēnix 6・7・8向け。製品IDの一覧と初回セットアップは[対応機種ガイド](../../docs/garmin_supported_devices.md)を参照。Flutter ARGUS から送られた単一 Polygon（最大100頂点）を
+Forerunner 55・165・245・255・265・745・945・945 LTE・955・965とfēnix 5 Plus・6・7・8向け。API下限は3.2.0。製品IDの一覧と初回セットアップは[対応機種ガイド](../../docs/garmin_supported_devices.md)を参照。Flutter ARGUS から送られた単一 Polygon（最大100頂点）を
 Connect IQ Background で受信し、Storageへ保存、読み戻しとAdler-32照合後にACKを返す。
 通常のRunのデータ画面へ追加し、Runのタイマー開始後にGPSが使える状態で
 境界の内外を監視する。上段には転送したファイル名を表示し、長い名前は省略する。
@@ -35,14 +37,14 @@ Run中の新しい境界送信は対象外。次のRunで監視するにはス�
 削除ACKを確認する。表示と警告停止への反映には最大約10秒かかり得る。
 終了イベントを取り逃した場合も、活動完了イベントまたは異なるRunの開始時刻で削除する。
 
-範囲削除を確認する停止コマンドは開発版Data Field 0.6.0以降と、Connect IQ Store版0.1.0で対応する。旧版は範囲送信に成功しても
+範囲削除を確認する停止コマンドは開発版Data Field 0.6.0以降と、Connect IQ Store版0.1.0以降で対応する。旧版は範囲送信に成功しても
 新しい停止コマンドへ成功ACKを返さないため、時計側Data Fieldを更新してから再試行する。
 削除ACKが得られるまで、監視が停止したとは扱わない。
 
 Data FieldはGPS精度や電池・OSの制約を受けるため、安全を保証する機能ではない。
 競技中は画面と周囲の状況を自分でも確認すること。
 
-SDK 9.2.0 / `fr55` でのビルド例（他の製品IDではSDK Managerで端末定義を導入して `-d` を変更）:
+SDK 9.2.0 / `fr55`でのビルド例。他の製品IDではSDK Managerで端末定義を導入し、`-d`を変更する。
 
 ```sh
 monkeyc -f garmin/argus-data-field/monkey.jungle -d fr55 \

@@ -1,0 +1,1 @@
+0.1.1の試験対応機種にForerunnerとfēnixの登録済みモデルを追加しました。Forerunner 55／ForeAthlete 55の実機でテストしています。他の対応機種は実機未検証です。

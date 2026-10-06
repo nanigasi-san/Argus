@@ -1,0 +1,1 @@
+Added listed Forerunner and fēnix models as experimental targets for 0.1.1. Tested on a physical Forerunner 55 / ForeAthlete 55. Other supported watches have not been tested on physical devices.
