@@ -27,6 +27,7 @@ dependencies:
   gal: ^2.3.2
   package_info_plus: ^10.1.0
   upgrader: ^13.5.0
+  image_picker: ^1.2.3
 
 dev_dependencies:
   flutter_test:

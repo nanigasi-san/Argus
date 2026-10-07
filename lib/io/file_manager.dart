@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
+import 'package:flutter/foundation.dart';
+import 'package:image_picker/image_picker.dart' show ImagePicker, ImageSource;
 import 'package:path_provider/path_provider.dart';
 
 import 'config.dart';
@@ -45,8 +47,14 @@ class FileManager {
     return await _pickFile();
   }
 
-  /// QRコード画像ファイルを選択するファイルピッカーを開きます。
+  /// QR画像を選択します。iOSでは写真ライブラリ、他のOSではファイルを開きます。
   Future<XFile?> pickQrImageFile() async {
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      return await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        requestFullMetadata: false,
+      );
+    }
     return await _pickFile(
       acceptedTypeGroups: const [
         XTypeGroup(

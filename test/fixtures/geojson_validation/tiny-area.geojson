@@ -1,0 +1,34 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "tiny-area"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              139,
+              35
+            ],
+            [
+              139.00005,
+              35
+            ],
+            [
+              139,
+              35.00005
+            ],
+            [
+              139,
+              35
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}

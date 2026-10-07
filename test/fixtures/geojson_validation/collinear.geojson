@@ -1,0 +1,15 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "name": "collinear" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [[139, 35], [139.002, 35], [139.004, 35], [139, 35]]
+        ]
+      }
+    }
+  ]
+}

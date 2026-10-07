@@ -1,8 +1,10 @@
 # Garminランニング系・fēnix対応の差分調査（2026-09-25）
 
-この文書は追加機種を実装する前の調査記録。下記の「現行コード」は調査当時の状態で、現在の登録機種・API下限・検証状況は[対応機種ガイド](garmin_supported_devices.md)と[manifest](../garmin/argus-data-field/manifest.xml)を参照。
+この文書は2026年9月25日の調査記録。下記の「現行コード」や対象方針は調査当時の状態で、現在の登録機種・API下限・検証状況は[対応機種ガイド](garmin_supported_devices.md)と[manifest](../garmin/argus-data-field/manifest.xml)を参照。
 
-対象はForerunner/ForeAthleteなどのランニング向け腕時計とfēnixのうち、**Forerunner 55と同じConnect IQ API 3.4以上の機種**。API 3.3以下やEdge、Venu、ハンディGPSは今回の対象外。調査時点のARGUS Data Fieldは `fr55` のみをmanifestに登録し、API下限3.2、Android側Garmin Connect、通常Runのデータ画面を前提としていた。現在は複数製品IDを登録し、API下限は3.4で、iPhone転送にも対応している。**追加機種でのビルド成功は動作保証ではない。**
+2026年10月7日、[Issue #110](https://github.com/nanigasi-san/Argus/issues/110)の機種を試験的な配布対象に含める方針へ変更した。API下限を使用機能に必要な3.2.0へ下げ、既存30製品IDにForerunner 245 / Music・745・945とfēnix 5 Plus / 5S Plus / 5X Plusの7製品IDを追加した。Forerunner 55 / ForeAthlete 55では実機でテストしている。他の36製品IDは実機未検証。全37製品IDのBackground電話メッセージ受信とStorage操作への対応は、Garmin公式API資料とSDK端末定義で確認した。API 3.3世代の`fr245`と`fenix5plus`の通常ビルドもSDK 9.2.0で成功した。通常のfēnix 5 / 5S / 5Xは必要機能に対応せず、引き続き対象外。
+
+調査時の対象はForerunner/ForeAthleteなどのランニング向け腕時計とfēnixのうち、Forerunner 55と同じConnect IQ API 3.4以上の機種。API 3.3以下やEdge、Venu、ハンディGPSは当時の対象外。調査時点のARGUS Data Fieldは`fr55`のみをmanifestに登録し、API下限3.2、Android側Garmin Connect、通常Runのデータ画面を前提としていた。追加機種でのビルド成功は動作保証ではない。
 
 ## 結論と候補
 

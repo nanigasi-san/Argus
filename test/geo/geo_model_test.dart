@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:argus/geo/geo_model.dart';
+import 'package:argus/geo/geojson_validator.dart';
 
 void main() {
   group('GeoPolygon', () {
@@ -103,34 +104,50 @@ void main() {
           'type': 'FeatureCollection',
           'features': [
             {
+              'type': 'Feature',
               'geometry': {
                 'type': 'Polygon',
                 'coordinates': [
                   [
-                    pair,
                     [139, 35],
-                    [139.01, 35.01]
+                    pair,
+                    [139.01, 35.01],
+                    [139, 35.01],
+                    [139, 35],
                   ]
                 ]
               }
             }
           ],
         });
+        final result = const GeoJsonValidator().validate(raw);
+        expect(result.errors.single.code, 'E_INVALID_COORDINATE',
+            reason: '$pair');
         expect(() => GeoModel.fromGeoJson(raw), throwsFormatException,
             reason: '$pair');
       }
     });
 
     test('rejects nonfinite coordinates decoded from JSON exponents', () {
-      const raw = '{"features":[{"geometry":{"type":"Polygon",'
-          '"coordinates":[[[1e400,35],[139,35],[139,36]]]}}]}';
-      expect(() => GeoModel.fromGeoJson(raw), throwsFormatException);
+      for (final position in ['[1e400,35]', '[139,1e400]']) {
+        final raw = '{"type":"FeatureCollection","features":'
+            '[{"type":"Feature","geometry":{"type":"Polygon",'
+            '"coordinates":[[[139,35],$position,[139.01,35.01],'
+            '[139,35.01],[139,35]]]}}]}';
+        final result = const GeoJsonValidator().validate(raw);
+        expect(result.errors.single.code, 'E_INVALID_COORDINATE',
+            reason: position);
+        expect(() => GeoModel.fromGeoJson(raw), throwsFormatException,
+            reason: position);
+      }
     });
 
-    test('preserves exterior-only interpretation and optional altitude', () {
+    test('accepts optional altitude in a valid exterior ring', () {
       final model = GeoModel.fromGeoJson(jsonEncode({
+        'type': 'FeatureCollection',
         'features': [
           {
+            'type': 'Feature',
             'properties': {'name': 'area', 'version': 2},
             'geometry': {
               'type': 'Polygon',
@@ -138,12 +155,8 @@ void main() {
                 [
                   [139, 35, 5],
                   [139.01, 35, 6],
-                  [139, 35.01, 7]
-                ],
-                [
-                  [139.001, 35.001],
-                  [139.002, 35.001],
-                  [139.001, 35.002]
+                  [139, 35.01, 7],
+                  [139, 35, 5]
                 ],
               ]
             },
@@ -217,7 +230,7 @@ void main() {
       expect(model.polygons.first.version, 1);
     });
 
-    test('parses GeoJSON FeatureCollection with MultiPolygon', () {
+    test('rejects GeoJSON FeatureCollection with MultiPolygon', () {
       const geoJson = '''
       {
         "type": "FeatureCollection",
@@ -239,9 +252,7 @@ void main() {
       }
       ''';
 
-      final model = GeoModel.fromGeoJson(geoJson);
-      expect(model.polygons.length, 2);
-      expect(model.hasGeometry, true);
+      expect(() => GeoModel.fromGeoJson(geoJson), throwsFormatException);
     });
 
     test('handles empty FeatureCollection', () {
@@ -252,9 +263,7 @@ void main() {
       }
       ''';
 
-      final model = GeoModel.fromGeoJson(geoJson);
-      expect(model.polygons, isEmpty);
-      expect(model.hasGeometry, false);
+      expect(() => GeoModel.fromGeoJson(geoJson), throwsFormatException);
     });
 
     test('handles GeoJSON with unsupported geometry types', () {
@@ -280,9 +289,7 @@ void main() {
       }
       ''';
 
-      final model = GeoModel.fromGeoJson(geoJson);
-      // Should only include Polygon, skip Point
-      expect(model.polygons.length, 1);
+      expect(() => GeoModel.fromGeoJson(geoJson), throwsFormatException);
     });
 
     test('handles polygons with insufficient points', () {
@@ -301,9 +308,7 @@ void main() {
       }
       ''';
 
-      final model = GeoModel.fromGeoJson(geoJson);
-      // Should skip polygons with less than 3 points
-      expect(model.polygons, isEmpty);
+      expect(() => GeoModel.fromGeoJson(geoJson), throwsFormatException);
     });
 
     test('handles missing properties', () {
@@ -344,8 +349,7 @@ void main() {
       }
       ''';
 
-      final model = GeoModel.fromGeoJson(geoJson);
-      expect(model.polygons, isEmpty);
+      expect(() => GeoModel.fromGeoJson(geoJson), throwsFormatException);
     });
   });
 }

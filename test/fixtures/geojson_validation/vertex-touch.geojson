@@ -1,0 +1,46 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "vertex-touch"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              139,
+              35
+            ],
+            [
+              139.004,
+              35
+            ],
+            [
+              139.004,
+              35.004
+            ],
+            [
+              139.002,
+              35.002
+            ],
+            [
+              139,
+              35.004
+            ],
+            [
+              139.002,
+              35.002
+            ],
+            [
+              139,
+              35
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}

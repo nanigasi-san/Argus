@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:argus/app_controller.dart';
 import 'package:argus/garmin/garmin_course_payload.dart';
@@ -7,6 +8,7 @@ import 'package:argus/geo/geo_model.dart';
 import 'package:argus/platform/garmin_transfer_client.dart';
 import 'package:argus/platform/notifier.dart';
 import 'package:argus/platform/permission_coordinator.dart';
+import 'package:argus/qr/geojson_qr_codec.dart';
 import 'package:argus/state_machine/state_machine.dart';
 import 'package:argus/ui/garmin_transfer_page.dart';
 import 'package:file_selector/file_selector.dart';
@@ -28,6 +30,7 @@ class _PendingGarminClient extends GarminTransferClient {
   int sendCount = 0;
   int resetCount = 0;
   String? sentDeviceId;
+  GarminCoursePayload? sentPayload;
 
   @override
   Future<List<GarminDevice>> getDevices() async => const [
@@ -39,6 +42,7 @@ class _PendingGarminClient extends GarminTransferClient {
       GarminDevice device, GarminCoursePayload payload) {
     sendCount += 1;
     sentDeviceId = device.id;
+    sentPayload = payload;
     return completion.future;
   }
 
@@ -110,12 +114,25 @@ class _SelectableFileManager extends FakeFileManager {
   _SelectableFileManager({required super.config});
 
   XFile? selectedFile;
+  XFile? selectedImage;
+  Object? fileError;
 
   @override
-  Future<XFile?> pickGeoJsonFile() async => selectedFile;
+  Future<XFile?> pickGeoJsonFile() async {
+    if (fileError != null) throw fileError!;
+    return selectedFile;
+  }
+
+  @override
+  Future<XFile?> pickQrImageFile() async => selectedImage;
 }
 
 class _GrantedPermissionCoordinator extends PermissionCoordinator {
+  @override
+  Future<CameraPermissionState> ensureCameraPermission(
+          {bool openSettingsIfNeeded = false}) async =>
+      const CameraPermissionState(status: PermissionStatus.denied);
+
   @override
   Future<MonitoringPermissionState> refreshMonitoringPermissionState() async =>
       const MonitoringPermissionState(
@@ -140,7 +157,7 @@ Future<
       AppController controller,
       FakeLocationService location,
       _SelectableFileManager files
-    })> _monitoringController() async {
+    })> _monitoringController({QrImageAnalyzer? qrImageAnalyzer}) async {
   final config = createTestConfig();
   final files = _SelectableFileManager(config: config);
   final location = FakeLocationService();
@@ -156,6 +173,7 @@ Future<
     ),
     permissionCoordinator: _GrantedPermissionCoordinator(),
     compassService: FakeCompassService(),
+    qrImageAnalyzer: qrImageAnalyzer,
   );
   controller.debugSeed(
       config: config, geoJson: GeoModel.fromGeoJson(_phoneGeoJson));
@@ -215,6 +233,113 @@ Future<void> _selectSecondWatch(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+      'QR image selects the embedded course without changing phone monitoring',
+      (tester) async {
+    final bundle = await encodeGeoJson(const GeoJsonQrEncodeInput(
+      geoJson: _watchGeoJson,
+      sourceFileName: 'watch.v2.geojson',
+      scheme: GeoJsonQrScheme.agz1,
+      generatePng: false,
+    ));
+    String? analyzedPath;
+    final setup = await _monitoringController(qrImageAnalyzer: (path) async {
+      analyzedPath = path;
+      return bundle.qrTexts.single;
+    });
+    addTearDown(setup.controller.dispose);
+    setup.files.selectedImage = XFile('selected_qr.png');
+    final client = _PendingGarminClient();
+    await tester.pumpWidget(ChangeNotifierProvider.value(
+      value: setup.controller,
+      child: MaterialApp(home: GarminTransferPage(client: client)),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('QRで復元'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('QR画像を選択'));
+    await tester.runAsync(() async {
+      for (var i = 0;
+          i < 100 && find.text('watch.v2').evaluate().isEmpty;
+          i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        await tester.pump();
+      }
+    });
+    await tester.pumpAndSettle();
+    expect(analyzedPath, 'selected_qr.png');
+    expect(find.text('watch.v2'), findsOneWidget);
+    expect(setup.controller.isMonitoring, isTrue);
+    expect(setup.location.hasStopped, isFalse);
+    expect(
+        setup.controller.geoModel.polygons.single.points.first.longitude, 139);
+    await tester.ensureVisible(find.text('GARMINに送信'));
+    await tester.tap(find.text('GARMINに送信'));
+    await tester.pumpAndSettle();
+    expect(find.text('スマホと異なる範囲を送りますか？'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'GARMINへ送信'));
+    await tester.pump();
+    expect(client.sendCount, 1);
+    expect(client.sentPayload!.displayName, 'watch.v2');
+    expect(client.sentPayload!.originLonE7 / 1e7, closeTo(140, 0.001));
+    client.completion.complete(const GarminTransferResult(
+      deviceName: 'ForeAthlete 55',
+      elapsedMs: 50,
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('GARMINへ転送しました'), findsOneWidget);
+  });
+
+  for (final outcome in ['cancel', 'no QR', 'invalid QR']) {
+    testWidgets(
+        'QR image $outcome keeps the selected course and phone monitoring',
+        (tester) async {
+      var analyzed = false;
+      final setup = await _monitoringController(qrImageAnalyzer: (_) async {
+        analyzed = true;
+        return outcome == 'invalid QR' ? 'gjz1:invalid_payload' : null;
+      });
+      addTearDown(setup.controller.dispose);
+      if (outcome != 'cancel') setup.files.selectedImage = XFile('bad.png');
+      final client = _PendingGarminClient();
+      await tester.pumpWidget(ChangeNotifierProvider.value(
+        value: setup.controller,
+        child: MaterialApp(home: GarminTransferPage(client: client)),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('QRで復元'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('QR画像を選択'));
+      if (outcome == 'invalid QR') {
+        await tester.runAsync(() async {
+          for (var i = 0;
+              i < 100 &&
+                  find.textContaining('QR コードの復元に失敗しました').evaluate().isEmpty;
+              i++) {
+            await Future<void>.delayed(const Duration(milliseconds: 20));
+            await tester.pump();
+          }
+        });
+      }
+      await tester.pumpAndSettle();
+      expect(analyzed, outcome != 'cancel');
+      expect(find.text('QRコードを読み込む'), findsOneWidget);
+      if (outcome != 'cancel') {
+        expect(
+            find.textContaining(outcome == 'no QR'
+                ? 'QRコード画像からQRコードを読み取れませんでした。'
+                : 'QR コードの復元に失敗しました'),
+            findsOneWidget);
+      }
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expect(find.text('argus'), findsOneWidget);
+      expect(setup.controller.isMonitoring, isTrue);
+      expect(setup.location.hasStopped, isFalse);
+      expect(client.sendCount, 0);
+    });
+  }
+
   for (final staleFails in [false, true]) {
     testWidgets('latest device search wins (stale error: $staleFails)',
         (tester) async {
@@ -295,6 +420,35 @@ void main() {
         setup.controller.geoModel.polygons.single.points.first.longitude, 139);
   });
 
+  for (final cancelled in [false, true]) {
+    testWidgets(
+        cancelled
+            ? 'platform file cancellation keeps the Garmin page error-free'
+            : 'Garmin file errors in a Users path are shown', (tester) async {
+      final setup = await _monitoringController();
+      addTearDown(setup.controller.dispose);
+      setup.files.fileError = cancelled
+          ? PlatformException(code: 'user_cancelled')
+          : const FileSystemException(
+              'Unable to read file', r'C:\Users\kaito\course.geojson');
+      await tester.pumpWidget(ChangeNotifierProvider.value(
+        value: setup.controller,
+        child: MaterialApp(
+            home: GarminTransferPage(client: _PendingGarminClient())),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('ファイルを選ぶ'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Unable to read file'),
+          cancelled ? findsNothing : findsOneWidget);
+      expect(find.textContaining(r'C:\Users\kaito\course.geojson'),
+          cancelled ? findsNothing : findsOneWidget);
+      expect(setup.controller.isMonitoring, isTrue);
+      expect(setup.location.hasStopped, isFalse);
+    });
+  }
+
   testWidgets(
       'invalid Garmin file keeps the previous course and phone monitoring',
       (tester) async {
@@ -316,6 +470,54 @@ void main() {
     expect(setup.controller.isMonitoring, isTrue);
     expect(setup.location.hasStopped, isFalse);
     expect(find.text('argus'), findsOneWidget);
+  });
+
+  testWidgets('101-vertex candidate is shown but never sent to Garmin',
+      (tester) async {
+    final setup = await _monitoringController();
+    addTearDown(setup.controller.dispose);
+    final client = _PendingGarminClient();
+    setup.files.selectedFile = XFile.fromData(
+      utf8.encode(File('test/fixtures/geojson_validation/vertices-101.geojson')
+          .readAsStringSync()),
+      name: 'vertices-101.geojson',
+    );
+    await tester.pumpWidget(ChangeNotifierProvider.value(
+      value: setup.controller,
+      child: MaterialApp(home: GarminTransferPage(client: client)),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ファイルを選ぶ'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Garmin非対応'), findsOneWidget);
+    final send = tester
+        .widget<FilledButton>(find.widgetWithText(FilledButton, 'GARMINに送信'));
+    expect(send.onPressed, isNull);
+    expect(client.sendCount, 0);
+    expect(setup.controller.isMonitoring, isTrue);
+  });
+
+  testWidgets('hole file is rejected without replacing the selected course',
+      (tester) async {
+    final setup = await _monitoringController();
+    addTearDown(setup.controller.dispose);
+    final client = _PendingGarminClient();
+    setup.files.selectedFile = XFile.fromData(
+      utf8.encode(File('test/fixtures/geojson_validation/hole.geojson')
+          .readAsStringSync()),
+      name: 'hole.geojson',
+    );
+    await tester.pumpWidget(ChangeNotifierProvider.value(
+      value: setup.controller,
+      child: MaterialApp(home: GarminTransferPage(client: client)),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ファイルを選ぶ'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('穴のあるPolygon'), findsOneWidget);
+    expect(find.text('argus'), findsOneWidget);
+    expect(client.sendCount, 0);
+    expect(setup.controller.isMonitoring, isTrue);
   });
 
   testWidgets(
@@ -454,8 +656,7 @@ void main() {
     expect(find.text('GARMINのACKを待機中'), findsNothing);
     expect(find.byKey(const Key('garmin-ack-progress')), findsNothing);
     expect(notifications.shownIds, [1002]);
-    expect(notifications.showCalls.single.body,
-        'ForeAthlete 55にargusを保存しました。');
+    expect(notifications.showCalls.single.body, 'ForeAthlete 55にargusを保存しました。');
   });
 
   testWidgets('does not notify when GARMIN transfer fails', (tester) async {

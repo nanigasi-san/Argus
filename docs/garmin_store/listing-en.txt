@@ -1,0 +1,15 @@
+ARGUS is a Data Field for checking whether you are inside a predefined area during orienteering and similar activities. Add it to a data screen of your regular Run activity. Transfer a boundary from the ARGUS phone app before starting; monitoring and alerts then run on the watch without carrying the phone. Garmin integration is experimental. Tested on a physical Forerunner 55 / ForeAthlete 55. Other supported watches are included experimentally and have not been tested on physical devices. The companion ARGUS phone app must be version 0.9.0 or later and support Garmin transfer.
+
+IN means inside, CHECKING means a possible exit is being checked, and OUT means outside. While OUT continues, the watch repeats sound and vibration alerts and shows the distance and absolute direction to the nearest boundary. Direction labels are currently Japanese. Set the watch language to Japanese to display these labels and Japanese file names.
+
+For first-time setup, add ARGUS to a Run data screen and display it once to register background reception. With Bluetooth connected, use the ARGUS phone app to send a GeoJSON boundary or a boundary restored from an ARGUS QR code. Wait until the phone confirms that the watch has saved and verified it. Supported boundaries are a single Polygon without holes, with 3 to 100 vertices. Replacing a boundary during a Run is outside the supported workflow.
+
+Start the Run within 12 hours of transfer. A Run started before the deadline remains monitored until it ends. Each boundary is used for one Run and deleted when that Run ends. Pausing and resuming the same Run retains it. Send the boundary again for the next Run. Passing the deadline without starting a Run does not automatically delete the stored boundary.
+
+To stop monitoring during a Run, use the stop command in the connected ARGUS phone app and wait for completion. The phone reports completion only after the watch confirms deletion. The watch display and alerts can take up to about 10 seconds to reflect the stop.
+
+Supported devices include Forerunner 55, 165, 245, 255, 265, 745, 945, 945 LTE, 955 and 965, plus listed variants of fēnix 5 Plus, 6, 7 and 8. See Compatible Devices for the exact models. GPS accuracy, battery, and operating-system constraints can affect detection and alerts. Check your map, compass, surroundings, and event rules. ARGUS is a safety aid.
+
+ARGUS phone app and setup guide
+https://argus-lp.vercel.app/
+https://github.com/nanigasi-san/Argus/blob/main/docs/guides/garmin.md
