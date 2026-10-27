@@ -9,7 +9,8 @@
 <rect x="56" y="230" width="728" height="640" rx="24" fill="white" stroke="#dce6f1" stroke-width="1"/>
 <rect x="816" y="230" width="728" height="640" rx="24" fill="white" stroke="#dce6f1" stroke-width="1"/>
 <text x="92" y="286" fill="#19324f" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="32" font-weight="700" text-anchor="start">01  リリース時の最適化</text>
-<text x="92" y="329" fill="#58718b" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="23" font-weight="400" text-anchor="start">R8メタデータの評価値</text>
+<text x="92" y="329" fill="#58718b" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="23" font-weight="400" text-anchor="start">R8とリソース縮小をリリース時のみ有効化</text>
+<text x="92" y="355" fill="#58718b" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="20">R8メタデータの評価値</text>
 <text x="92" y="391" fill="#19324f" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="27" font-weight="700" text-anchor="start">難読化</text>
 <text x="748" y="391" fill="#195eaa" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="34" font-weight="700" text-anchor="end">82.15%</text>
 <rect x="92" y="412" width="640" height="15" rx="7" fill="#e9eff7" stroke="none" stroke-width="1"/>
