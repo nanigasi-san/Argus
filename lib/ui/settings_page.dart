@@ -286,7 +286,11 @@ class _SettingsPageState extends State<SettingsPage> {
                   key: _formKey,
                   child: ListView(
                     padding: EdgeInsets.fromLTRB(
-                        16, 16, 16, 16 + viewPadding.bottom),
+                      16 + viewPadding.left,
+                      16,
+                      16 + viewPadding.right,
+                      16 + viewPadding.bottom,
+                    ),
                     children: [
                       MonitoringPermissionCard(
                         permissionState: controller.monitoringPermissionState,

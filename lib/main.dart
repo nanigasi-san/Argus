@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:upgrader/upgrader.dart';
 
@@ -12,6 +13,9 @@ import 'ui/usage_mode_selection_page.dart';
 // coverage:ignore-start
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  }
   final controller = await AppController.bootstrap();
   runApp(
     ArgusApp(
@@ -81,6 +85,18 @@ class _ArgusAppState extends State<ArgusApp> with WidgetsBindingObserver {
         title: 'Argus',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light(),
+        builder: (context, child) {
+          if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+            return child!;
+          }
+          return AnnotatedRegion<SystemUiOverlayStyle>(
+            value: const SystemUiOverlayStyle(
+              statusBarIconBrightness: Brightness.dark,
+              systemNavigationBarIconBrightness: Brightness.dark,
+            ),
+            child: child!,
+          );
+        },
         home: home,
       ),
     );

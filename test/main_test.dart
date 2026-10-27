@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -19,7 +20,10 @@ void main() {
     expect(find.text('ARGUS'), findsWidgets);
     expect(find.byType(UsageModeSelectionPage), findsOneWidget);
     expect(find.text('スマホで利用'), findsOneWidget);
-  });
+    expect(SystemChrome.latestStyle?.statusBarIconBrightness, Brightness.dark);
+    expect(SystemChrome.latestStyle?.systemNavigationBarIconBrightness,
+        Brightness.dark);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.android));
 
   testWidgets('Argus app wraps the entry screen with store update checks',
       (WidgetTester tester) async {

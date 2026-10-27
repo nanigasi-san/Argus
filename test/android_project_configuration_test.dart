@@ -83,7 +83,7 @@ void main() {
       final gradleProperties =
           File('android/gradle.properties').readAsStringSync();
 
-      expect(settings, contains('com.android.application") version "8.11.1"'));
+      expect(settings, contains('com.android.application") version "8.11.2"'));
       expect(
         settings,
         contains('org.jetbrains.kotlin.android") version "2.2.20"'),
