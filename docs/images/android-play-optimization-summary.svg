@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1100" viewBox="0 0 1600 1100" role="img" aria-label="Android版のDEX最適化とエッジツーエッジ表示の修正概要">
+<rect x="0" y="0" width="1600" height="1100" rx="0" fill="#f3f7fc" stroke="none" stroke-width="1"/>
+<rect x="56" y="48" width="8" height="29" rx="4" fill="#246bce" stroke="none" stroke-width="1"/>
+<text x="80" y="70" fill="#47627e" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="21" font-weight="700" text-anchor="start">ARGUS / ANDROID</text>
+<rect x="1280" y="40" width="264" height="44" rx="12" fill="#e6eef9" stroke="none" stroke-width="1"/>
+<text x="1412" y="69" fill="#345779" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="20" font-weight="700" text-anchor="middle">COMMIT 12a7755</text>
+<text x="56" y="141" fill="#19324f" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="52" font-weight="700" text-anchor="start">Android版の警告への対応</text>
+<text x="56" y="190" fill="#58718b" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="27" font-weight="400" text-anchor="start">リリース最適化とエッジツーエッジ表示を修正</text>
+<rect x="56" y="230" width="728" height="640" rx="24" fill="white" stroke="#dce6f1" stroke-width="1"/>
+<rect x="816" y="230" width="728" height="640" rx="24" fill="white" stroke="#dce6f1" stroke-width="1"/>
+<text x="92" y="286" fill="#19324f" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="32" font-weight="700" text-anchor="start">01  リリース時の最適化</text>
+<text x="92" y="329" fill="#58718b" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="23" font-weight="400" text-anchor="start">R8メタデータの評価値</text>
+<text x="92" y="391" fill="#19324f" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="27" font-weight="700" text-anchor="start">難読化</text>
+<text x="748" y="391" fill="#195eaa" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="34" font-weight="700" text-anchor="end">82.15%</text>
+<rect x="92" y="412" width="640" height="15" rx="7" fill="#e9eff7" stroke="none" stroke-width="1"/>
+<rect x="92" y="412" width="525.76" height="15" rx="7" fill="#2d78cc" stroke="none" stroke-width="1"/>
+<line x1="252" y1="406" x2="252" y2="434" stroke="#99aec7" stroke-width="2" stroke-dasharray="3 3"/>
+<text x="92" y="483" fill="#19324f" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="27" font-weight="700" text-anchor="start">コード最適化</text>
+<text x="748" y="483" fill="#195eaa" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="34" font-weight="700" text-anchor="end">81.09%</text>
+<rect x="92" y="504" width="640" height="15" rx="7" fill="#e9eff7" stroke="none" stroke-width="1"/>
+<rect x="92" y="504" width="518.9760000000001" height="15" rx="7" fill="#2d78cc" stroke="none" stroke-width="1"/>
+<line x1="252" y1="498" x2="252" y2="526" stroke="#99aec7" stroke-width="2" stroke-dasharray="3 3"/>
+<text x="92" y="575" fill="#19324f" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="27" font-weight="700" text-anchor="start">コード縮小</text>
+<text x="748" y="575" fill="#195eaa" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="34" font-weight="700" text-anchor="end">82.40%</text>
+<rect x="92" y="596" width="640" height="15" rx="7" fill="#e9eff7" stroke="none" stroke-width="1"/>
+<rect x="92" y="596" width="527.36" height="15" rx="7" fill="#2d78cc" stroke="none" stroke-width="1"/>
+<line x1="252" y1="590" x2="252" y2="618" stroke="#99aec7" stroke-width="2" stroke-dasharray="3 3"/>
+<text x="92" y="636" fill="#1b7658" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="22" font-weight="700" text-anchor="start">25%の基準を3項目とも超過</text>
+<text x="748" y="636" fill="#647d96" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="18" font-weight="400" text-anchor="end">割合は容量の削減率ではありません</text>
+<rect x="92" y="664" width="270" height="64" rx="14" fill="#eaf3ff" stroke="none" stroke-width="1"/>
+<text x="111" y="706" fill="#47627e" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="23" font-weight="700" text-anchor="start">DEX</text>
+<text x="339" y="707" fill="#195eaa" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="35" font-weight="700" text-anchor="end">2.9MiB</text>
+<text x="389" y="690" fill="#47627e" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="22" font-weight="700" text-anchor="start">AGP 8.11.2</text>
+<text x="389" y="720" fill="#47627e" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="22" font-weight="400" text-anchor="start">R8 8.11.26</text>
+<rect x="92" y="752" width="656" height="83" rx="12" fill="#f3f7fc" stroke="none" stroke-width="1"/>
+<text x="112" y="783" fill="#19324f" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="22" font-weight="700" text-anchor="start">通知アイコン・警告音を保持</text>
+<text x="112" y="817" fill="#47627e" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="22" font-weight="400" text-anchor="start">GARMIN通信に必要なデータ型名を保持</text>
+<text x="852" y="286" fill="#19324f" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="32" font-weight="700" text-anchor="start">02  画面端の表示</text>
+<text x="852" y="329" fill="#58718b" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="23" font-weight="400" text-anchor="start">明るい背景でもシステムバーを読みやすく</text>
+<rect x="878" y="366" width="230" height="400" rx="25" fill="#f7f9ff" stroke="#9fb5ce" stroke-width="2"/>
+<rect x="881" y="369" width="224" height="38" rx="22" fill="#e4effc" stroke="none" stroke-width="1"/>
+<text x="895" y="394" fill="#19324f" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="18" font-weight="700" text-anchor="start">9:41</text>
+<rect x="1058" y="383" width="25" height="12" rx="3" fill="#19324f" stroke="none" stroke-width="1"/>
+<rect x="1085" y="387" width="3" height="5" rx="1" fill="#19324f" stroke="none" stroke-width="1"/>
+<text x="993" y="443" fill="#19324f" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="28" font-weight="700" text-anchor="middle">ARGUS</text>
+<rect x="895" y="468" width="196" height="77" rx="14" fill="#e8f1fe" stroke="none" stroke-width="1"/>
+<rect x="911" y="488" width="22" height="31" rx="3" fill="none" stroke="#246bce" stroke-width="2"/>
+<rect x="945" y="490" width="122" height="8" rx="4" fill="#8eaacf" stroke="none" stroke-width="1"/>
+<rect x="945" y="510" width="89" height="7" rx="3" fill="#bdcfe6" stroke="none" stroke-width="1"/>
+<rect x="895" y="560" width="196" height="77" rx="14" fill="#edf1f7" stroke="none" stroke-width="1"/>
+<rect x="912" y="582" width="22" height="22" rx="11" fill="none" stroke="#6983a4" stroke-width="2"/>
+<rect x="945" y="581" width="122" height="8" rx="4" fill="#8eaacf" stroke="none" stroke-width="1"/>
+<rect x="945" y="601" width="89" height="7" rx="3" fill="#bdcfe6" stroke="none" stroke-width="1"/>
+<rect x="895" y="680" width="196" height="40" rx="10" fill="#246bce" stroke="none" stroke-width="1"/>
+<text x="993" y="707" fill="white" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="20" font-weight="700" text-anchor="middle">次へ</text>
+<rect x="881" y="725" width="224" height="38" rx="14" fill="#e4effc" stroke="none" stroke-width="1"/>
+<rect x="953" y="748" width="80" height="4" rx="2" fill="#19324f" stroke="none" stroke-width="1"/>
+<line x1="1108" y1="390" x2="1130" y2="390" stroke="#6795ca" stroke-width="2" stroke-dasharray=""/>
+<circle cx="1108" cy="390" r="4" fill="#246bce"/>
+<line x1="1108" y1="514" x2="1130" y2="514" stroke="#6795ca" stroke-width="2" stroke-dasharray=""/>
+<circle cx="1108" cy="514" r="4" fill="#246bce"/>
+<line x1="1108" y1="739" x2="1130" y2="739" stroke="#6795ca" stroke-width="2" stroke-dasharray=""/>
+<circle cx="1108" cy="739" r="4" fill="#246bce"/>
+<text x="1148" y="395" fill="#19324f" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="24" font-weight="700" text-anchor="start">アイコンを暗く表示</text>
+<text x="1148" y="428" fill="#58718b" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="20" font-weight="400" text-anchor="start">明るい背景でも見える</text>
+<text x="1148" y="514" fill="#19324f" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="24" font-weight="700" text-anchor="start">表示を明示的に有効化</text>
+<text x="1148" y="547" fill="#58718b" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="20" font-weight="400" text-anchor="start">Flutter + WindowCompat</text>
+<text x="1148" y="720" fill="#19324f" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="24" font-weight="700" text-anchor="start">画面端の余白を確保</text>
+<text x="1148" y="753" fill="#58718b" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="20" font-weight="400" text-anchor="start">設定・GARMIN転送画面</text>
+<text x="993" y="795" fill="#6983a4" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="17" font-weight="400" text-anchor="middle">表示の模式図</text>
+<text x="852" y="842" fill="#47627e" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="21" font-weight="400" text-anchor="start">Android 7では黒いナビバーを維持</text>
+<rect x="56" y="906" width="1488" height="106" rx="20" fill="#e8f4ed" stroke="none" stroke-width="1"/>
+<text x="90" y="967" fill="#1d6e51" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="29" font-weight="700" text-anchor="start">検証済み</text>
+<text x="275" y="952" fill="#1d6e51" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="32" font-weight="700" text-anchor="start">446件</text>
+<text x="275" y="985" fill="#476c5a" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="20" font-weight="400" text-anchor="start">単体・画面テスト</text>
+<text x="585" y="952" fill="#1d6e51" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="32" font-weight="700" text-anchor="start">全3ファイル</text>
+<text x="585" y="985" fill="#476c5a" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="20" font-weight="400" text-anchor="start">E2E / Android API 36</text>
+<text x="930" y="952" fill="#1d6e51" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="32" font-weight="700" text-anchor="start">指摘なし</text>
+<text x="930" y="985" fill="#476c5a" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="20" font-weight="400" text-anchor="start">静的解析</text>
+<text x="1240" y="952" fill="#1d6e51" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="32" font-weight="700" text-anchor="start">成功</text>
+<text x="1240" y="985" fill="#476c5a" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="20" font-weight="400" text-anchor="start">AABビルド・起動確認</text>
+<text x="56" y="1054" fill="#647d96" font-family="BIZ UDPGothic, Yu Gothic, Meiryo, sans-serif" font-size="21" font-weight="400" text-anchor="start">Play上の警告解消は次回アップロード後に確認  /  実機GARMIN転送は未確認</text>
+</svg>
