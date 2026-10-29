@@ -505,14 +505,12 @@ class _ValidationSummary extends StatelessWidget {
     final style = Theme.of(context).textTheme.bodySmall;
     return Column(
       children: [
-        Text('✓ スマホ対応', style: style),
-        Text(
-          garmin.validForGarmin
-              ? '✓ Garmin対応'
-              : '✕ Garmin非対応: ${GeoJsonValidationMessages.describe(garmin.issues.first)}',
-          style: style,
-          textAlign: TextAlign.center,
-        ),
+        if (!garmin.validForGarmin)
+          Text(
+            '✕ Garmin非対応: ${GeoJsonValidationMessages.describe(garmin.issues.first)}',
+            style: style,
+            textAlign: TextAlign.center,
+          ),
         for (final warning in validation.warnings)
           Text('注意: ${GeoJsonValidationMessages.describe(warning)}',
               style: style, textAlign: TextAlign.center),

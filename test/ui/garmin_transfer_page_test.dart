@@ -187,6 +187,7 @@ Future<void> _startTransfer(
   FakeLocalNotificationsClient notifications, {
   bool notificationDenied = false,
   bool startSending = true,
+  EdgeInsets systemPadding = EdgeInsets.zero,
 }) async {
   final controller = buildTestController(
     hasGeoJson: true,
@@ -212,7 +213,16 @@ Future<void> _startTransfer(
   await tester.pumpWidget(
     ChangeNotifierProvider.value(
       value: controller,
-      child: MaterialApp(home: GarminTransferPage(client: client)),
+      child: MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            padding: systemPadding,
+            viewPadding: systemPadding,
+          ),
+          child: child!,
+        ),
+        home: GarminTransferPage(client: client),
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -233,6 +243,39 @@ Future<void> _selectSecondWatch(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('transfer form and success stay outside system bars and cutouts',
+      (tester) async {
+    tester.view.physicalSize = const Size(400, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const insets = EdgeInsets.fromLTRB(44, 24, 36, 48);
+    final client = _PendingGarminClient();
+    await _startTransfer(tester, client, FakeLocalNotificationsClient(),
+        systemPadding: insets, startSending: false);
+
+    void expectSafeContent() {
+      final viewport = tester.getRect(find.byType(ListView));
+      final screen = tester.view.physicalSize / tester.view.devicePixelRatio;
+      expect(viewport.left, greaterThanOrEqualTo(insets.left));
+      expect(viewport.right, lessThanOrEqualTo(screen.width - insets.right));
+      expect(viewport.bottom, lessThanOrEqualTo(screen.height - insets.bottom));
+      expect(tester.takeException(), isNull);
+    }
+
+    expectSafeContent();
+    await tester.ensureVisible(find.text('GARMINに送信'));
+    await tester.tap(find.text('GARMINに送信'));
+    await tester.pump();
+    client.completion.complete(const GarminTransferResult(
+      deviceName: 'ForeAthlete 55',
+      elapsedMs: 50,
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('GARMINへ転送しました'), findsOneWidget);
+    expectSafeContent();
+  });
+
   testWidgets(
       'QR image selects the embedded course without changing phone monitoring',
       (tester) async {

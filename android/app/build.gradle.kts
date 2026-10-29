@@ -58,8 +58,12 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
-            isMinifyEnabled = false
-            isShrinkResources = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 
@@ -76,6 +80,7 @@ flutter {
 }
 
 dependencies {
+    implementation("androidx.core:core:1.17.0")
     implementation("com.garmin.connectiq:ciq-companion-app-sdk:2.4.0@aar")
     implementation("org.jetbrains.kotlin:kotlin-stdlib:1.9.24")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")

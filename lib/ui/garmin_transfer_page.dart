@@ -342,12 +342,15 @@ class _GarminTransferPageState extends State<GarminTransferPage>
         scrolledUnderElevation: 0,
       ),
       backgroundColor: surface,
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 440),
-          child: _result == null
-              ? _buildTransferForm(context)
-              : _buildSuccess(context),
+      body: SafeArea(
+        top: false,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: _result == null
+                ? _buildTransferForm(context)
+                : _buildSuccess(context),
+          ),
         ),
       ),
     );
